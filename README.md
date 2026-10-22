@@ -1,0 +1,52 @@
+# Orbit
+
+Orbit is a GUI-first management platform for ARM single-board computers and embedded Linux.
+
+The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.md). Architecture decisions live in [`docs/adr/`](docs/adr/), the gate sequence in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+## Status
+
+**Gate G1 (repository foundation and CI) is implemented.** The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, and a GitHub Actions CI workflow.
+
+What the binary does today:
+
+- serves `GET /healthz` (`{"status":"ok"}`)
+- serves the embedded frontend, which shows whether `/healthz` answers
+
+What it does **not** do yet: hardware or OS detection, metrics, authentication, plugins, self-update, release packaging, installation. Those belong to later gates. Nothing in this repository has been run on a Raspberry Pi yet.
+
+## Platform baseline
+
+- Initial verified target: Raspberry Pi Zero 2 W with Raspberry Pi OS Lite 64-bit
+- Mandatory future target: Ubuntu Server LTS ARM64
+- Primary runtime architecture: Linux ARM64
+- Backend: Go. Frontend: Svelte 5 and TypeScript, embedded into the Go binary
+- Delivery (later gates): signed GitHub Releases, pull-based installer, GUI self-update
+
+The target device needs no Node.js, Python, database, Git, or container runtime.
+
+## Quick start
+
+Requirements on the development machine: Go (version in [`backend/go.mod`](backend/go.mod)), Node.js 22+, npm, make.
+
+```bash
+make deps    # npm ci
+make build   # frontend build + host binary -> bin/orbit
+bin/orbit    # listens on 127.0.0.1:8484
+```
+
+Open <http://127.0.0.1:8484/> or `curl http://127.0.0.1:8484/healthz`.
+
+Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+
+## Repository layout
+
+| Path | Content |
+|---|---|
+| `backend/` | Go module: `cmd/orbit` entry point, `internal/` packages |
+| `frontend/` | Svelte 5 + TypeScript + Vite (build time only) |
+| `docs/` | Specification, ADRs, roadmap, architecture, development guide, gate prompts |
+| `.github/workflows/` | CI (hosted runners only; no deployment to devices) |
+| `Makefile` | Developer entry points |
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces fit together.

@@ -1,0 +1,30 @@
+# Local Claude context
+CLAUDE.local.md
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# OS and editor
+.DS_Store
+.idea/
+.vscode/
+
+# Build outputs
+bin/
+frontend/dist/
+coverage/
+node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# Frontend production build lands in the Go embed directory; only the
+# placeholder is tracked so `go build` works on a fresh checkout.
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
+
+# Logs
+*.log
