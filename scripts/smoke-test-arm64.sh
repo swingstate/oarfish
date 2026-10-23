@@ -22,7 +22,7 @@ if [ -z "$emu" ]; then
     *) emu=qemu-aarch64 ;;
   esac
 fi
-if [ "$emu" = none ]; then run=(); else
+if [ "$emu" = none ]; then run=(env); else
   command -v "$emu" >/dev/null || die "$emu not found (apt-get install qemu-user)"
   run=("$emu")
 fi

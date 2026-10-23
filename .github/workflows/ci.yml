@@ -4,13 +4,15 @@ on:
   pull_request:
   push:
     branches: [main]
+  # release.yml runs the same checks before it builds anything.
+  workflow_call:
 
 # Least privilege: CI only reads the repository.
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -41,6 +43,20 @@ jobs:
       - name: go test
         working-directory: backend
         run: go test -race ./...
+      # scripts/bundlegen is a separate stdlib-only module (release packaging).
+      - name: Release tooling uses the same Go version
+        run: diff <(grep '^go ' backend/go.mod) <(grep '^go ' scripts/bundlegen/go.mod)
+      - name: Release tooling gofmt, vet and tests
+        working-directory: scripts/bundlegen
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+          go vet ./...
+          go test -race ./...
 
   frontend:
     name: Frontend checks and build
@@ -79,10 +95,10 @@ jobs:
           if-no-files-found: error
 
   build:
-    name: Go build (host and linux/arm64)
+    name: Release bundle, budgets and ARM64 smoke test
     needs: [backend, frontend]
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -98,16 +114,89 @@ jobs:
       - name: Host build
         working-directory: backend
         run: go build -trimpath -o ../bin/orbit ./cmd/orbit
-      - name: Linux ARM64 cross-build
-        working-directory: backend
-        env:
-          CGO_ENABLED: "0"
-          GOOS: linux
-          GOARCH: arm64
-        run: go build -trimpath -ldflags "-s -w" -o ../bin/orbit-linux-arm64 ./cmd/orbit
-      - name: Verify ARM64 artifact and record size
+      # The same script builds the release bundle (CGO_ENABLED=0 GOOS=linux GOARCH=arm64).
+      - name: Linux ARM64 release bundle
+        run: scripts/release-bundle.sh -o dist/release
+      - name: Verify ARM64 artifact
         run: |
-          file bin/orbit-linux-arm64
-          file bin/orbit-linux-arm64 | grep -q 'ELF 64-bit.*ARM aarch64'
-          size="$(stat -c %s bin/orbit-linux-arm64)"
-          echo "linux/arm64 binary: ${size} bytes" | tee -a "$GITHUB_STEP_SUMMARY"
+          tar -xzf dist/release/orbit_*_linux_arm64.tar.gz -C "$RUNNER_TEMP"
+          bin="$(ls "$RUNNER_TEMP"/orbit_*_linux_arm64/orbit)"
+          file "$bin"
+          file "$bin" | grep -q 'ELF 64-bit.*ARM aarch64'
+      - name: Size budgets (ORB-NFR-005, ORB-NFR-006)
+        run: scripts/check-budgets.sh dist/release/orbit_*_linux_arm64.tar.gz
+      - name: Install qemu-user
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends qemu-user
+          qemu-aarch64 --version | head -1
+      - name: ARM64 smoke test under emulation (ORB-CICD-004)
+        run: |
+          EXPECTED_VERSION="$(jq -r .version dist/release/manifest.json)" \
+            scripts/smoke-test-arm64.sh dist/release/orbit_*_linux_arm64.tar.gz
+
+  reproducibility:
+    name: Reproducible bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies (lockfile)
+        working-directory: frontend
+        run: npm ci
+      - name: Build the bundle twice from scratch and compare SHA-256
+        run: scripts/check-reproducible.sh --rebuild-frontend
+
+  signing:
+    name: Signing and tamper tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+      - name: Install minisign (pinned version and SHA-256)
+        run: scripts/install-minisign.sh
+      # Throwaway keys generated inside the test. The release key is not involved.
+      - name: Sign, verify and reject tampered input
+        run: scripts/test-signing.sh
+
+  # ORB-SEC-009 is SOLL. These checks run on every change; findings fail the job.
+  security:
+    name: Dependency scan and SBOM generation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.node-version
+      - name: govulncheck (pinned)
+        working-directory: backend
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: npm audit (high and critical fail the job)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+      - name: SBOM generation works
+        run: scripts/make-sbom.sh "$RUNNER_TEMP/sbom"

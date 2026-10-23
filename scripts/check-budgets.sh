@@ -3,13 +3,14 @@
 #   ORB-NFR-005: ARM64 release including frontend stays under 35 MB
 #   ORB-NFR-006: compressed initial frontend bundle stays under 750 KB
 # Sizes use decimal units (1 MB = 1,000,000 bytes), which is the stricter reading.
+# MAX_BUNDLE_BYTES / MAX_FRONTEND_GZIP_BYTES override the limits (used to test failure).
 #
 # Usage: scripts/check-budgets.sh BUNDLE.tar.gz
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
-MAX_BUNDLE_BYTES=35000000
-MAX_FRONTEND_GZIP_BYTES=750000
+MAX_BUNDLE_BYTES="${MAX_BUNDLE_BYTES:-35000000}"
+MAX_FRONTEND_GZIP_BYTES="${MAX_FRONTEND_GZIP_BYTES:-750000}"
 
 BUNDLE="${1:?usage: $0 BUNDLE.tar.gz}"
 DIST="$ROOT/backend/internal/web/dist"
@@ -32,9 +33,9 @@ while IFS= read -r ref; do
 done <<< "$refs"
 
 status=0
-verdict() { if [ "$1" -le "$2" ]; then echo "within budget"; else echo "OVER BUDGET"; status=1; fi; }
-bv="$(verdict "$bundle_bytes" "$MAX_BUNDLE_BYTES")"
-fv="$(verdict "$frontend_gz" "$MAX_FRONTEND_GZIP_BYTES")"
+bv="within budget"; fv="within budget"
+if [ "$bundle_bytes" -gt "$MAX_BUNDLE_BYTES" ]; then bv="OVER BUDGET"; status=1; fi
+if [ "$frontend_gz" -gt "$MAX_FRONTEND_GZIP_BYTES" ]; then fv="OVER BUDGET"; status=1; fi
 
 summary <<SUM
 ### Size budgets
