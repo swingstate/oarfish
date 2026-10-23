@@ -31,4 +31,4 @@
 
 ## Integrity
 
-`SHA256SUMS.txt` contains SHA-256 digests for all package files except itself.
+The starter pack no longer ships a checksum file. Integrity of the repository content is given by its Git history. Release artifacts carry their own `checksums.txt` and signature, see `docs/RELEASING.md`.

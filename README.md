@@ -50,3 +50,7 @@ Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`. See [`d
 | `Makefile` | Developer entry points |
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces fit together.
+
+## License
+
+Orbit is licensed under the Apache License 2.0 (SPDX identifier `Apache-2.0`), see [`LICENSE`](LICENSE). The repository is private until shortly before the MVP release (decisions D-C13 to D-C15 in [`docs/DECISIONS.md`](docs/DECISIONS.md)).
