@@ -15,6 +15,7 @@ CLAUDE.local.md
 
 # Build outputs
 bin/
+/dist/
 frontend/dist/
 coverage/
 node_modules/
