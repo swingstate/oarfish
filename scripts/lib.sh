@@ -28,3 +28,9 @@ build_bundlegen() {
 summary() {
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then cat >> "$GITHUB_STEP_SUMMARY"; else cat; fi
 }
+
+# Signature algorithm of a minisign .sig file: "Ed" (legacy, plain Ed25519) or
+# "ED" (prehashed with BLAKE2b). It is the first two bytes of the line-2 payload.
+sig_algorithm() {
+  sed -n 2p "$1" | { base64 -d 2>/dev/null || base64 -D; } | head -c 2
+}

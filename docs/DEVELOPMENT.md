@@ -57,7 +57,7 @@ Adding a dependency should be justified in the change that adds it.
 2. **frontend**: `npm ci`, `svelte-check`, `vitest`, `vite build`, upload of the built assets
 3. **build** (needs both): host build; the ARM64 release bundle via `scripts/release-bundle.sh`; aarch64 ELF check; size budgets (below); ARM64 smoke test under `qemu-user`
 4. **reproducibility**: `scripts/check-reproducible.sh --rebuild-frontend`
-5. **signing**: installs the pinned minisign and runs `scripts/test-signing.sh` (positive case plus nine rejection cases, throwaway keys only)
+5. **signing**: installs the pinned minisign and runs `scripts/test-signing.sh` (positive cases plus rejection cases for tampering, wrong key, replay and wrong signature format; throwaway keys only)
 6. **security** (ORB-SEC-009, SOLL): `govulncheck` (pinned), `npm audit --audit-level=high`, and a trial SBOM generation
 
 `.github/workflows/release.yml` (tag `v*`, or manual dry run) is described in [`RELEASING.md`](RELEASING.md).

@@ -72,4 +72,14 @@ make_release "$TMP/rel2" 0.1.0-test.2
 cp "$REL/checksums.txt.sig" "$TMP/rel2/checksums.txt.sig"
 expect_reject "signature replayed from another release" "signature verification" "${VERIFY[@]}" "$TMP/rel2" "$TMP/a.pub"
 
+# Format is pinned to legacy Ed25519: a valid prehashed (ED) signature from the
+# trusted key must not be accepted by verify-release.sh.
+cp -R "$REL" "$TMP/t8"; rm "$TMP/t8/checksums.txt.sig"
+minisign -G -W -f -p "$TMP/c.pub" -s "$TMP/c.key" >/dev/null
+minisign -S -s "$TMP/c.key" -x "$TMP/t8/checksums.txt.sig" -m "$TMP/t8/checksums.txt" </dev/null >/dev/null
+expect_ok     "prehashed signature is valid for minisign itself" minisign -V -p "$TMP/c.pub" -x "$TMP/t8/checksums.txt.sig" -m "$TMP/t8/checksums.txt"
+expect_reject "prehashed (ED) signature format" "legacy (Ed) format" "${VERIFY[@]}" "$TMP/t8" "$TMP/c.pub"
+[ "$(sig_algorithm "$REL/checksums.txt.sig")" = "Ed" ] || die "release signature is not legacy format"
+N=$((N+1)); echo "PASS  [$N] sign-release.sh produces legacy (Ed) signatures"
+
 echo "ALL $N SIGNING CHECKS PASSED"

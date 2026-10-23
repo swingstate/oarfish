@@ -19,6 +19,10 @@ done
 echo "== 1/3 signature of checksums.txt"
 minisign -V -p "$PUB" -x "$DIR/checksums.txt.sig" -m "$DIR/checksums.txt" \
   || die "signature verification FAILED"
+# Releases are signed in legacy mode (plain Ed25519, ADR 0005); anything else is
+# a different format than installer and updater will accept.
+[ "$(sig_algorithm "$DIR/checksums.txt.sig")" = "Ed" ] \
+  || die "signature verification FAILED: signature is not in legacy (Ed) format"
 
 echo "== 2/3 file hashes (system sha256 tool)"
 (cd "$DIR" && sha256_check checksums.txt) || die "hash check FAILED"

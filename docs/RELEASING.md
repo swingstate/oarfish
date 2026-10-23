@@ -9,7 +9,7 @@ How a version tag becomes a signed GitHub Release (Gate G2). The release path is
 | `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded) and `LICENSE` |
 | `manifest.json` | Machine-readable metadata (see below) |
 | `checksums.txt` | SHA-256 of the bundle, `manifest.json` and the SBOMs, in `sha256sum` format |
-| `checksums.txt.sig` | minisign (Ed25519) signature of `checksums.txt` |
+| `checksums.txt.sig` | minisign signature of `checksums.txt`, legacy mode: plain Ed25519 over the file bytes (ADR 0005) |
 | `sbom-backend.cdx.json`, `sbom-frontend.cdx.json` | CycloneDX SBOMs (ORB-SEC-009, SOLL) |
 
 `<version>` is the tag without the leading `v`. A tag with a hyphen (`v0.1.0-alpha.1`) is published as a prerelease.
@@ -40,13 +40,13 @@ Commit only `release/oarfish-release.pub`. `*.key` is git-ignored as a safety ne
 
 ## Dry run
 
-Actions → Release → Run workflow (leave "Dry run" ticked), or:
+Actions → Release → Run workflow, or:
 
 ```bash
-gh workflow run release.yml --ref <branch> -f dry_run=true
+gh workflow run release.yml --ref <branch>
 ```
 
-It runs CI, builds the bundle, checks reproducibility, size budgets and the ARM64 smoke test, generates SBOMs and checksums, signs with a throwaway key and verifies. It needs no secret, uses version `0.0.0-dryrun.<sha>` and publishes nothing. The signed output of a dry run is discarded.
+It runs CI, builds the bundle, checks reproducibility, size budgets and the ARM64 smoke test, generates SBOMs and checksums, signs with a throwaway key and verifies. A manual run is always a dry run, and so is the run triggered by a pull request that touches the release files. It uses version `0.0.0-dryrun.<sha>` and publishes nothing; the signed output is discarded. The job that references the release secret (`sign`) is skipped in these runs, so the secret is never sent to a runner; they use the job `sign-dry-run`.
 
 ## Release procedure
 
@@ -56,10 +56,10 @@ It runs CI, builds the bundle, checks reproducibility, size budgets and the ARM6
    git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1
    ```
    The workflow rejects tags that are not `vMAJOR.MINOR.PATCH[-prerelease]` and tags whose commit is not on `main`.
-3. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` sees the secret; only `publish` has `contents: write`.
+3. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` references the secret and it only starts for a tag push; only `publish` has `contents: write`.
 4. Verify the published assets (below).
 
-A tag run can also be started manually with `dry_run` unticked, selecting the tag as the ref. If a release fails halfway, delete the draft/partial release and the tag, fix the cause and tag again. Never reuse a published version.
+Publishing happens only from a tag push; there is no manual publish path. If a release fails halfway, delete the draft/partial release and the tag, fix the cause and tag again. Never reuse a published version.
 
 ## Verify a release manually
 
@@ -77,6 +77,10 @@ tar -tzvf oarfish_0.1.0-alpha.1_linux_arm64.tar.gz                              
 The repository script does the same plus consistency checks between manifest, checksums and tarball contents: `scripts/verify-release.sh <dir> release/oarfish-release.pub`.
 
 Order matters: check the signature first, because the hashes are only as trustworthy as the signed `checksums.txt`.
+
+### Signature format
+
+Releases are signed with `minisign -S -l` (legacy mode, algorithm id `Ed`), so the signature is plain Ed25519 over the bytes of `checksums.txt` and can be verified with Go's `crypto/ed25519` without BLAKE2b. `minisign -V` accepts both modes; `scripts/verify-release.sh` additionally rejects anything that is not `Ed`. **The format is fixed once `v0.1.0-alpha.1` is published:** installer and updater will be written against it, so `-l` in `scripts/sign-release.sh` must not be removed afterwards. Rationale and file layout: ADR 0005, Amendment.
 
 ## Build a bundle locally (unsigned)
 
@@ -103,7 +107,7 @@ make check-reproducible    # rebuilds the frontend and the bundle twice, empty G
 
 ## Public key in installer and updater (not implemented in this gate)
 
-`release/oarfish-release.pub` is the single source of the trusted key. Gate G3 will embed its key line in `install.sh`; Gate G6 will embed the file in the Oarfish binary with `go:embed`. Both must verify `checksums.txt.sig` before trusting any hash. See ADR 0005 for the open points (verification mechanics on the device, key rotation).
+`release/oarfish-release.pub` is the single source of the trusted key. Gate G3 will embed its key line in `install.sh`; Gate G6 will embed the file in the Oarfish binary with `go:embed`. Both must verify `checksums.txt.sig` before trusting any hash. The updater can use `crypto/ed25519` from the standard library (legacy mode). See ADR 0005 for the open point (key rotation).
 
 ## Known limitations
 

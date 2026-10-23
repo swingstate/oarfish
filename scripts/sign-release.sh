@@ -2,6 +2,11 @@
 # Sign DIR/checksums.txt with minisign (Ed25519), writing DIR/checksums.txt.sig.
 # Only checksums.txt is signed; it covers every other release file.
 #
+# Legacy mode (-l): the signature is plain Ed25519 over the file bytes, so Go's
+# crypto/ed25519 can verify it without BLAKE2b (ADR 0005). verify-release.sh
+# rejects the default prehashed format. The format is fixed once the first
+# release is published; do not remove -l afterwards.
+#
 # Usage:
 #   OARFISH_RELEASE_SIGNING_KEY="$(cat key)" scripts/sign-release.sh DIR
 #   scripts/sign-release.sh --ephemeral PUBKEY_OUT DIR
@@ -33,6 +38,6 @@ else
 fi
 
 # stdin from /dev/null: a password-protected key fails instead of hanging.
-minisign -S -s "$KEY" -x "$DIR/checksums.txt.sig" \
+minisign -S -l -s "$KEY" -x "$DIR/checksums.txt.sig" \
   -t "${OARFISH_SIGN_COMMENT:-oarfish release}" -m "$DIR/checksums.txt" </dev/null >/dev/null
 echo "signed $DIR/checksums.txt -> checksums.txt.sig"
