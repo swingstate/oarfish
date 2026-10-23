@@ -2,7 +2,9 @@ name: Release
 
 # A pushed version tag (v*) builds, signs and publishes a GitHub Release.
 # A manual run (workflow_dispatch) is a dry run by default: it builds and checks
-# everything, signs with a throwaway key, and publishes nothing.
+# everything, signs with a throwaway key, and publishes nothing. Pull requests
+# that touch the release machinery run the same dry run (GitHub only offers
+# workflow_dispatch for workflows that are already on the default branch).
 #
 # GitHub-hosted runners only. Nothing in this workflow connects to a device
 # (ADR 0003, ORB-CICD-005). Procedure and key handling: docs/RELEASING.md.
@@ -10,6 +12,13 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/ci.yml"
+      - "scripts/**"
+      - "release/**"
+      - "LICENSE"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -26,7 +35,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # true for tag pushes, and for manual runs with dry_run unticked.
+  # true for tag pushes, and for manual runs with dry_run unticked. Never for pull requests.
   PUBLISH: ${{ github.event_name == 'push' || github.event.inputs.dry_run == 'false' }}
 
 jobs:
