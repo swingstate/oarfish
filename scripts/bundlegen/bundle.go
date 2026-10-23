@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	productName  = "orbit"
+	productName  = "oarfish"
 	osName       = "linux"
 	archName     = "arm64"
 	manifestName = "manifest.json"
@@ -82,7 +82,7 @@ type bundleInput struct {
 
 func runBundle(args []string) error {
 	fs := flag.NewFlagSet("bundle", flag.ExitOnError)
-	binary := fs.String("binary", "", "path to the linux/arm64 orbit binary")
+	binary := fs.String("binary", "", "path to the linux/arm64 oarfish binary")
 	license := fs.String("license", "", "path to the LICENSE file")
 	version := fs.String("version", "", "version without leading v, e.g. 0.1.0-alpha.1")
 	commit := fs.String("commit", "", "full 40-character commit hash")
@@ -151,7 +151,7 @@ func buildBundle(in bundleInput) ([]byte, *Manifest, error) {
 	}
 	files := []file{
 		{root + "/LICENSE", 0o644, in.License},
-		{root + "/orbit", 0o755, in.Binary},
+		{root + "/oarfish", 0o755, in.Binary},
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
 

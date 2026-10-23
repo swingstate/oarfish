@@ -16,11 +16,11 @@ build_bundlegen "$TMP/bundlegen"
 COMMIT=0123456789abcdef0123456789abcdef01234567
 make_release() { # make_release DIR VERSION
   mkdir -p "$1"
-  printf 'not a real binary %s\n' "$2" > "$TMP/fake-orbit"
-  "$TMP/bundlegen" bundle -binary "$TMP/fake-orbit" -license "$ROOT/LICENSE" \
+  printf 'not a real binary %s\n' "$2" > "$TMP/fake-oarfish"
+  "$TMP/bundlegen" bundle -binary "$TMP/fake-oarfish" -license "$ROOT/LICENSE" \
     -version "$2" -commit "$COMMIT" -epoch 1700000000 -out "$1" >/dev/null
   printf '{"fixture":true}\n' > "$1/sbom.json"
-  "$TMP/bundlegen" checksums -dir "$1" "orbit_$2_linux_arm64.tar.gz" manifest.json sbom.json
+  "$TMP/bundlegen" checksums -dir "$1" "oarfish_$2_linux_arm64.tar.gz" manifest.json sbom.json
 }
 
 N=0
@@ -38,7 +38,7 @@ flip_byte() { # flip_byte FILE: invert one byte in the middle
 }
 
 REL="$TMP/rel"; make_release "$REL" 0.1.0-test.1
-ORBIT_SIGN_COMMENT="orbit test" "$ROOT/scripts/sign-release.sh" --ephemeral "$TMP/a.pub" "$REL" >/dev/null
+OARFISH_SIGN_COMMENT="oarfish test" "$ROOT/scripts/sign-release.sh" --ephemeral "$TMP/a.pub" "$REL" >/dev/null
 VERIFY=("$ROOT/scripts/verify-release.sh")
 
 expect_ok "valid release verifies" "${VERIFY[@]}" "$REL" "$TMP/a.pub"
@@ -46,7 +46,7 @@ expect_ok "valid release verifies" "${VERIFY[@]}" "$REL" "$TMP/a.pub"
 cp -R "$REL" "$TMP/t1"; echo "extra line" >> "$TMP/t1/checksums.txt"
 expect_reject "tampered checksums.txt" "signature verification" "${VERIFY[@]}" "$TMP/t1" "$TMP/a.pub"
 
-cp -R "$REL" "$TMP/t2"; flip_byte "$TMP/t2/orbit_0.1.0-test.1_linux_arm64.tar.gz"
+cp -R "$REL" "$TMP/t2"; flip_byte "$TMP/t2/oarfish_0.1.0-test.1_linux_arm64.tar.gz"
 expect_reject "tampered bundle (signature and checksums intact)" "hash check failed" "${VERIFY[@]}" "$TMP/t2" "$TMP/a.pub"
 
 cp -R "$REL" "$TMP/t3"; echo " " >> "$TMP/t3/manifest.json"

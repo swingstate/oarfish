@@ -16,7 +16,7 @@ const testCommit = "0123456789abcdef0123456789abcdef01234567"
 
 func testInput() bundleInput {
 	return bundleInput{
-		Binary:  []byte("\x7fELF-fake-orbit-binary"),
+		Binary:  []byte("\x7fELF-fake-oarfish-binary"),
 		License: []byte("Apache License\n"),
 		Version: "0.1.0-alpha.1",
 		Commit:  testCommit,
@@ -66,7 +66,7 @@ func TestBundleLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr := tar.NewReader(zr)
-	root := "orbit_0.1.0-alpha.1_linux_arm64"
+	root := "oarfish_0.1.0-alpha.1_linux_arm64"
 	var names []string
 	for {
 		h, err := tr.Next()
@@ -84,7 +84,7 @@ func TestBundleLayout(t *testing.T) {
 			t.Errorf("%s: mtime %v, want commit time", h.Name, h.ModTime)
 		}
 	}
-	want := []string{root + "/", root + "/LICENSE", root + "/orbit"}
+	want := []string{root + "/", root + "/LICENSE", root + "/oarfish"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("entries %v, want %v", names, want)
 	}
@@ -103,7 +103,7 @@ func TestStableVersionIsNotPrerelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mf.Prerelease || mf.Bundle.File != "orbit_1.2.3_linux_arm64.tar.gz" {
+	if mf.Prerelease || mf.Bundle.File != "oarfish_1.2.3_linux_arm64.tar.gz" {
 		t.Errorf("prerelease=%v file=%s", mf.Prerelease, mf.Bundle.File)
 	}
 }
@@ -161,7 +161,7 @@ func TestChecksumsAreSortedAndSha256sumShaped(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join(dir, checksumName))
 	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 	if len(lines) != 3 || !strings.HasSuffix(lines[0], "  manifest.json") ||
-		!strings.HasSuffix(lines[1], "  orbit_0.1.0-alpha.1_linux_arm64.tar.gz") || !strings.HasSuffix(lines[2], "  sbom.json") {
+		!strings.HasSuffix(lines[1], "  oarfish_0.1.0-alpha.1_linux_arm64.tar.gz") || !strings.HasSuffix(lines[2], "  sbom.json") {
 		t.Fatalf("unexpected checksums.txt:\n%s", raw)
 	}
 }
@@ -184,7 +184,7 @@ func TestCheckRejectsTampering(t *testing.T) {
 			must(t, os.WriteFile(p, b, 0o644))
 		}
 	}
-	tamper("bundle", flip("orbit_0.1.0-alpha.1_linux_arm64.tar.gz"))
+	tamper("bundle", flip("oarfish_0.1.0-alpha.1_linux_arm64.tar.gz"))
 	tamper("manifest", flip("manifest.json"))
 	tamper("sbom", flip("sbom.json"))
 	tamper("missing file", func(dir string) { must(t, os.Remove(filepath.Join(dir, "sbom.json"))) })

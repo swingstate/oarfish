@@ -1,4 +1,4 @@
-# Orbit delivery roadmap
+# Oarfish delivery roadmap
 
 | Gate | Result |
 |---|---|
@@ -6,14 +6,14 @@
 | G1 | Repository, skeleton, documentation, tests, and CI |
 | G2 | Signed GitHub Release pipeline for Linux ARM64 |
 | G3 | Pull-based installation script for Raspberry Pi OS |
-| G4 | Orbit Core, hardware, OS, and capability detection |
+| G4 | Oarfish Core, hardware, OS, and capability detection |
 | G5 | Embedded dashboard with real metrics |
 | G6 | GUI self-update, verification, health check, and rollback |
 | G7 | systemd, journal, processes, reboot, and shutdown |
 | G8 | Plugin runtime and permission model |
 | G9 | Tailscale plugin |
 | G10 | Docker and Podman plugin |
-| G11 | Orbit Assist, read-only MVP |
+| G11 | Oarfish Assist, read-only MVP |
 | G12 | Ubuntu Server LTS ARM64 qualification |
 | G13 | Hardening and MVP acceptance |
 | Post-MVP | Armbian, Rockchip, additional boards, and external plugins |

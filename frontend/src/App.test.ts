@@ -13,7 +13,7 @@ describe('App', () => {
     );
     render(App);
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Orbit' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Oarfish' })).toBeTruthy();
     expect(await screen.findByText(t.ok)).toBe(screen.getByRole('status'));
   });
 

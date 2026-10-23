@@ -6,7 +6,7 @@ How a version tag becomes a signed GitHub Release (Gate G2). The release path is
 
 | File | Purpose |
 |---|---|
-| `orbit_<version>_linux_arm64.tar.gz` | Bundle: `orbit_<version>_linux_arm64/orbit` (static binary, frontend embedded) and `LICENSE` |
+| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded) and `LICENSE` |
 | `manifest.json` | Machine-readable metadata (see below) |
 | `checksums.txt` | SHA-256 of the bundle, `manifest.json` and the SBOMs, in `sha256sum` format |
 | `checksums.txt.sig` | minisign (Ed25519) signature of `checksums.txt` |
@@ -25,18 +25,18 @@ brew install minisign        # macOS; Debian/Ubuntu: sudo apt install minisign
 
 # 1. Key pair. The public key is written into the repository working tree,
 #    the private key outside it. -W = no password (see ADR 0005).
-mkdir -p -m 700 ~/.config/orbit-release
-minisign -G -W -p release/orbit-release.pub -s ~/.config/orbit-release/orbit-release.key
+mkdir -p -m 700 ~/.config/oarfish-release
+minisign -G -W -p release/oarfish-release.pub -s ~/.config/oarfish-release/oarfish-release.key
 
 # 2. Store the private key as a repository secret, read from the file (not printed).
-gh secret set ORBIT_RELEASE_SIGNING_KEY --repo swingstate/orbit-linux < ~/.config/orbit-release/orbit-release.key
-gh secret list --repo swingstate/orbit-linux
+gh secret set OARFISH_RELEASE_SIGNING_KEY --repo swingstate/oarfish < ~/.config/oarfish-release/oarfish-release.key
+gh secret list --repo swingstate/oarfish
 
-# 3. Back up ~/.config/orbit-release/orbit-release.key in a password manager.
+# 3. Back up ~/.config/oarfish-release/oarfish-release.key in a password manager.
 #    Losing it means devices that embed the public key cannot accept new releases.
 ```
 
-Commit only `release/orbit-release.pub`. `*.key` is git-ignored as a safety net. Recommended, not configured by this gate: a tag protection rule for `v*` so only maintainers can create release tags.
+Commit only `release/oarfish-release.pub`. `*.key` is git-ignored as a safety net. Recommended, not configured by this gate: a tag protection rule for `v*` so only maintainers can create release tags.
 
 ## Dry run
 
@@ -63,18 +63,18 @@ A tag run can also be started manually with `dry_run` unticked, selecting the ta
 
 ## Verify a release manually
 
-Needs `minisign` and the public key `release/orbit-release.pub` from the repository at the release commit.
+Needs `minisign` and the public key `release/oarfish-release.pub` from the repository at the release commit.
 
 ```bash
 mkdir verify && cd verify
-gh release download v0.1.0-alpha.1 --repo swingstate/orbit-linux
-minisign -Vm checksums.txt -x checksums.txt.sig -p /path/to/orbit-release.pub   # 1. signature
+gh release download v0.1.0-alpha.1 --repo swingstate/oarfish
+minisign -Vm checksums.txt -x checksums.txt.sig -p /path/to/oarfish-release.pub   # 1. signature
 sha256sum -c checksums.txt                                                      # 2. hashes (macOS: shasum -a 256 -c checksums.txt)
 jq . manifest.json                                                              # 3. metadata
-tar -tzvf orbit_0.1.0-alpha.1_linux_arm64.tar.gz                                # 4. contents
+tar -tzvf oarfish_0.1.0-alpha.1_linux_arm64.tar.gz                                # 4. contents
 ```
 
-The repository script does the same plus consistency checks between manifest, checksums and tarball contents: `scripts/verify-release.sh <dir> release/orbit-release.pub`.
+The repository script does the same plus consistency checks between manifest, checksums and tarball contents: `scripts/verify-release.sh <dir> release/oarfish-release.pub`.
 
 Order matters: check the signature first, because the hashes are only as trustworthy as the signed `checksums.txt`.
 
@@ -103,7 +103,7 @@ make check-reproducible    # rebuilds the frontend and the bundle twice, empty G
 
 ## Public key in installer and updater (not implemented in this gate)
 
-`release/orbit-release.pub` is the single source of the trusted key. Gate G3 will embed its key line in `install.sh`; Gate G6 will embed the file in the Orbit binary with `go:embed`. Both must verify `checksums.txt.sig` before trusting any hash. See ADR 0005 for the open points (verification mechanics on the device, key rotation).
+`release/oarfish-release.pub` is the single source of the trusted key. Gate G3 will embed its key line in `install.sh`; Gate G6 will embed the file in the Oarfish binary with `go:embed`. Both must verify `checksums.txt.sig` before trusting any hash. See ADR 0005 for the open points (verification mechanics on the device, key rotation).
 
 ## Known limitations
 

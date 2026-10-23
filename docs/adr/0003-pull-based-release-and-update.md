@@ -9,7 +9,7 @@ Direct deployment from GitHub Actions to a private development device requires n
 
 ## Decision
 
-GitHub Actions performs CI, cross-builds, signing, and GitHub Release publication. The target device pulls releases over HTTPS. First installation uses a small installer script. Later updates are initiated through the Orbit GUI.
+GitHub Actions performs CI, cross-builds, signing, and GitHub Release publication. The target device pulls releases over HTTPS. First installation uses a small installer script. Later updates are initiated through the Oarfish GUI.
 
 There is no self-hosted runner and no direct GitHub-to-device SSH deployment.
 

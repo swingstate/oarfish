@@ -28,7 +28,7 @@ GOBIN="$TOOLS" go install "github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-go
 (
   cd "$ROOT/backend"
   GOOS=linux GOARCH=arm64 CGO_ENABLED=0 GOFLAGS=-mod=readonly \
-    "$TOOLS/cyclonedx-gomod" app -json -std -main cmd/orbit \
+    "$TOOLS/cyclonedx-gomod" app -json -std -main cmd/oarfish \
     -output "$OUT/sbom-backend.cdx.json"
 )
 (

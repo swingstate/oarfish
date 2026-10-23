@@ -14,7 +14,7 @@
 </script>
 
 <main>
-  <h1>Orbit</h1>
+  <h1>Oarfish</h1>
   <p class="tagline">{t.tagline}</p>
 
   <section aria-labelledby="status-heading">

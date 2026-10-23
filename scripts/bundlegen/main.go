@@ -1,4 +1,4 @@
-// Command bundlegen builds and checks the Orbit release bundle.
+// Command bundlegen builds and checks the Oarfish release bundle.
 //
 // It is the single place that knows the bundle layout, the manifest format and
 // the checksums format, so local builds (make release-bundle) and the release

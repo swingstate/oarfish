@@ -12,7 +12,7 @@ Development happens on macOS (or any machine with the toolchain). Nothing is bui
 | make | any recent version |
 | minisign | only for `make test-signing` and for signing keys (`brew install minisign`); CI installs a pinned release |
 
-Node.js is a build-time tool only. The Orbit binary and the target device do not need it.
+Node.js is a build-time tool only. The Oarfish binary and the target device do not need it.
 
 ## Make targets
 
@@ -22,20 +22,20 @@ Node.js is a build-time tool only. The Orbit binary and the target device do not
 | `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` to the backend. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`). |
 | `make test` | `go test ./...` (backend and `scripts/bundlegen`) and `vitest run` |
 | `make lint` | gofmt check, `go vet` (backend and `scripts/bundlegen`), `svelte-check` (TypeScript and Svelte type check) |
-| `make build` | frontend production build, then host binary `bin/orbit` with the frontend embedded |
-| `make build-arm64` | same, cross-compiled with `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` to `bin/orbit-linux-arm64` |
-| `make release-bundle` | frontend build, then `scripts/release-bundle.sh`: unsigned `dist/release/orbit_<version>_linux_arm64.tar.gz` and `manifest.json`, the same script CI and the release workflow use |
+| `make build` | frontend production build, then host binary `bin/oarfish` with the frontend embedded |
+| `make build-arm64` | same, cross-compiled with `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` to `bin/oarfish-linux-arm64` |
+| `make release-bundle` | frontend build, then `scripts/release-bundle.sh`: unsigned `dist/release/oarfish_<version>_linux_arm64.tar.gz` and `manifest.json`, the same script CI and the release workflow use |
 | `make check-reproducible` | builds the bundle twice from scratch (frontend rebuilt, empty Go cache) and compares SHA-256 |
 | `make test-signing` | sign, verify and tamper-rejection tests with throwaway keys (needs `minisign`) |
 | `make clean` | removes `bin/`, `dist/` and the generated frontend build (keeps `dist/.gitkeep`) |
 
-`make build` injects `Version` (from `git describe`) and `Commit` via `-ldflags`; `bin/orbit -version` prints them.
+`make build` injects `Version` (from `git describe`) and `Commit` via `-ldflags`; `bin/oarfish -version` prints them.
 
 ## Running without make
 
 ```bash
 cd frontend && npm ci && npm run build   # writes backend/internal/web/dist
-cd ../backend && go run ./cmd/orbit      # http://127.0.0.1:8484
+cd ../backend && go run ./cmd/oarfish      # http://127.0.0.1:8484
 ```
 
 ## Working on the backend only
@@ -109,4 +109,4 @@ Device hostnames, usernames, endpoints and credentials belong in `CLAUDE.local.m
 - The embedded UI was verified by fetching the served HTML and assets, and the frontend by unit tests in jsdom. It has not been opened in Chromium, Firefox or Safari.
 - Reproducibility is verified for the same commit, version string, Go and Node versions. Cross-toolchain-version reproducibility is not claimed.
 - Manifest `requirements` list OS, CPU architecture and libc. Kernel and memory minimums are not stated because they have not been measured.
-- No installer, no signature verification inside Orbit, no update path (Gates G3 and G6).
+- No installer, no signature verification inside Oarfish, no update path (Gates G3 and G6).

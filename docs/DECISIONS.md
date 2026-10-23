@@ -1,4 +1,4 @@
-# Orbit decisions
+# Oarfish decisions
 
 ## Confirmed
 
@@ -11,14 +11,15 @@
 | D-C05 | GitHub Actions performs CI and release builds only. |
 | D-C06 | No self-hosted runner and no direct GitHub-to-Pi deployment. |
 | D-C07 | Initial installation and updates are pull-based. |
-| D-C08 | Self-update belongs to the Orbit Core. |
+| D-C08 | Self-update belongs to the Oarfish Core. |
 | D-C09 | Tailscale is an optional First-Party plugin. |
-| D-C10 | Containers and Orbit Assist are optional First-Party plugins. |
-| D-C11 | Orbit listens by default on 127.0.0.1:8484 (loopback only). |
+| D-C10 | Containers and Oarfish Assist are optional First-Party plugins. |
+| D-C11 | Oarfish listens by default on 127.0.0.1:8484 (loopback only). |
 | D-C12 | The ARM64 smoke test required by ORB-CICD-004 is an explicit acceptance criterion of Gate G2, not of Gate G1. |
 | D-C13 | Public release channel: the repository and its GitHub Releases become public (anonymous HTTPS pull). No permanent GitHub token on the target device in the default architecture. |
 | D-C14 | License: Apache-2.0. |
 | D-C15 | The repository stays private until shortly before the MVP release. Before it becomes public, the full Git history must be reviewed for secrets and machine-specific values and the license must be in place. |
+| D-C16 | Product, repository and binary are renamed from Orbit to Oarfish before the first release tag. Requirement IDs ORB-* remain unchanged for traceability. |
 
 ## Deferred, not blocking Gate G1
 

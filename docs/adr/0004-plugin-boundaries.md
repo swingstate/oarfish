@@ -9,7 +9,7 @@ Container engines, remote connectivity, and LLM integration are valuable but opt
 
 ## Decision
 
-Tailscale, Containers, and Orbit Assist are optional First-Party plugins. The core remains operational without them. Installation, authentication, audit, hardware and OS detection, and self-update remain core capabilities.
+Tailscale, Containers, and Oarfish Assist are optional First-Party plugins. The core remains operational without them. Installation, authentication, audit, hardware and OS detection, and self-update remain core capabilities.
 
 ## Consequences
 

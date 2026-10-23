@@ -1,4 +1,4 @@
-# Orbit project instructions
+# Oarfish project instructions
 
 ## Authoritative specification
 
@@ -10,13 +10,13 @@ Read the relevant sections before implementing any gate. If code, a prompt, an A
 
 ## Product boundaries
 
-- Orbit is a GUI-first management platform for ARM SBCs and embedded Linux.
+- Oarfish is a GUI-first management platform for ARM SBCs and embedded Linux.
 - Raspberry Pi Zero 2 W with Raspberry Pi OS Lite 64-bit is the initial verified target.
 - Ubuntu Server LTS ARM64 is a mandatory future target.
 - Hardware detection and operating-system detection are independent concerns.
 - Normal supported workflows must be fully GUI-driven.
-- Orbit must run without Docker, Podman, Tailscale, or an AI provider.
-- Tailscale, Containers, and Orbit Assist are optional plugins.
+- Oarfish must run without Docker, Podman, Tailscale, or an AI provider.
+- Tailscale, Containers, and Oarfish Assist are optional plugins.
 - Self-update is a core capability, not a plugin.
 - No generic privileged shell executor is permitted.
 - No Node.js, Python, database, Git, or build-tool runtime is permitted on the target.

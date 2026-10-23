@@ -1,11 +1,11 @@
-# Orbit Pflichtenheft
+# Oarfish Pflichtenheft
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
 - Dokumentversion: 0.3
 - Status: Baseline-Kandidat für Gate G0
 - Stand: 22. Oktober 2026
-- Zielrelease: Orbit MVP 0.1
+- Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
 - Verbindliches Folgeziel: Ubuntu Server LTS ARM64 auf Raspberry-Pi- und generischer ARM64-Hardware
@@ -18,15 +18,15 @@
 
 ### 0.1 Management Summary
 
-Orbit ist eine leichte, vollständig GUI-gesteuerte Management-Plattform für ARM-basierte Single-Board-Computer und kleine Edge-Systeme. Der Produktfokus liegt auf Raspberry Pi, später weiteren ARM64-SBCs und Linux-Appliances. Orbit ist kein generischer Enterprise-Server-Manager und keine eigene Linux-Distribution.
+Oarfish ist eine leichte, vollständig GUI-gesteuerte Management-Plattform für ARM-basierte Single-Board-Computer und kleine Edge-Systeme. Der Produktfokus liegt auf Raspberry Pi, später weiteren ARM64-SBCs und Linux-Appliances. Oarfish ist kein generischer Enterprise-Server-Manager und keine eigene Linux-Distribution.
 
 Die erste Entwicklungs-, Laufzeit- und Abnahmeplattform ist ein Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit. Ubuntu Server LTS ARM64 ist ein verbindliches Folgeziel. Hardwareerkennung und Betriebssystemerkennung werden deshalb von Beginn an getrennt. Funktionen werden anhand real erkannter Capabilities aktiviert, nicht anhand starrer Annahmen über Distribution, Benutzername oder Dateipfade.
 
 Die Differenzierung entsteht aus fünf Elementen:
 
-1. **Gerätebewusstsein:** Orbit erkennt Board, SoC-Familie, Betriebssystem, Sensoren, Bootmedium und verfügbare Hardwarefähigkeiten.
+1. **Gerätebewusstsein:** Oarfish erkennt Board, SoC-Familie, Betriebssystem, Sensoren, Bootmedium und verfügbare Hardwarefähigkeiten.
 2. **GUI-Vollständigkeit:** Jede als unterstützt ausgewiesene Aufgabe ist ohne Terminal, YAML oder manuelle Dateibearbeitung durchführbar.
-3. **Plugin-first Produktmodell:** Der Core bleibt klein. Tailscale, Container Management und Orbit Assist sind optionale First-Party-Plugins.
+3. **Plugin-first Produktmodell:** Der Core bleibt klein. Tailscale, Container Management und Oarfish Assist sind optionale First-Party-Plugins.
 4. **Embedded-Tauglichkeit:** Ressourcenverbrauch, microSD-Schreiblast, thermisches Verhalten und Recovery sind verbindliche Anforderungen.
 5. **Pull-basierte Distribution:** GitHub Actions baut und testet. GitHub Releases verteilt. Der SBC installiert und aktualisiert selbstständig über verifizierte Release-Artefakte.
 
@@ -36,17 +36,17 @@ Der Raspberry Pi Zero 2 W ist die bewusst knappe Ressourcenbaseline. Builds find
 
 | ID | Entscheidung | Status |
 |---|---|---|
-| B-01 | Orbit fokussiert ARM-SBCs, Edge-Geräte und Embedded Linux. | bestätigt |
+| B-01 | Oarfish fokussiert ARM-SBCs, Edge-Geräte und Embedded Linux. | bestätigt |
 | B-02 | Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit ist die einzige physische MVP-Referenzplattform. | bestätigt |
 | B-03 | Ubuntu Server LTS ARM64 ist ein verbindliches Folgeziel und wird architektonisch von Beginn an berücksichtigt. | bestätigt |
 | B-04 | Hardwareprofil und Betriebssystemadapter sind voneinander getrennt. | bestätigt |
 | B-05 | Armbian und Rockchip sind wichtige Post-MVP-Ziele, aber keine Voraussetzung für die MVP-Abnahme. | bestätigt |
 | B-06 | Tailscale ist ein optionales First-Party-Plugin und keine Core-, Installations- oder Update-Abhängigkeit. | bestätigt |
 | B-07 | Container Management ist ein optionales First-Party-Plugin mit Docker- und Podman-Adaptern. | bestätigt |
-| B-08 | Orbit Assist ist ein optionales Plugin für Cloud- oder lokale LLM-Endpunkte. | bestätigt |
+| B-08 | Oarfish Assist ist ein optionales Plugin für Cloud- oder lokale LLM-Endpunkte. | bestätigt |
 | B-09 | Entwicklung erfolgt mit Claude Code auf dem MacBook in kleinen Gates. | bestätigt |
 | B-10 | GitHub Actions führt CI, Cross-Builds und Release-Erstellung aus, aber kein Deployment auf den Pi. | bestätigt |
-| B-11 | Erstinstallation erfolgt über ein Installationsskript, spätere Updates über die Orbit-GUI. | bestätigt |
+| B-11 | Erstinstallation erfolgt über ein Installationsskript, spätere Updates über die Oarfish-GUI. | bestätigt |
 | B-12 | Self-Update, Signaturprüfung, atomare Aktivierung und Rollback gehören zum Core. | bestätigt |
 
 ### 0.3 Freigabereihenfolge
@@ -87,7 +87,7 @@ Der Raspberry Pi Zero 2 W ist die bewusst knappe Ressourcenbaseline. Builds find
 
 ### 1.1 Produktvision
 
-Orbit macht ARM-SBCs und kleine Edge-Systeme so einfach administrierbar wie ein modernes Consumer-Gerät, ohne technische Kontrolle oder Transparenz zu verlieren. Der Benutzer soll ein Gerät einschalten, Orbit im Browser öffnen und Zustand, Konnektivität, Anwendungen und Wartungsbedarf verstehen können.
+Oarfish macht ARM-SBCs und kleine Edge-Systeme so einfach administrierbar wie ein modernes Consumer-Gerät, ohne technische Kontrolle oder Transparenz zu verlieren. Der Benutzer soll ein Gerät einschalten, Oarfish im Browser öffnen und Zustand, Konnektivität, Anwendungen und Wartungsbedarf verstehen können.
 
 Das Produktversprechen lautet:
 
@@ -95,7 +95,7 @@ Das Produktversprechen lautet:
 
 ### 1.2 Produktkategorie
 
-Orbit ist eine **lokale Management- und Erweiterungsplattform für SBCs und Embedded Linux**. Orbit läuft auf einem bereits installierten Linux-System und ergänzt es um:
+Oarfish ist eine **lokale Management- und Erweiterungsplattform für SBCs und Embedded Linux**. Oarfish läuft auf einem bereits installierten Linux-System und ergänzt es um:
 
 - verständliche Hardware- und Systemdiagnose,
 - sichere, geführte GUI-Workflows,
@@ -103,13 +103,13 @@ Orbit ist eine **lokale Management- und Erweiterungsplattform für SBCs und Embe
 - kontrollierte AI-Unterstützung,
 - einen reproduzierbaren Installations- und Updatepfad.
 
-Orbit ist keine Linux-Distribution, kein Image-Builder, kein Kernel-Buildsystem und keine Fleet-Management-Plattform im MVP.
+Oarfish ist keine Linux-Distribution, kein Image-Builder, kein Kernel-Buildsystem und keine Fleet-Management-Plattform im MVP.
 
 ### 1.3 Abgrenzung zu Armbian
 
-Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert Betriebssystem-Images, Board-Support, Kernel, Bootloader und Boardkonfiguration. Orbit setzt darüber als browserbasierte Laufzeitverwaltung an.
+Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert Betriebssystem-Images, Board-Support, Kernel, Bootloader und Boardkonfiguration. Oarfish setzt darüber als browserbasierte Laufzeitverwaltung an.
 
-| Aspekt | Armbian | Orbit |
+| Aspekt | Armbian | Oarfish |
 |---|---|---|
 | Primäre Aufgabe | OS-Images, Kernel, Bootloader und Board-Support | Laufzeitverwaltung, GUI-Workflows, Plugins und Diagnose |
 | Zeitpunkt | Build, Installation und Systemkonfiguration | Betrieb eines bereits laufenden Geräts |
@@ -119,7 +119,7 @@ Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert
 
 ### 1.4 Strategische Differenzierung
 
-- **Board-aware statt nur Linux-aware:** Orbit kennt Modell, SoC-Familie, Supportstatus und Hardwarefähigkeiten.
+- **Board-aware statt nur Linux-aware:** Oarfish kennt Modell, SoC-Familie, Supportstatus und Hardwarefähigkeiten.
 - **OS-offen innerhalb der Zielbasis:** Raspberry Pi OS zuerst, Ubuntu Server LTS ARM64 als verbindliches Folgeziel.
 - **Embedded Health:** Temperatur, Frequenz, Throttling, Unterspannung, Bootmedium und Schreiblast sind zentrale Produktobjekte.
 - **Plugin-first:** Tailscale, Container und AI sind optionale, klar abgegrenzte Module.
@@ -138,7 +138,7 @@ Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert
 | Performance | Core Idle-RSS Ziel kleiner oder gleich 35 MB, tolerierter Sollwert kleiner oder gleich 45 MB. |
 | Installation | Frische Raspberry-Pi-OS-Installation lässt sich über ein geprüftes Installationsskript einrichten. |
 | Self-Update | Neue signierte Releases lassen sich über die GUI installieren und bei Fehler automatisch zurückrollen. |
-| Erweiterbarkeit | Tailscale, Containers und Orbit Assist sind vom Core sauber abgegrenzt. |
+| Erweiterbarkeit | Tailscale, Containers und Oarfish Assist sind vom Core sauber abgegrenzt. |
 | Sicherheit | Kein generischer Root-Executor, kein Shell-Tool für das LLM, keine Secrets in UI oder Logs. |
 | Nutzbarkeit | Zustand und nächste Handlung sind auf der Home-Seite innerhalb von 30 Sekunden erfassbar. |
 
@@ -153,9 +153,9 @@ Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert
 | Entwickler | Code mit Claude Code entwickeln und über GitHub versionieren. | Repository-Zugriff, kein automatischer Zugriff auf Zielgeräte. |
 | GitHub Actions | Tests, Build, Paketierung und Release-Erstellung ausführen. | Nur Repository- und Release-Berechtigungen, kein Pi-Zugriff. |
 | Installer | Erstinstallation eines verifizierten Release-Bundles. | Einmalig mit explizitem Root-Aufruf auf dem Zielgerät. |
-| Update Helper | Geprüfte Orbit-Releases atomar aktivieren oder zurückrollen. | Eng begrenzte Root-Rechte für Orbit-Releasepfade und Dienstneustart. |
+| Update Helper | Geprüfte Oarfish-Releases atomar aktivieren oder zurückrollen. | Eng begrenzte Root-Rechte für Oarfish-Releasepfade und Dienstneustart. |
 | Plugin | Optionale Funktion bereitstellen. | Nur deklarierte und genehmigte Capabilities. |
-| Orbit Assist | Diagnosen und Vorschläge liefern. | Nur explizit erlaubte, typisierte Read-Tools im MVP. |
+| Oarfish Assist | Diagnosen und Vorschläge liefern. | Nur explizit erlaubte, typisierte Read-Tools im MVP. |
 
 ### 2.2 Zielnutzer
 
@@ -171,7 +171,7 @@ Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert
 |---|---|
 | Home-Lab-Appliance | Raspberry Pi mit DNS, Reverse Proxy, Home Automation oder Monitoring. |
 | Edge Gateway | Kleines ARM-Gerät mit VPN, Netzwerkdiensten und Container-Workloads. |
-| Embedded Appliance | Hersteller liefert ein vorkonfiguriertes Gerät mit Orbit als lokale Managementoberfläche. |
+| Embedded Appliance | Hersteller liefert ein vorkonfiguriertes Gerät mit Oarfish als lokale Managementoberfläche. |
 | Entwicklungsboard | Entwickler testet Services auf einem Pi und später weiteren ARM-SBCs. |
 | Remote Device | Gerät wird über ein optionales Konnektivitäts-Plugin erreichbar gemacht. |
 
@@ -184,7 +184,7 @@ Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert
 | GitHub-hosted Runner | Tests, Frontend-Build, Go-Cross-Build, Checksums und Releases. |
 | GitHub Releases | Versionierte, unveränderliche Distributionsartefakte. |
 | Raspberry Pi Zero 2 W | Primäre reale Laufzeit-, Integrations- und Abnahmeplattform. |
-| Browser | Vollständige Bedienoberfläche von Orbit. |
+| Browser | Vollständige Bedienoberfläche von Oarfish. |
 | Externer LLM-Endpoint | Optionales Frontier-Modell oder lokales Modell auf einem anderen Rechner. |
 
 Es gibt keinen Self-hosted GitHub Runner auf MacBook oder Pi. GitHub Actions verbindet sich nicht per SSH oder Tailscale zum Zielgerät. Der Installations- und Updateprozess wird vom SBC als HTTPS-Pull gestartet.
@@ -213,7 +213,7 @@ Es gibt keinen Self-hosted GitHub Runner auf MacBook oder Pi. GitHub Actions ver
 
 ### 3.3 Betriebssystembaseline
 
-Orbit MUSS Raspberry Pi OS Lite 64-bit und später Ubuntu Server LTS ARM64 unterstützen. Die Implementierung und physische MVP-Abnahme beginnen auf Raspberry Pi OS Lite 64-bit mit einem Raspberry Pi Zero 2 W.
+Oarfish MUSS Raspberry Pi OS Lite 64-bit und später Ubuntu Server LTS ARM64 unterstützen. Die Implementierung und physische MVP-Abnahme beginnen auf Raspberry Pi OS Lite 64-bit mit einem Raspberry Pi Zero 2 W.
 
 Ubuntu Server LTS ARM64 ist ein verbindliches Folgeziel. Architektur, Plattformdetektion, Dateipfade, Benutzerannahmen und Systemadapter müssen von Beginn an so gestaltet werden, dass Ubuntu-Unterstützung keine grundlegende Neustrukturierung erfordert.
 
@@ -229,7 +229,7 @@ Ubuntu Server LTS ARM64 ist ein verbindliches Folgeziel. Architektur, Plattformd
 
 ### 3.4 Trennung von Hardware und Betriebssystem
 
-Orbit modelliert Hardware und Betriebssystem unabhängig:
+Oarfish modelliert Hardware und Betriebssystem unabhängig:
 
 ```text
 Hardware Profile
@@ -257,7 +257,7 @@ Primäre Quellen:
 - procfs, sysfs und hwmon für Metriken,
 - installierte Binaries und Sockets für optionale Fähigkeiten.
 
-Orbit darf keine festen Annahmen über folgende Werte treffen:
+Oarfish darf keine festen Annahmen über folgende Werte treffen:
 
 - Benutzername `pi`,
 - Home-Verzeichnis `/home/pi`,
@@ -267,7 +267,7 @@ Orbit darf keine festen Annahmen über folgende Werte treffen:
 
 Raspberry-Pi-spezifische Werkzeuge sind optionale Enhancement Provider. Standard-Linux-Schnittstellen haben Vorrang.
 
-### 3.6 Orbit Supportstufen
+### 3.6 Oarfish Supportstufen
 
 | Stufe | Bedeutung | Abnahmeanforderung |
 |---|---|---|
@@ -280,7 +280,7 @@ Raspberry-Pi-spezifische Werkzeuge sind optionale Enhancement Provider. Standard
 
 ### 3.7 Board- und SoC-Profilmodell
 
-Orbit verwendet ein zweistufiges Profilmodell für Laufzeitfähigkeiten:
+Oarfish verwendet ein zweistufiges Profilmodell für Laufzeitfähigkeiten:
 
 **SoC Family Profile** enthält gemeinsame Sensor-, Frequenz- und Thermal-Eigenschaften.
 
@@ -310,7 +310,7 @@ Profile dürfen keine beliebigen Shellkommandos enthalten. Sie referenzieren aus
 - systemd-Dienste, Journal, Prozesse, Netzwerk- und Storage-Übersicht.
 - Sicheres Reboot und Shutdown mit Bestätigung.
 - Plugin Manager mit versionierten Manifesten und Capability-Freigabe.
-- First-Party-Plugins für Tailscale, Containers und Orbit Assist.
+- First-Party-Plugins für Tailscale, Containers und Oarfish Assist.
 - GitHub-Actions-CI und Linux-ARM64-Release-Builds.
 - Erstinstallation über `install.sh` aus einem GitHub Release.
 - GUI-basierter Self-Update-Prozess mit Signaturprüfung, Healthcheck und Rollback.
@@ -319,10 +319,10 @@ Profile dürfen keine beliebigen Shellkommandos enthalten. Sie referenzieren aus
 
 | Bestandteil | Zweck | Deaktivierbar |
 |---|---|---|
-| Orbit Core | Dashboard, System, Auth, Audit, Installer-Metadaten und Self-Update. | nein |
+| Oarfish Core | Dashboard, System, Auth, Audit, Installer-Metadaten und Self-Update. | nein |
 | Tailscale Plugin | Remote-Konnektivität und Tailnet-Status. | ja |
 | Containers Plugin | Docker- und Podman-Verwaltung. | ja |
-| Orbit Assist Plugin | LLM-gestützte Diagnose und Erklärungen. | ja |
+| Oarfish Assist Plugin | LLM-gestützte Diagnose und Erklärungen. | ja |
 
 Der Core muss ohne alle Plugins vollständig starten. Tailscale ist weder für Installation, Updates noch Recovery erforderlich.
 
@@ -359,32 +359,32 @@ Der Core muss ohne alle Plugins vollständig starten. Tailscale ist weder für I
 
 | ID | Anwendungsfall | Kurzablauf | Ergebnis |
 |---|---|---|---|
-| UC-01 | Ersteinrichtung | Admin installiert Orbit, öffnet die GUI, erstellt ein Konto und prüft die erkannte Plattform. | Geschütztes, einsatzbereites Gerät. |
+| UC-01 | Ersteinrichtung | Admin installiert Oarfish, öffnet die GUI, erstellt ein Konto und prüft die erkannte Plattform. | Geschütztes, einsatzbereites Gerät. |
 | UC-02 | Gerät verstehen | Home zeigt Boardmodell, OS, Temperatur, Last, Speicher und Warnungen. | Zustand ist ohne Shell verständlich. |
-| UC-03 | Thermisches Problem analysieren | Orbit erkennt hohe Temperatur oder Throttling und zeigt Ursache und Maßnahmen. | Nutzer kann Kühlung oder Last gezielt prüfen. |
+| UC-03 | Thermisches Problem analysieren | Oarfish erkennt hohe Temperatur oder Throttling und zeigt Ursache und Maßnahmen. | Nutzer kann Kühlung oder Last gezielt prüfen. |
 | UC-04 | Dienst sicher neu starten | Dienst auswählen, Auswirkungen prüfen, bestätigen und verifizieren. | Aktion und Ergebnis sind auditiert. |
 | UC-05 | Tailscale einrichten | Plugin aktivieren, Berechtigungen bestätigen, anmelden und Status prüfen. | Gerät ist optional über das Tailnet erreichbar. |
 | UC-06 | Container verwalten | Plugin aktivieren, Engine erkennen, Logs ansehen und Lifecycle steuern. | Workload wird kontrolliert verwaltet. |
 | UC-07 | Anwendung bereitstellen | Vorlage wählen, Werte setzen, Plan prüfen und deployen. | Container läuft oder Fehler ist verständlich. |
 | UC-08 | AI-Diagnose | Frage stellen, erlaubte Daten sammeln und Antwort mit Quellen erhalten. | Fakten, Vermutungen und Maßnahmen sind getrennt. |
 | UC-09 | Plugin verwalten | Pluginrechte prüfen, aktivieren, aktualisieren oder deaktivieren. | Erweiterung bleibt kontrollierbar. |
-| UC-10 | Orbit installieren | Nutzer startet geprüftes `install.sh`, Architektur und OS werden erkannt, Release wird verifiziert. | Orbit läuft als systemd-Dienst. |
-| UC-11 | Orbit aktualisieren | GUI erkennt neues Release, zeigt Änderungen, installiert und prüft es. | Neue Version läuft oder Rollback ist aktiv. |
-| UC-12 | Board ohne Profil | Orbit startet im Generic Mode und bietet nur sichere Standardfunktionen. | Keine falschen Hardwareaktionen werden angeboten. |
+| UC-10 | Oarfish installieren | Nutzer startet geprüftes `install.sh`, Architektur und OS werden erkannt, Release wird verifiziert. | Oarfish läuft als systemd-Dienst. |
+| UC-11 | Oarfish aktualisieren | GUI erkennt neues Release, zeigt Änderungen, installiert und prüft es. | Neue Version läuft oder Rollback ist aktiv. |
+| UC-12 | Board ohne Profil | Oarfish startet im Generic Mode und bietet nur sichere Standardfunktionen. | Keine falschen Hardwareaktionen werden angeboten. |
 
 ### 5.2 Einheitliches Aktionsmuster
 
 1. Benutzer wählt ein Ziel oder beschreibt es in natürlicher Sprache.
-2. Orbit liest den relevanten Ist-Zustand und prüft Hardware-, OS- und Pluginfähigkeiten.
-3. Orbit zeigt verständliche Optionen und empfohlene Defaults.
-4. Orbit validiert Eingaben und erstellt eine technische Änderungsvorschau.
+2. Oarfish liest den relevanten Ist-Zustand und prüft Hardware-, OS- und Pluginfähigkeiten.
+3. Oarfish zeigt verständliche Optionen und empfohlene Defaults.
+4. Oarfish validiert Eingaben und erstellt eine technische Änderungsvorschau.
 5. Der Administrator bestätigt eine zustandsändernde Aktion.
-6. Orbit autorisiert, führt aus und verifiziert den neuen Zustand.
+6. Oarfish autorisiert, führt aus und verifiziert den neuen Zustand.
 7. Ergebnis, Recovery-Hinweis und Audit-Eintrag werden sichtbar gemacht.
 
 ### 5.3 Recovery-Prinzip
 
-Änderungen an Netzwerk, Bootpfad, Self-Update oder Storage dürfen nur angeboten werden, wenn Orbit einen nachvollziehbaren Rückfallweg besitzt. Wenn ein sicherer Rückfallweg fehlt, ist die Aktion read-only oder nicht verfügbar.
+Änderungen an Netzwerk, Bootpfad, Self-Update oder Storage dürfen nur angeboten werden, wenn Oarfish einen nachvollziehbaren Rückfallweg besitzt. Wenn ein sicherer Rückfallweg fehlt, ist die Aktion read-only oder nicht verfügbar.
 
 ## 6. Funktionale Anforderungen
 
@@ -397,12 +397,12 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-GEN-001 | Alle als unterstützt ausgewiesenen Administrationsaufgaben müssen vollständig über die Web-GUI ausführbar sein. | MUSS | Für jede Aufgabe existiert ein dokumentierter GUI-Pfad ohne Shell, YAML oder Dateiedit. |
 | ORB-GEN-002 | Die Oberfläche muss aufgabenorientierte Begriffe verwenden und Linux-Interna standardmäßig ausblenden. | MUSS | Standardansichten zeigen Ziele, Zustand und Auswirkungen. |
 | ORB-GEN-003 | Erweiterte Optionen müssen über Progressive Disclosure verfügbar sein. | MUSS | Erweiterte Felder erscheinen erst nach expliziter Auswahl. |
-| ORB-GEN-004 | Orbit muss Funktionen anhand real erkannter Capabilities aktivieren. | MUSS | Nicht verfügbare Hardware- oder Pluginfunktionen werden nicht als aktive Aktion gezeigt. |
+| ORB-GEN-004 | Oarfish muss Funktionen anhand real erkannter Capabilities aktivieren. | MUSS | Nicht verfügbare Hardware- oder Pluginfunktionen werden nicht als aktive Aktion gezeigt. |
 | ORB-GEN-005 | Das Produkt muss vollständig ohne Container- oder AI-Plugin starten. | MUSS | Core-Dashboard, Anmeldung und Plugin Manager funktionieren. |
 | ORB-GEN-006 | Die GUI muss Deutsch unterstützen; Englisch muss technisch vorbereitet sein. | SOLL | UI-Texte stammen aus Übersetzungsressourcen. |
 | ORB-ONB-001 | Der erste Start muss einen geführten Einrichtungsassistenten anbieten. | MUSS | Konto, Binding, Gerätename, erkannte Plattform und optionale Plugins werden in einem Ablauf gezeigt. |
 | ORB-ONB-002 | Beim ersten Start muss ein lokales Administratorkonto eingerichtet werden. | MUSS | Ohne Kontoanlage ist kein normaler Verwaltungszugriff möglich. |
-| ORB-ONB-003 | Orbit muss standardmäßig auf Loopback oder einem explizit ausgewählten privaten Interface lauschen. | MUSS | Keine öffentliche Bindung ohne bewusste Warnung und Freigabe. |
+| ORB-ONB-003 | Oarfish muss standardmäßig auf Loopback oder einem explizit ausgewählten privaten Interface lauschen. | MUSS | Keine öffentliche Bindung ohne bewusste Warnung und Freigabe. |
 | ORB-ONB-004 | Plugins dürfen nicht ungefragt installiert oder aktiviert werden. | MUSS | Jede Installation zeigt Paketquelle, Berechtigungen und Auswirkungen. |
 | ORB-ONB-005 | AI-Funktionen müssen standardmäßig deaktiviert sein. | MUSS | Ohne Konfiguration erfolgt kein Provider-Aufruf. |
 
@@ -410,11 +410,11 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 
 | ID | Anforderung | Prio | Abnahmekriterium |
 |---|---|---|---|
-| ORB-HW-001 | Orbit muss Boardmodell, Hersteller, SoC-Familie, Architektur, OS und Kernel erkennen. | MUSS | Erkennung ist in API und GUI nachvollziehbar. |
+| ORB-HW-001 | Oarfish muss Boardmodell, Hersteller, SoC-Familie, Architektur, OS und Kernel erkennen. | MUSS | Erkennung ist in API und GUI nachvollziehbar. |
 | ORB-HW-002 | Hardwareerkennung und Betriebssystemerkennung müssen voneinander getrennt sein. | MUSS | Raspberry-Pi-Hardware wird unter Raspberry Pi OS und Ubuntu identisch klassifiziert. |
 | ORB-HW-003 | Betriebssystemidentität muss primär aus `/etc/os-release` gelesen werden. | MUSS | ID, ID_LIKE, VERSION_ID und PRETTY_NAME werden getestet. |
 | ORB-HW-004 | Funktionen müssen anhand realer Capabilities aktiviert werden. | MUSS | Fehlende Tools oder Backends erzeugen keinen fehlerhaften Aktionspfad. |
-| ORB-HW-005 | Orbit darf Benutzername `pi`, `/home/pi` oder ein bestimmtes Netzwerkbackend nicht voraussetzen. | MUSS | Tests mit abweichendem Benutzer und Backend bestehen. |
+| ORB-HW-005 | Oarfish darf Benutzername `pi`, `/home/pi` oder ein bestimmtes Netzwerkbackend nicht voraussetzen. | MUSS | Tests mit abweichendem Benutzer und Backend bestehen. |
 | ORB-HW-006 | Standard-Linux-Schnittstellen wie procfs, sysfs, hwmon, systemd und journald haben Vorrang. | MUSS | Pi-spezifische Tools sind nur optionale Enhancements. |
 | ORB-HW-007 | Ein unbekanntes ARM64-System muss im Generic Mode starten. | MUSS | Core-Dashboard funktioniert, board-spezifische Aktionen fehlen. |
 | ORB-HW-008 | Board- und SoC-Profile müssen schema-validiert und datenbasiert sein. | MUSS | Profile enthalten keine freien Shellkommandos. |
@@ -426,12 +426,12 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ID | Anforderung | Prio | Abnahmekriterium |
 |---|---|---|---|
 | ORB-DASH-001 | Home muss Hostname, Board, SoC, OS, Uptime, CPU, RAM, Storage und Netzwerk darstellen. | MUSS | Werte stammen vom realen Gerät und werden ohne Vollreload aktualisiert. |
-| ORB-DASH-002 | Orbit muss verfügbare Temperaturquellen anzeigen und sinnvoll benennen. | MUSS | Zero 2 W zeigt mindestens die SoC-Temperatur; weitere Boards werden nur nach Verifikation als unterstützt ausgewiesen. |
-| ORB-DASH-003 | Orbit muss CPU-Frequenz und Governor anzeigen, soweit vom Kernel bereitgestellt. | SOLL | Aktuelle und maximale Frequenz sind nachvollziehbar. |
+| ORB-DASH-002 | Oarfish muss verfügbare Temperaturquellen anzeigen und sinnvoll benennen. | MUSS | Zero 2 W zeigt mindestens die SoC-Temperatur; weitere Boards werden nur nach Verifikation als unterstützt ausgewiesen. |
+| ORB-DASH-003 | Oarfish muss CPU-Frequenz und Governor anzeigen, soweit vom Kernel bereitgestellt. | SOLL | Aktuelle und maximale Frequenz sind nachvollziehbar. |
 | ORB-DASH-004 | Board-spezifische Throttling- oder Unterspannungswarnungen müssen angezeigt werden, wenn ein sicherer Adapter existiert. | SOLL | Pi-Warnstatus oder äquivalentes Board-Signal wird korrekt interpretiert. |
 | ORB-DASH-005 | Der Systemzustand muss kritische, relevante und informative Hinweise priorisieren. | MUSS | Warnungen nennen Ursache, Auswirkung und nächsten Schritt. |
 | ORB-DASH-006 | Metrikabfragen müssen adaptive Intervalle und keine hochfrequente Dauersammlung verwenden. | MUSS | Idle-CPU und Schreiblast bleiben innerhalb NFR-Budgets. |
-| ORB-DASH-007 | Orbit muss laufende Plugins und Anwendungen zusammenfassen. | SOLL | Home verlinkt direkt zu Plugin- oder Containerdetails. |
+| ORB-DASH-007 | Oarfish muss laufende Plugins und Anwendungen zusammenfassen. | SOLL | Home verlinkt direkt zu Plugin- oder Containerdetails. |
 | ORB-PWR-001 | Reboot und Shutdown müssen als bestätigungspflichtige GUI-Aktionen verfügbar sein. | MUSS | Aktion wird autorisiert und auditiert. |
 | ORB-PWR-002 | Ein Neustart muss wartende Aktionen und verbundene Benutzer sichtbar machen. | SOLL | Bestätigungsdialog nennt mögliche Auswirkungen. |
 
@@ -441,10 +441,10 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 |---|---|---|---|
 | ORB-SVC-001 | systemd-Dienste müssen filterbar gelistet werden. | MUSS | Name, Status, Startmodus und Kurzbeschreibung sind sichtbar. |
 | ORB-SVC-002 | Start, Stop und Neustart müssen mit Auswirkungsbeschreibung und Bestätigung möglich sein. | MUSS | Aktion wird autorisiert, protokolliert und verifiziert. |
-| ORB-SVC-003 | Kritische Systemdienste müssen besonders gekennzeichnet sein. | SOLL | Netzwerk, SSH, Orbit und Containerengines zeigen zusätzliche Warnung. |
+| ORB-SVC-003 | Kritische Systemdienste müssen besonders gekennzeichnet sein. | SOLL | Netzwerk, SSH, Oarfish und Containerengines zeigen zusätzliche Warnung. |
 | ORB-LOG-001 | Das Journal muss nach Zeit, Priorität, Unit und Freitext filterbar sein. | MUSS | Filter sind kombinierbar und Ergebnisse werden begrenzt nachgeladen. |
 | ORB-LOG-002 | Loganzeige muss Secrets und definierte sensible Muster maskieren. | MUSS | Testfälle decken Tokens, Keys und Passwörter ab. |
-| ORB-PRC-001 | Orbit muss Prozesse nach CPU und RAM anzeigen. | SOLL | PID, Benutzer, Prozessname, CPU und RAM werden dargestellt. |
+| ORB-PRC-001 | Oarfish muss Prozesse nach CPU und RAM anzeigen. | SOLL | PID, Benutzer, Prozessname, CPU und RAM werden dargestellt. |
 | ORB-UPD-001 | APT-Updates müssen klassifiziert angezeigt werden. | SOLL | Sicherheits- und reguläre Updates sind getrennt. |
 | ORB-UPD-002 | OS-Updates benötigen Plan, Bestätigung und Ergebnisprüfung. | KANN | Pakete, Downloadgröße und Neustartbedarf erscheinen vor Ausführung. |
 | ORB-UPD-003 | Kernel-, Bootloader- und Firmware-Updates dürfen nicht als generische Paketaktion behandelt werden. | MUSS | Board- oder OS-spezifische Risiken werden erkannt; unsichere Aktualisierung bleibt read-only. |
@@ -454,10 +454,10 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ID | Anforderung | Prio | Abnahmekriterium |
 |---|---|---|---|
 | ORB-STO-001 | Dateisysteme, Mounts, Kapazität und Belegung müssen dargestellt werden. | MUSS | Gerät, Mountpoint, Typ, Gesamtgröße und Nutzung sind sichtbar. |
-| ORB-STO-002 | Orbit muss das wahrscheinlich aktive Boot- und Rootmedium identifizieren. | MUSS | microSD, eMMC, USB, SATA oder NVMe werden soweit erkennbar korrekt zugeordnet. |
+| ORB-STO-002 | Oarfish muss das wahrscheinlich aktive Boot- und Rootmedium identifizieren. | MUSS | microSD, eMMC, USB, SATA oder NVMe werden soweit erkennbar korrekt zugeordnet. |
 | ORB-STO-003 | Removable Media und nicht persistente Mounts müssen markiert werden. | SOLL | Nutzer erkennt, welche Datenträger entfernt werden könnten. |
 | ORB-STO-004 | Die GUI muss Hinweise auf geringe freie Kapazität und ungewöhnliche Schreiblast geben können. | SOLL | Schwellwerte sind dokumentiert und führen zu verständlicher Warnung. |
-| ORB-STO-005 | Orbit darf ohne explizite Freigabe keine Partitionierung oder Dateisystemerstellung durchführen. | MUSS | MVP bietet diese Funktionen nicht oder nur read-only. |
+| ORB-STO-005 | Oarfish darf ohne explizite Freigabe keine Partitionierung oder Dateisystemerstellung durchführen. | MUSS | MVP bietet diese Funktionen nicht oder nur read-only. |
 | ORB-STO-006 | Storage-Health wird nur angezeigt, wenn der zugrunde liegende Bus und das Tool verlässliche Daten liefern. | MUSS | Keine erfundenen SMART-Werte für microSD oder nicht unterstützte Medien. |
 | ORB-STO-007 | Eigene Logs und Konfigurationen müssen schreibarm und rotiert sein. | MUSS | Keine unbeschränkte lokale Historie oder Metrikdatenbank. |
 
@@ -468,7 +468,7 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-NET-001 | Interfaces, Adressen, Linkstatus, Standardroute und DNS müssen sichtbar sein. | MUSS | Aktueller Zustand wird ohne Konfigurationsänderung angezeigt. |
 | ORB-NET-002 | WLAN-Status und Signalstärke sollen angezeigt werden, soweit verfügbar. | SOLL | Zero 2 W zeigt SSID, Signal und Verbindungsstatus ohne Secrets. |
 | ORB-NET-003 | Änderungen an primärer Konnektivität benötigen einen Rückfallmechanismus. | MUSS | Ohne sicheren Rollback werden Änderungen im MVP nicht angeboten. |
-| ORB-NET-004 | Remote-Zugriff ist kein Core-Zwang. | MUSS | Orbit funktioniert lokal ohne Tailscale, VPN oder Cloudservice. |
+| ORB-NET-004 | Remote-Zugriff ist kein Core-Zwang. | MUSS | Oarfish funktioniert lokal ohne Tailscale, VPN oder Cloudservice. |
 | ORB-NET-005 | Plugins dürfen Netzwerkfunktionen nur mit expliziter Capability-Freigabe verändern. | MUSS | Berechtigungsdialog nennt Dienste, Routen und Firewallauswirkungen. |
 
 ### 6.7 Plugin-Plattform
@@ -498,8 +498,8 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-TS-006 | Aktivieren, Deaktivieren und Abmelden müssen GUI-gesteuert sein. | MUSS | Ergebnis wird verifiziert und auditiert. |
 | ORB-TS-007 | Subnet-Router, Exit Node und Tailscale SSH sind nicht automatisch aktiviert. | MUSS | Erweiterte Funktionen benötigen separate Freigabe und sind im MVP KANN. |
 | ORB-TS-008 | Deinstallation muss klar zwischen Plugin und Tailscale-Systempaket unterscheiden. | MUSS | Nutzer kann Plugin entfernen, ohne Tailscale ungefragt zu deinstallieren. |
-| ORB-TS-009 | Tailscale darf nicht die einzige Orbit-Authentifizierung ersetzen. | MUSS | Lokales Orbit-Konto bleibt erforderlich. |
-| ORB-TS-010 | Installation, Self-Update und Recovery dürfen nicht vom installierten Orbit-Tailscale-Plugin abhängen. | MUSS | Bootstrap, Update und Pluginreparatur bleiben ohne Plugin möglich. |
+| ORB-TS-009 | Tailscale darf nicht die einzige Oarfish-Authentifizierung ersetzen. | MUSS | Lokales Oarfish-Konto bleibt erforderlich. |
+| ORB-TS-010 | Installation, Self-Update und Recovery dürfen nicht vom installierten Oarfish-Tailscale-Plugin abhängen. | MUSS | Bootstrap, Update und Pluginreparatur bleiben ohne Plugin möglich. |
 
 ### 6.9 First-Party-Plugin Containers
 
@@ -510,22 +510,22 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-CNT-003 | Containerdetails müssen Image, Ports, Volumes, Netzwerke, Health, Ressourcen und Restart-Informationen anzeigen. | MUSS | Verfügbare Engine-Daten sind strukturiert sichtbar. |
 | ORB-CNT-004 | Logs und Live-Ressourcenwerte müssen in der GUI verfügbar sein. | MUSS | Begrenzte Logs und ressourcenschonende Live-Daten funktionieren. |
 | ORB-CNT-005 | Start, Stop und Neustart müssen bestätigt, autorisiert, protokolliert und verifiziert werden. | MUSS | Status wird nach Aktion erneut gelesen. |
-| ORB-CNT-006 | Orbit darf Socket-Berechtigungen nicht automatisch lockern. | MUSS | Kein automatisches chmod oder pauschales Gruppenmitglied. |
+| ORB-CNT-006 | Oarfish darf Socket-Berechtigungen nicht automatisch lockern. | MUSS | Kein automatisches chmod oder pauschales Gruppenmitglied. |
 | ORB-CNT-007 | Ein GUI-Assistent muss mindestens eine getestete Anwendungsvorlage bereitstellen. | MUSS | Vorlage kann ohne manuelle Konfigurationsdatei deployed werden. |
 | ORB-CNT-008 | Der Assistent muss Ressourcenlimits für kleine SBCs berücksichtigen. | MUSS | Warnung bei offensichtlich ungeeigneter RAM- oder Architekturanforderung. |
 | ORB-CNT-009 | Image-Architektur muss vor Deployment gegen Hostarchitektur geprüft werden. | MUSS | Nicht passendes Image wird blockiert oder klar als emuliert markiert. |
 | ORB-CNT-010 | Docker Compose und Podman Quadlet bleiben getrennte zukünftige Backends. | SOLL | Keine erzwungene 1:1-Konvertierung. |
 | ORB-CNT-011 | Das Plugin darf keine Engine ungefragt installieren. | MUSS | Installation ist eigener, explizit bestätigter Workflow. |
 
-### 6.10 First-Party-Plugin Orbit Assist
+### 6.10 First-Party-Plugin Oarfish Assist
 
 | ID | Anforderung | Prio | Abnahmekriterium |
 |---|---|---|---|
-| ORB-AI-001 | Orbit Assist muss vollständig deaktivierbar sein. | MUSS | Deaktivierung beendet Provider-Aufrufe und Hintergrundkommunikation. |
+| ORB-AI-001 | Oarfish Assist muss vollständig deaktivierbar sein. | MUSS | Deaktivierung beendet Provider-Aufrufe und Hintergrundkommunikation. |
 | ORB-AI-002 | Providerabstraktion muss Cloud-Modelle und lokale OpenAI-kompatible Endpunkte unterstützen. | MUSS | Mindestens ein Remote- und ein lokaler Endpoint sind konfigurierbar. |
 | ORB-AI-003 | Provider, Endpoint, Modell und Zugangsdaten müssen über die GUI konfigurierbar sein. | MUSS | Verbindungstest benötigt keine manuelle Dateiänderung. |
 | ORB-AI-004 | Zugangsdaten müssen serverseitig geschützt und in UI sowie Logs maskiert werden. | MUSS | Schlüssel sind nach Speicherung nicht im Klartext abrufbar. |
-| ORB-AI-005 | Das Modell darf nur typisierte Orbit-Tools aufrufen. | MUSS | Es existiert kein generisches Shell- oder Root-Tool. |
+| ORB-AI-005 | Das Modell darf nur typisierte Oarfish-Tools aufrufen. | MUSS | Es existiert kein generisches Shell- oder Root-Tool. |
 | ORB-AI-006 | Lesezugriff, Diagnose, Vorschlag, Freigabe, Ausführung und Verifikation müssen getrennt sein. | MUSS | Write-Tools sind ohne Freigabe technisch gesperrt. |
 | ORB-AI-007 | Hostdaten dürfen nur nach transparenter Zustimmung an externe Provider gesendet werden. | MUSS | GUI zeigt Datenkategorien und Zielprovider. |
 | ORB-AI-008 | Secrets müssen vor Modellaufrufen entfernt werden. | MUSS | Automatisierte Redaction-Tests bestehen. |
@@ -550,7 +550,7 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-SEC-007 | Audit und Logs dürfen keine Secrets enthalten. | MUSS | Redaction-Tests bestehen. |
 | ORB-SEC-008 | Drittanbieter-GitHub-Actions müssen auf unveränderliche Commit-SHAs gepinnt werden. | MUSS | Workflow-Review findet keine unversionierten produktiven Actions. |
 | ORB-SEC-009 | Abhängigkeiten und Artefakte müssen automatisiert geprüft werden. | SOLL | Go-, npm-, SBOM- und Vulnerability-Checks laufen in CI. |
-| ORB-SEC-010 | Orbit darf nicht automatisch einen öffentlichen Managementport öffnen. | MUSS | Öffentliche Bindung erfordert explizite Konfiguration und Warnung. |
+| ORB-SEC-010 | Oarfish darf nicht automatisch einen öffentlichen Managementport öffnen. | MUSS | Öffentliche Bindung erfordert explizite Konfiguration und Warnung. |
 
 ### 6.12 GitHub Actions, Releases, Installation und Self-Update
 
@@ -568,13 +568,13 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-INS-002 | Installer muss OS, Architektur, systemd, freien Speicher und benötigte Basistools prüfen. | MUSS | Ungeeignete Systeme werden ohne Teilerfolg abgelehnt. |
 | ORB-INS-003 | Installer muss einen dedizierten Systembenutzer, Verzeichnisse und systemd-Unit anlegen. | MUSS | Dienst läuft unprivilegiert und startet nach Reboot. |
 | ORB-INS-004 | Installer muss Release und Signatur vor Aktivierung prüfen. | MUSS | Manipuliertes Paket wird nicht installiert. |
-| ORB-UPD-001 | Orbit muss neue Releases über GitHub Releases erkennen können. | MUSS | GUI zeigt installierte und verfügbare Version. |
+| ORB-UPD-001 | Oarfish muss neue Releases über GitHub Releases erkennen können. | MUSS | GUI zeigt installierte und verfügbare Version. |
 | ORB-UPD-002 | Update muss durch den Administrator in der GUI bestätigt werden. | MUSS | Kein automatisches Upgrade ohne Policy und Freigabe im MVP. |
 | ORB-UPD-003 | Update muss in ein Staging- und danach versioniertes Release-Verzeichnis installieren. | MUSS | Aktive Version bleibt bis zur finalen Aktivierung unverändert. |
 | ORB-UPD-004 | Aktivierung muss atomar über den `current`-Symlink erfolgen. | MUSS | Kein halb aktualisierter Zustand. |
 | ORB-UPD-005 | Nach Aktivierung müssen Dienst und Health-Endpunkte geprüft werden. | MUSS | Update gilt nur bei erfolgreichem Healthcheck als erfolgreich. |
 | ORB-UPD-006 | Bei Fehler muss automatisch zur vorherigen gesunden Version zurückgerollt werden. | MUSS | Rollback-Test besteht. |
-| ORB-UPD-007 | Der privilegierte Update Helper darf nur Orbit-Releases verwalten. | MUSS | Kein generischer Shell- oder Paketmanagerzugriff. |
+| ORB-UPD-007 | Der privilegierte Update Helper darf nur Oarfish-Releases verwalten. | MUSS | Kein generischer Shell- oder Paketmanagerzugriff. |
 | ORB-UPD-008 | Tailscale darf für Installation, Release-Erkennung oder Update nicht erforderlich sein. | MUSS | Vollständiger Test ohne Tailscale besteht. |
 
 ## 7. UX- und Interaktionsanforderungen
@@ -584,7 +584,7 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 - **Gerät zuerst:** Board, Zustand und Fähigkeiten stehen vor abstrakten Linux-Komponenten.
 - **Aufgabe vor Technik:** „Remote-Zugriff einrichten“ statt „tailscaled konfigurieren“.
 - **Progressive Disclosure:** Standardpfade zeigen wenige sichere Entscheidungen.
-- **Sichere Defaults:** Orbit wählt konservative Werte und erklärt Abweichungen.
+- **Sichere Defaults:** Oarfish wählt konservative Werte und erklärt Abweichungen.
 - **Klarer Supportstatus:** Verified, Compatible, Community, Experimental oder Generic ist sichtbar.
 - **Keine Fake-Funktion:** Nicht implementierte oder nicht getestete Funktionen werden nicht als aktiv dargestellt.
 - **Direktes Feedback:** Lade-, Erfolgs-, Fehler- und Recovery-Zustände sind sichtbar.
@@ -600,7 +600,7 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | Anwendungen | Beiträge des Containerplugins, Templates, Logs und Lifecycle. |
 | Konnektivität | Beiträge von Tailscale und später WireGuard oder Access Point. |
 | Erweiterungen | Plugins, Berechtigungen, Versionen, Updates und Kompatibilität. |
-| Orbit Assist | Kontextuelle Diagnose und Erklärungen. |
+| Oarfish Assist | Kontextuelle Diagnose und Erklärungen. |
 | Einstellungen | Konto, Binding, Sprache, Updatekanal und wenige produktrelevante Optionen. |
 
 ### 7.3 Plugin-UX
@@ -611,7 +611,7 @@ Der Installationsdialog zeigt mindestens:
 
 1. Zweck und Hersteller.
 2. Unterstützte Boards, OS und Architekturen.
-3. Benötigte Orbit-Capabilities.
+3. Benötigte Oarfish-Capabilities.
 4. Zu installierende Systempakete oder Dienste.
 5. Netzwerk- und Sicherheitsauswirkungen.
 6. Deinstallations- und Recovery-Verhalten.
@@ -632,8 +632,8 @@ Eine Funktion gilt erst dann als fertig, wenn:
 
 | Komponente | Aufgabe |
 |---|---|
-| Orbit Web UI | Svelte 5, TypeScript, responsive GUI und Plugin-Slots. |
-| Orbit Core | Go-HTTP-Server, Auth, API, Eventstream, Capability Registry und Plugin Registry. |
+| Oarfish Web UI | Svelte 5, TypeScript, responsive GUI und Plugin-Slots. |
+| Oarfish Core | Go-HTTP-Server, Auth, API, Eventstream, Capability Registry und Plugin Registry. |
 | Hardware Detector | Board, SoC, Architektur, Device Tree und Sensoren erkennen. |
 | OS Detector und Adapter | `/etc/os-release`, Raspberry Pi OS, Ubuntu Server und generische Debian-Familie. |
 | System Adapters | systemd, journald, procfs, sysfs, APT, Netzwerk und Storage. |
@@ -642,21 +642,21 @@ Eine Funktion gilt erst dann als fertig, wenn:
 | Update Manager | Release-Erkennung, Download, Verifikation, Staging und Status. |
 | Update Helper | Root-eigene, eng begrenzte Aktivierung und Rollback. |
 | Plugin Host | Lifecycle, Manifestprüfung, UI-Beiträge und Capability-Bindung. |
-| First-Party-Plugins | Tailscale, Containers und Orbit Assist. |
+| First-Party-Plugins | Tailscale, Containers und Oarfish Assist. |
 | Audit | Strukturierte Ereignisse über journald oder append-only Datei. |
 
 ### 8.2 Runtime- und Dateilayout
 
 | Pfad | Zweck |
 |---|---|
-| `/opt/orbit/releases/<version>` | Versionierte, unveränderliche Releases. |
-| `/opt/orbit/current` | Atomarer Symlink auf aktives Release. |
-| `/etc/orbit/config.json` | Validierte Hauptkonfiguration. |
-| `/etc/orbit/secrets/` | Restriktiv geschützte Secrets. |
-| `/var/lib/orbit/` | Pluginzustand, Profile, Updatezustand und kleine persistente Daten. |
-| `/var/cache/orbit/` | Wiederherstellbare Caches und Release-Downloads. |
-| `/run/orbit/` | Sockets, Locks und ephemere Zustände. |
-| `/usr/libexec/orbit-update-helper` | Eng begrenzter privilegierter Update Helper. |
+| `/opt/oarfish/releases/<version>` | Versionierte, unveränderliche Releases. |
+| `/opt/oarfish/current` | Atomarer Symlink auf aktives Release. |
+| `/etc/oarfish/config.json` | Validierte Hauptkonfiguration. |
+| `/etc/oarfish/secrets/` | Restriktiv geschützte Secrets. |
+| `/var/lib/oarfish/` | Pluginzustand, Profile, Updatezustand und kleine persistente Daten. |
+| `/var/cache/oarfish/` | Wiederherstellbare Caches und Release-Downloads. |
+| `/run/oarfish/` | Sockets, Locks und ephemere Zustände. |
+| `/usr/libexec/oarfish-update-helper` | Eng begrenzter privilegierter Update Helper. |
 | journald | Strukturierte Laufzeit- und Auditlogs mit Rotation. |
 
 ### 8.3 Hardware- und OS-Abstraktion
@@ -714,10 +714,10 @@ Der Broker stellt keine allgemeine Shell bereit. Er implementiert eine feste All
 
 Der Update Helper ist separat und darf ausschließlich:
 
-- ein bereits heruntergeladenes, signiertes Orbit-Bundle prüfen,
-- Release-Verzeichnisse unter `/opt/orbit/releases` verwalten,
+- ein bereits heruntergeladenes, signiertes Oarfish-Bundle prüfen,
+- Release-Verzeichnisse unter `/opt/oarfish/releases` verwalten,
 - den `current`-Symlink atomar umschalten,
-- `orbit.service` neu starten,
+- `oarfish.service` neu starten,
 - einen Rollback auf eine bekannte gesunde Version ausführen.
 
 ### 8.7 API- und Ereignismodell
@@ -740,7 +740,7 @@ Das MVP verwendet keine externe Datenbank. Konfigurationen werden typisiert, val
 - `go:embed` für statische Frontendassets.
 - `CGO_ENABLED=0` für portable ARM64-Cross-Builds, solange keine zwingende Abhängigkeit dagegen spricht.
 - Keine Node.js-, Python- oder Datenbank-Runtime auf dem Zielgerät.
-- Kein mandatory Container für Orbit selbst.
+- Kein mandatory Container für Oarfish selbst.
 
 ## 9. GitHub Actions, Releases, Installation und Self-Update
 
@@ -764,7 +764,7 @@ Tests, Frontend-Build, ARM64-Build und Release
         v
 Raspberry Pi
   install.sh für Erstinstallation
-  Orbit GUI für spätere Updates
+  Oarfish GUI für spätere Updates
 ```
 
 GitHub Actions kennt keine IP-Adresse, keinen SSH-Key und keine Anmeldedaten des Pi. Es gibt keinen Self-hosted Runner auf MacBook oder SBC.
@@ -784,7 +784,7 @@ Ein Workflow für SSH-Deployment auf reale Geräte ist ausdrücklich nicht vorge
 Das erste Releaseformat ist ein signiertes tar.gz-Bundle für Linux ARM64. Ein Release enthält mindestens:
 
 ```text
-orbit_<version>_linux_arm64.tar.gz
+oarfish_<version>_linux_arm64.tar.gz
 manifest.json
 checksums.txt
 checksums.txt.sig
@@ -803,16 +803,16 @@ Das Installationsskript:
 4. lädt Bundle, Manifest, Checksums und Signatur,
 5. prüft Hash und Signatur,
 6. legt Benutzer, Verzeichnisse und systemd-Unit an,
-7. installiert nach `/opt/orbit/releases/<version>`,
-8. setzt `/opt/orbit/current` atomar,
-9. startet Orbit und prüft `/healthz`,
+7. installiert nach `/opt/oarfish/releases/<version>`,
+8. setzt `/opt/oarfish/current` atomar,
+9. startet Oarfish und prüft `/healthz`,
 10. zeigt Version und lokale URL an.
 
 Das Skript muss klein, lesbar, idempotent und ohne versteckte Telemetrie sein.
 
 ### 9.5 GUI-basierter Self-Update-Prozess
 
-Unter `System > Orbit Update` zeigt die GUI:
+Unter `System > Oarfish Update` zeigt die GUI:
 
 - installierte Version,
 - verfügbare Version,
@@ -871,7 +871,7 @@ Ein privater Releasekanal mit dauerhaftem GitHub-Token auf dem Pi ist nicht die 
 4. Logs, Containerinhalte und externe Texte sind nicht vertrauenswürdig.
 5. Boardprofil ist Datenquelle, kein ausführbarer Code.
 6. Privilegierte Änderung erfolgt ausschließlich über den Broker.
-7. Update Helper und normaler Orbit-Webprozess sind strikt voneinander getrennt.
+7. Update Helper und normaler Oarfish-Webprozess sind strikt voneinander getrennt.
 
 ### 10.2 Plugin-Berechtigungen
 
@@ -893,7 +893,7 @@ Berechtigungen müssen eng, verständlich und widerrufbar sein. Eine Capability 
 
 | Klasse | Beispiel | Standard |
 |---|---|---|
-| Öffentlich | Boardmodell, OS-Version, Orbit-Version | nach Konfiguration teilbar |
+| Öffentlich | Boardmodell, OS-Version, Oarfish-Version | nach Konfiguration teilbar |
 | Betriebsdaten | CPU, Temperatur, Dienststatus, Logauszüge | explizite Zustimmung bei Cloudprovider |
 | Sensibel | Hostnamen, IPs, Container- und Prozessnamen | standardmäßig minimieren |
 | Secret | Tokens, Passwörter, private Schlüssel, Umgebungssecrets | niemals an Modell senden |
@@ -920,23 +920,23 @@ Berechtigungen müssen eng, verständlich und widerrufbar sein. Eine Capability 
 
 | ID | Anforderung | Prio | Abnahmekriterium |
 |---|---|---|---|
-| ORB-NFR-001 | Orbit Core Idle-RSS auf Zero 2 W soll 35 MB nicht überschreiten; 45 MB ist tolerierter SOLL-Grenzwert. | SOLL | Messung nach fünf Minuten Idle dokumentiert. |
-| ORB-NFR-002 | Gesamter Orbit-Prozesssatz soll im normalen Betrieb unter 80 MB Peak-RSS bleiben. | SOLL | Dashboard-, Log- und Plugin-Test bleibt im Budget. |
+| ORB-NFR-001 | Oarfish Core Idle-RSS auf Zero 2 W soll 35 MB nicht überschreiten; 45 MB ist tolerierter SOLL-Grenzwert. | SOLL | Messung nach fünf Minuten Idle dokumentiert. |
+| ORB-NFR-002 | Gesamter Oarfish-Prozesssatz soll im normalen Betrieb unter 80 MB Peak-RSS bleiben. | SOLL | Dashboard-, Log- und Plugin-Test bleibt im Budget. |
 | ORB-NFR-003 | Idle-CPU soll unter 1 Prozent eines Kerns im Fünf-Minuten-Mittel liegen. | SOLL | Reproduzierbare Messung. |
 | ORB-NFR-004 | Kaltstart bis `readyz` soll auf Zero 2 W unter zwei Sekunden liegen. | SOLL | Hardware-Abnahmeprotokoll dokumentiert den Wert. |
 | ORB-NFR-005 | ARM64-Release inklusive Frontend soll unter 35 MB bleiben. | SOLL | CI dokumentiert Größe. |
 | ORB-NFR-006 | Komprimiertes initiales Frontendbundle soll unter 750 KB bleiben. | SOLL | Bundlebudget in CI. |
-| ORB-NFR-007 | Orbit muss bei 512 MB RAM ohne dauerhafte Swap-Aktivität nutzbar bleiben. | MUSS | Abnahmetest auf Zero 2 W. |
+| ORB-NFR-007 | Oarfish muss bei 512 MB RAM ohne dauerhafte Swap-Aktivität nutzbar bleiben. | MUSS | Abnahmetest auf Zero 2 W. |
 | ORB-NFR-008 | Zielgerät benötigt keine Node.js-, Python- oder DB-Runtime. | MUSS | Frische Installation bestätigt. |
 | ORB-NFR-009 | Schreiblast auf microSD muss minimiert werden. | MUSS | Keine hochfrequente Persistenz; Logs rotiert; Messung dokumentiert. |
 | ORB-NFR-010 | Core-Funktionen müssen nach Ersteinrichtung ohne Internet funktionieren. | MUSS | Offline-Test besteht. |
 | ORB-NFR-011 | UI-Kernpfade müssen tastaturbedienbar und auf WCAG 2.2 AA ausgelegt sein. | SOLL | Automatisierter und manueller Test. |
 | ORB-NFR-012 | UI muss auf aktuellem Chromium, Firefox und Safari funktionieren. | SOLL | Smoke-Tests bestehen. |
 | ORB-NFR-013 | Konfigurationsänderungen müssen validiert und atomar gespeichert werden. | MUSS | Unterbrechung hinterlässt keine unlesbare Konfiguration. |
-| ORB-NFR-014 | Orbit muss mit zeitweise instabiler WLAN-Verbindung umgehen. | MUSS | UI reconnectet; keine beschädigten Aktionen. |
+| ORB-NFR-014 | Oarfish muss mit zeitweise instabiler WLAN-Verbindung umgehen. | MUSS | UI reconnectet; keine beschädigten Aktionen. |
 | ORB-NFR-015 | Generic Mode muss auf unbekanntem ARM64-System sicher funktionieren. | MUSS | Keine board-spezifische Aktion, Core-Dashboard verfügbar. |
 | ORB-NFR-016 | Profile und Plugins müssen getrennt vom Core aktualisierbar sein. | SOLL | Versionierte Bundles und Kompatibilitätsprüfung. |
-| ORB-NFR-017 | Tailscale- und andere Fremddaemons zählen nicht zum Orbit-Core-RSS, müssen aber in Ressourcenansicht sichtbar sein. | MUSS | UI trennt Orbit und externe Dienste. |
+| ORB-NFR-017 | Tailscale- und andere Fremddaemons zählen nicht zum Oarfish-Core-RSS, müssen aber in Ressourcenansicht sichtbar sein. | MUSS | UI trennt Oarfish und externe Dienste. |
 
 ## 12. Test- und Abnahmekonzept
 
@@ -972,7 +972,7 @@ Berechtigungen müssen eng, verständlich und widerrufbar sein. Eine Capability 
 | AT-004 | Hardware-OS-Trennung | Pi-Hardware und OS-Adapter können unabhängig getestet werden. |
 | AT-005 | Generic Mode | Unbekanntes ARM64-System bleibt sicher nutzbar. |
 | AT-006 | Installer | Frisches Pi OS wird aus signiertem Release erfolgreich installiert. |
-| AT-007 | Reboot | Orbit startet automatisch und bleibt erreichbar. |
+| AT-007 | Reboot | Oarfish startet automatisch und bleibt erreichbar. |
 | AT-008 | Reale Metriken | CPU, RAM, Temperatur, Storage und Uptime stimmen innerhalb Toleranz. |
 | AT-009 | Serviceaktion | Bestätigung, Autorisierung, Aktion, Verifikation und Audit sind vollständig. |
 | AT-010 | Update-Erkennung | GUI zeigt ein neueres kompatibles Release an. |
@@ -1016,7 +1016,7 @@ Berechtigungen müssen eng, verständlich und widerrufbar sein. Eine Capability 
 
 Im MVP müssen folgende Daten dokumentiert sicherbar sein:
 
-- Orbit-Konfiguration,
+- Oarfish-Konfiguration,
 - Secret-Store,
 - Pluginmanifest und Pluginzustand,
 - lokale Boardprofil-Erweiterungen,
@@ -1027,14 +1027,14 @@ Ein vollständiges Gerätebackup ist nicht Teil des MVP. Ein späteres Backup-Pl
 ### 13.3 Recovery-Modi
 
 - Start ohne Plugins durch Recovery-Flag.
-- Fallback auf vorheriges Orbit-Release.
+- Fallback auf vorheriges Oarfish-Release.
 - Deaktivierung eines fehlerhaften Plugins ohne UI-Zugriff über eng dokumentierten Notfallpfad.
 - Zurücksetzen der Netzwerkbindung auf Loopback.
 - Keine automatische Änderung von Bootloader oder Partitionstabelle.
 
 ### 13.4 Updates
 
-Orbit Core, Profile und Plugins besitzen getrennte Versionen. Der Core-Updater ist kein Plugin. Er muss auch dann funktionieren, wenn alle Plugins deaktiviert sind.
+Oarfish Core, Profile und Plugins besitzen getrennte Versionen. Der Core-Updater ist kein Plugin. Er muss auch dann funktionieren, wenn alle Plugins deaktiviert sind.
 
 Ein Core-Update zeigt Herkunft, Signaturstatus, Kompatibilität, Migrationshinweise und Rollbackfähigkeit. Der Updater speichert keine dauerhaften GitHub-Credentials für den normalen öffentlichen Releasepfad.
 
@@ -1060,14 +1060,14 @@ Claude Code muss vor jeder Arbeit:
 | G1 | Repository und CI | Repo-Struktur, Go/Svelte-Skeleton, Tests, ARM64-Build und Docs. | CI grün, kein Release und kein Deployment. |
 | G2 | Release Pipeline | Signiertes Linux-ARM64-Bundle, Manifest, Checksums und GitHub Release. | Release aus Tag reproduzierbar erstellt. |
 | G3 | Installer | `install.sh`, OS- und Architekturprüfung, systemd-Installation und Healthcheck. | Frisches Pi OS erfolgreich installiert. |
-| G4 | Orbit Core und Board Detection | OS-, Hardware- und Capability-Erkennung, Generic Mode und Geräteseite. | Pi korrekt erkannt, Ubuntu-Adaptergrenze vorhanden. |
+| G4 | Oarfish Core und Board Detection | OS-, Hardware- und Capability-Erkennung, Generic Mode und Geräteseite. | Pi korrekt erkannt, Ubuntu-Adaptergrenze vorhanden. |
 | G5 | Embedded Dashboard | CPU, RAM, Temperatur, Frequenz, Storage, Netzwerk und Alerts. | Reale Daten innerhalb Budgets. |
 | G6 | Self-Update | GUI, Update Manager, Signaturprüfung, atomare Aktivierung und Rollback. | Erfolgs- und Fehlerupdate auf Pi verifiziert. |
 | G7 | System Core | Dienste, Journal, Prozesse, Reboot und Shutdown. | Sicherer Dienstneustart End-to-End. |
 | G8 | Plugin Runtime | Manifest, Lifecycle, Capability-Modell und Beispielplugin. | Fehlerhaftes Plugin blockiert Core nicht. |
 | G9 | Tailscale Plugin | Setup, Login, Status, Enable/Disable und Audit. | Realer Workflow auf Pi. |
 | G10 | Containers Plugin | Engine Detection, Liste, Details, Logs und Lifecycle. | Mindestens eine reale Engine verifiziert. |
-| G11 | Orbit Assist | Provider-Setup, Read-only Tools, Redaction und UI. | Reale read-only Diagnose. |
+| G11 | Oarfish Assist | Provider-Setup, Read-only Tools, Redaction und UI. | Reale read-only Diagnose. |
 | G12 | Ubuntu Qualification | Ubuntu Server LTS ARM64 Adapter und physische oder gleichwertige Qualifikation. | Definierte Kombination erhält Verified oder Compatible. |
 | G13 | Hardening und MVP | Security Review, UX, Performance, Dokumentation und Release. | Alle MVP-MUSS-Abnahmen bestanden. |
 | Post-MVP | Weitere SBCs | Armbian, Rockchip und weitere Boardfamilien. | Je Board dokumentierter Supportstatus. |
@@ -1112,8 +1112,8 @@ Der MVP gilt als abgenommen, wenn:
 1. Ein GitHub-Repository mit vollständiger, versionierter Dokumentation existiert.
 2. Pull Requests automatisierte Tests, Linting und Linux-ARM64-Build durchlaufen.
 3. Ein signiertes Linux-ARM64-Release aus einem Versionstag erstellt werden kann.
-4. `install.sh` Orbit auf einem frischen Raspberry Pi OS Lite 64-bit installiert.
-5. Orbit nach Reboot automatisch startet und erreichbar ist.
+4. `install.sh` Oarfish auf einem frischen Raspberry Pi OS Lite 64-bit installiert.
+5. Oarfish nach Reboot automatisch startet und erreichbar ist.
 6. Ein neues Release über die GUI erkannt, installiert und verifiziert werden kann.
 7. Ein fehlerhaftes Update automatisch auf die vorherige gesunde Version zurückrollt.
 8. Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit als Verified dokumentiert ist.
@@ -1123,7 +1123,7 @@ Der MVP gilt als abgenommen, wenn:
 12. Dashboard, Dienste und Journal auf realer Hardware funktionieren.
 13. Tailscale als optionales Plugin eingerichtet, gesteuert und deaktiviert werden kann.
 14. Containerplugin mit mindestens einer realen Engine funktioniert.
-15. Orbit Assist optional, read-only und ohne Shellzugriff einen realen Zustand erklären kann.
+15. Oarfish Assist optional, read-only und ohne Shellzugriff einen realen Zustand erklären kann.
 16. Core ohne Tailscale, Containerengine und AI-Provider vollständig startet.
 17. GUI-Kernpfade kein Terminal, YAML oder Dateiedit benötigen.
 18. Ressourcen-, Schreiblast- und Startzeitmessungen die MUSS-Grenzen einhalten.
@@ -1136,7 +1136,7 @@ Keine der folgenden Entscheidungen blockiert Gate G1. Sie werden spätestens vor
 
 | ID | Entscheidung | Default / Empfehlung | Fällig |
 |---|---|---|---|
-| D-01 | Repository-Name | `orbit-linux` | G1 |
+| D-01 | Repository-Name | `oarfish` | G1 |
 | D-02 | Repository-Sichtbarkeit | G1 zunächst privat, vor produktnahem Installer öffentlicher Releasekanal | G2 |
 | D-03 | Lizenz | Vor Öffnung des Repositories entscheiden, Apache-2.0 ist technischer Default | G2 |
 | D-04 | Release-Signierung | Ed25519-basiert, bevorzugt Minisign-kompatibel | G2 |
@@ -1147,7 +1147,7 @@ Keine der folgenden Entscheidungen blockiert Gate G1. Sie werden spätestens vor
 | D-09 | AI-Provider | OpenAI-kompatibler Remote-Endpoint plus Ollama-kompatibler lokaler Endpoint | G11 |
 | D-10 | ARMv7 | Kein erster Release, später optional | Post-MVP |
 | D-11 | UI-Sprache | Deutsch als Default, Englisch technisch vorbereitet | bestätigt |
-| D-12 | Produktbezeichnung | `Orbit, SBC and Embedded Linux Management` | bestätigt |
+| D-12 | Produktbezeichnung | `Oarfish, SBC and Embedded Linux Management` | bestätigt |
 
 Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wird erst relevant, wenn eine konkrete Rockchip-Kombination den Status Verified erhalten soll.
 
@@ -1159,13 +1159,13 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 |---|---|
 | SBC | Single-Board-Computer, zum Beispiel Raspberry Pi oder Rockchip-Board. |
 | SoC | System-on-Chip, zentrale Prozessor- und Peripherieplattform eines Boards. |
-| Board Profile | Orbit-Datenmodell für ein konkretes Board. |
+| Board Profile | Oarfish-Datenmodell für ein konkretes Board. |
 | OS Adapter | Betriebssystemspezifische Implementierung, getrennt vom Hardwareprofil. |
 | Capability | Eng definierte, technisch überprüfbare Fähigkeit eines Systems oder Plugins. |
 | Generic Mode | Sicherer Betrieb ohne spezifisches Boardprofil. |
-| Plugin | Optionales Orbit-Modul mit Manifest und expliziten Berechtigungen. |
+| Plugin | Optionales Oarfish-Modul mit Manifest und expliziten Berechtigungen. |
 | Privilege Broker | Eng begrenzter Prozess für autorisierte Systemaktionen. |
-| Update Helper | Eng begrenzter Root-Helper für Orbit-Aktivierung und Rollback. |
+| Update Helper | Eng begrenzter Root-Helper für Oarfish-Aktivierung und Rollback. |
 | Verified | Physisch getestete Board- und OS-Kombination. |
 | Pull-Update | Das Zielgerät lädt ein Release selbstständig, statt von CI aus bespielt zu werden. |
 
@@ -1195,4 +1195,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.1 | 21. Oktober 2026 | Initialer Entwurf mit generischem Linux- und Single-Host-Fokus. |
 | 0.2 | 21. Oktober 2026 | Fokus auf ARM-SBCs, Board Profiles und First-Party-Plugins. |
 | 0.3 | 22. Oktober 2026 | Pi Zero 2 W als einziges MVP-Referenzgerät, Raspberry Pi OS zuerst, Ubuntu Server LTS ARM64 als verbindliches Folgeziel, pull-basierte GitHub-Releases, Installationsskript und GUI-Self-Update; Self-hosted Runner und Push-Deployment entfernt. |
-
+| 0.3.1 | 23. Oktober 2026 | Produkt von Orbit in Oarfish umbenannt (Name, Binary, Pfade, Repository). Anforderungs-IDs `ORB-*` bleiben unverändert. |

@@ -1,6 +1,6 @@
-# Orbit
+# Oarfish
 
-Orbit is a GUI-first management platform for ARM single-board computers and embedded Linux.
+Oarfish is a GUI-first management platform for ARM single-board computers and embedded Linux.
 
 The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.md). Architecture decisions live in [`docs/adr/`](docs/adr/), the gate sequence in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -31,8 +31,8 @@ Requirements on the development machine: Go (version in [`backend/go.mod`](backe
 
 ```bash
 make deps    # npm ci
-make build   # frontend build + host binary -> bin/orbit
-bin/orbit    # listens on 127.0.0.1:8484
+make build   # frontend build + host binary -> bin/oarfish
+bin/oarfish    # listens on 127.0.0.1:8484
 ```
 
 Open <http://127.0.0.1:8484/> or `curl http://127.0.0.1:8484/healthz`.
@@ -43,7 +43,7 @@ Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`, `make r
 
 | Path | Content |
 |---|---|
-| `backend/` | Go module: `cmd/orbit` entry point, `internal/` packages |
+| `backend/` | Go module: `cmd/oarfish` entry point, `internal/` packages |
 | `frontend/` | Svelte 5 + TypeScript + Vite (build time only) |
 | `docs/` | Specification, ADRs, roadmap, architecture, development guide, gate prompts |
 | `scripts/` | Release packaging, signing, verification and smoke tests |
@@ -54,4 +54,4 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces fit togeth
 
 ## License
 
-Orbit is licensed under the Apache License 2.0 (SPDX identifier `Apache-2.0`), see [`LICENSE`](LICENSE). The repository is private until shortly before the MVP release (decisions D-C13 to D-C15 in [`docs/DECISIONS.md`](docs/DECISIONS.md)).
+Oarfish is licensed under the Apache License 2.0 (SPDX identifier `Apache-2.0`), see [`LICENSE`](LICENSE). The repository is private until shortly before the MVP release (decisions D-C13 to D-C15 in [`docs/DECISIONS.md`](docs/DECISIONS.md)).

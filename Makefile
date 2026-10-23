@@ -3,8 +3,8 @@ SHELL := /bin/bash
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w \
-	-X github.com/swingstate/orbit-linux/backend/internal/version.Version=$(VERSION) \
-	-X github.com/swingstate/orbit-linux/backend/internal/version.Commit=$(COMMIT)
+	-X github.com/swingstate/oarfish/backend/internal/version.Version=$(VERSION) \
+	-X github.com/swingstate/oarfish/backend/internal/version.Commit=$(COMMIT)
 
 LISTEN ?= 127.0.0.1:8484
 
@@ -23,7 +23,7 @@ dev: ## Run the Go backend and the Vite dev server (UI on http://localhost:5173)
 	$(MAKE) -j2 dev-backend dev-frontend
 
 dev-backend:
-	cd backend && go run ./cmd/orbit -listen $(LISTEN)
+	cd backend && go run ./cmd/oarfish -listen $(LISTEN)
 
 dev-frontend:
 	cd frontend && npm run dev
@@ -55,11 +55,11 @@ lint-frontend:
 frontend-build:
 	cd frontend && npm run build
 
-build: frontend-build ## Build the host binary with embedded frontend into bin/orbit
-	cd backend && go build -trimpath -ldflags "$(LDFLAGS)" -o ../bin/orbit ./cmd/orbit
+build: frontend-build ## Build the host binary with embedded frontend into bin/oarfish
+	cd backend && go build -trimpath -ldflags "$(LDFLAGS)" -o ../bin/oarfish ./cmd/oarfish
 
-build-arm64: frontend-build ## Cross-build bin/orbit-linux-arm64 (CGO_ENABLED=0)
-	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../bin/orbit-linux-arm64 ./cmd/orbit
+build-arm64: frontend-build ## Cross-build bin/oarfish-linux-arm64 (CGO_ENABLED=0)
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../bin/oarfish-linux-arm64 ./cmd/oarfish
 
 release-bundle: frontend-build ## Build the unsigned release bundle + manifest into dist/release (same script as CI)
 	scripts/release-bundle.sh

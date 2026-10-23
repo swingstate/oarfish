@@ -91,7 +91,7 @@ jobs:
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
           {
-            echo "## Orbit $version"
+            echo "## Oarfish $version"
             echo "- commit \`$commit\`"
             echo "- mode: $([ "$PUBLISH" = true ] && echo "**publish** (prerelease: $prerelease)" || echo "**dry run**, nothing is published")"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -121,7 +121,7 @@ jobs:
           COMMIT: ${{ steps.meta.outputs.commit }}
         run: scripts/check-reproducible.sh --rebuild-frontend dist/release
       - name: Size budgets (ORB-NFR-005, ORB-NFR-006)
-        run: scripts/check-budgets.sh dist/release/orbit_*_linux_arm64.tar.gz
+        run: scripts/check-budgets.sh dist/release/oarfish_*_linux_arm64.tar.gz
       - name: Install qemu-user
         run: |
           sudo apt-get update -qq
@@ -129,7 +129,7 @@ jobs:
       - name: ARM64 smoke test under emulation (ORB-CICD-004)
         env:
           EXPECTED_VERSION: ${{ steps.meta.outputs.version }}
-        run: scripts/smoke-test-arm64.sh dist/release/orbit_*_linux_arm64.tar.gz
+        run: scripts/smoke-test-arm64.sh dist/release/oarfish_*_linux_arm64.tar.gz
       - name: SBOMs (CycloneDX)
         run: scripts/make-sbom.sh dist/release
       - name: checksums.txt
@@ -167,14 +167,14 @@ jobs:
       - name: Sign checksums.txt with the release key
         if: needs.build.outputs.publish == 'true'
         env:
-          ORBIT_RELEASE_SIGNING_KEY: ${{ secrets.ORBIT_RELEASE_SIGNING_KEY }}
-          ORBIT_SIGN_COMMENT: orbit ${{ needs.build.outputs.tag }} ${{ needs.build.outputs.commit }}
+          OARFISH_RELEASE_SIGNING_KEY: ${{ secrets.OARFISH_RELEASE_SIGNING_KEY }}
+          OARFISH_SIGN_COMMENT: oarfish ${{ needs.build.outputs.tag }} ${{ needs.build.outputs.commit }}
         run: scripts/sign-release.sh "$RUNNER_TEMP/release"
       - name: Verify with the committed public key
         if: needs.build.outputs.publish == 'true'
         run: |
-          [ -f release/orbit-release.pub ] || { echo "::error::release/orbit-release.pub is not committed"; exit 1; }
-          scripts/verify-release.sh "$RUNNER_TEMP/release" release/orbit-release.pub
+          [ -f release/oarfish-release.pub ] || { echo "::error::release/oarfish-release.pub is not committed"; exit 1; }
+          scripts/verify-release.sh "$RUNNER_TEMP/release" release/oarfish-release.pub
       # Dry run: exercise the same sign and verify path with a key that is discarded.
       - name: Dry run, sign and verify with a throwaway key
         if: needs.build.outputs.publish != 'true'
@@ -215,7 +215,7 @@ jobs:
         run: scripts/install-minisign.sh
       # The files crossed a job boundary; check them again before they become public.
       - name: Verify signature, hashes, manifest and tarball
-        run: scripts/verify-release.sh "$RUNNER_TEMP/release" release/orbit-release.pub
+        run: scripts/verify-release.sh "$RUNNER_TEMP/release" release/oarfish-release.pub
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -226,17 +226,17 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/release"
           cat > notes.md <<EOF
-          Orbit $VERSION, Linux ARM64 bundle. Commit \`$COMMIT\`.
+          Oarfish $VERSION, Linux ARM64 bundle. Commit \`$COMMIT\`.
 
-          Verify before use: \`minisign -Vm checksums.txt -x checksums.txt.sig -p orbit-release.pub\`,
-          then \`sha256sum -c checksums.txt\`. The public key is \`release/orbit-release.pub\` in the repository.
+          Verify before use: \`minisign -Vm checksums.txt -x checksums.txt.sig -p oarfish-release.pub\`,
+          then \`sha256sum -c checksums.txt\`. The public key is \`release/oarfish-release.pub\` in the repository.
           Steps: docs/RELEASING.md. This build is not installed by any script yet.
           EOF
           flags=()
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
           gh release create "$TAG" \
-            --repo "$GITHUB_REPOSITORY" --verify-tag --title "Orbit $VERSION" --notes-file notes.md \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "Oarfish $VERSION" --notes-file notes.md \
             "${flags[@]}" \
-            "orbit_${VERSION}_linux_arm64.tar.gz" manifest.json checksums.txt checksums.txt.sig \
+            "oarfish_${VERSION}_linux_arm64.tar.gz" manifest.json checksums.txt checksums.txt.sig \
             sbom-backend.cdx.json sbom-frontend.cdx.json
           echo "Published $TAG" >> "$GITHUB_STEP_SUMMARY"

@@ -10,7 +10,7 @@
 #            timestamp of that commit, which makes the output reproducible.
 #
 # Requires the frontend to be built already (backend/internal/web/dist). Output:
-#   OUTDIR/orbit_<version>_linux_arm64.tar.gz and OUTDIR/manifest.json
+#   OUTDIR/oarfish_<version>_linux_arm64.tar.gz and OUTDIR/manifest.json
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
@@ -35,22 +35,22 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-echo "==> orbit $VERSION ($COMMIT, commit time $EPOCH)"
+echo "==> oarfish $VERSION ($COMMIT, commit time $EPOCH)"
 
 # -trimpath and -buildvcs=false keep checkout paths and VCS state out of the
 # binary; -mod=readonly forbids silent go.mod changes.
 LDFLAGS="-s -w \
- -X github.com/swingstate/orbit-linux/backend/internal/version.Version=$VERSION \
- -X github.com/swingstate/orbit-linux/backend/internal/version.Commit=$COMMIT"
+ -X github.com/swingstate/oarfish/backend/internal/version.Version=$VERSION \
+ -X github.com/swingstate/oarfish/backend/internal/version.Commit=$COMMIT"
 (
   cd backend
   CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOFLAGS=-mod=readonly \
-    go build -trimpath -buildvcs=false -ldflags "$LDFLAGS" -o "$WORK/orbit" ./cmd/orbit
+    go build -trimpath -buildvcs=false -ldflags "$LDFLAGS" -o "$WORK/oarfish" ./cmd/oarfish
 )
 
 build_bundlegen "$WORK/bundlegen"
 mkdir -p "$OUT"
 "$WORK/bundlegen" bundle \
-  -binary "$WORK/orbit" -license "$ROOT/LICENSE" \
+  -binary "$WORK/oarfish" -license "$ROOT/LICENSE" \
   -version "$VERSION" -commit "$COMMIT" -epoch "$EPOCH" -out "$OUT"
 echo "==> wrote $OUT"

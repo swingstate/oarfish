@@ -2,8 +2,8 @@
 # Scripts never enable `set -x`: signing scripts handle secret material.
 
 # Resolved once, when sourced, so later `cd` calls cannot break relative paths.
-ORBIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-repo_root() { echo "$ORBIT_ROOT"; }
+OARFISH_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root() { echo "$OARFISH_ROOT"; }
 
 die() { echo "error: $*" >&2; exit 1; }
 

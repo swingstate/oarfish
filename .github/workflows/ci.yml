@@ -113,18 +113,18 @@ jobs:
           path: backend/internal/web/dist
       - name: Host build
         working-directory: backend
-        run: go build -trimpath -o ../bin/orbit ./cmd/orbit
+        run: go build -trimpath -o ../bin/oarfish ./cmd/oarfish
       # The same script builds the release bundle (CGO_ENABLED=0 GOOS=linux GOARCH=arm64).
       - name: Linux ARM64 release bundle
         run: scripts/release-bundle.sh -o dist/release
       - name: Verify ARM64 artifact
         run: |
-          tar -xzf dist/release/orbit_*_linux_arm64.tar.gz -C "$RUNNER_TEMP"
-          bin="$(ls "$RUNNER_TEMP"/orbit_*_linux_arm64/orbit)"
+          tar -xzf dist/release/oarfish_*_linux_arm64.tar.gz -C "$RUNNER_TEMP"
+          bin="$(ls "$RUNNER_TEMP"/oarfish_*_linux_arm64/oarfish)"
           file "$bin"
           file "$bin" | grep -q 'ELF 64-bit.*ARM aarch64'
       - name: Size budgets (ORB-NFR-005, ORB-NFR-006)
-        run: scripts/check-budgets.sh dist/release/orbit_*_linux_arm64.tar.gz
+        run: scripts/check-budgets.sh dist/release/oarfish_*_linux_arm64.tar.gz
       - name: Install qemu-user
         run: |
           sudo apt-get update -qq
@@ -133,7 +133,7 @@ jobs:
       - name: ARM64 smoke test under emulation (ORB-CICD-004)
         run: |
           EXPECTED_VERSION="$(jq -r .version dist/release/manifest.json)" \
-            scripts/smoke-test-arm64.sh dist/release/orbit_*_linux_arm64.tar.gz
+            scripts/smoke-test-arm64.sh dist/release/oarfish_*_linux_arm64.tar.gz
 
   reproducibility:
     name: Reproducible bundle

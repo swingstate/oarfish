@@ -4,18 +4,18 @@
 # ORB-CICD-004). Nothing is deployed anywhere; the server binds to loopback only.
 #
 # Usage: scripts/smoke-test-arm64.sh BUNDLE.tar.gz
-#   ORBIT_SMOKE_EMULATOR  command prefix; default qemu-aarch64 unless the host is
+#   OARFISH_SMOKE_EMULATOR  command prefix; default qemu-aarch64 unless the host is
 #                         linux/arm64. Set to "none" to run the binary directly.
-#   ORBIT_SMOKE_PORT      default 18484
-#   EXPECTED_VERSION      if set, `orbit -version` must contain it
+#   OARFISH_SMOKE_PORT      default 18484
+#   EXPECTED_VERSION      if set, `oarfish -version` must contain it
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 BUNDLE="${1:?usage: $0 BUNDLE.tar.gz}"
-PORT="${ORBIT_SMOKE_PORT:-18484}"
+PORT="${OARFISH_SMOKE_PORT:-18484}"
 BASE="http://127.0.0.1:$PORT"
 
-emu="${ORBIT_SMOKE_EMULATOR:-}"
+emu="${OARFISH_SMOKE_EMULATOR:-}"
 if [ -z "$emu" ]; then
   case "$(uname -s)/$(uname -m)" in
     Linux/aarch64|Linux/arm64) emu=none ;;
@@ -36,13 +36,13 @@ cleanup() {
 trap cleanup EXIT
 
 tar -xzf "$BUNDLE" -C "$TMP"
-BIN="$(ls "$TMP"/orbit_*/orbit)"
+BIN="$(ls "$TMP"/oarfish_*/oarfish)"
 echo "binary: $(file -b "$BIN")"
 file -b "$BIN" | grep -q 'ELF 64-bit.*ARM aarch64' || die "bundle binary is not an aarch64 ELF"
 
 version_out="$("${run[@]}" "$BIN" -version)"
 echo "version: $version_out"
-[ -z "${EXPECTED_VERSION:-}" ] || grep -qF "orbit $EXPECTED_VERSION " <<<"$version_out" \
+[ -z "${EXPECTED_VERSION:-}" ] || grep -qF "oarfish $EXPECTED_VERSION " <<<"$version_out" \
   || die "version output does not contain $EXPECTED_VERSION"
 
 "${run[@]}" "$BIN" -listen "127.0.0.1:$PORT" >"$TMP/server.log" 2>&1 &
@@ -64,7 +64,7 @@ echo "GET /healthz  -> 200 $(tr -d '\n' < "$TMP/healthz.json")"
 
 code="$(curl -s -D "$TMP/root.hdr" -o "$TMP/root.html" -w '%{http_code}' "$BASE/")"
 [ "$code" = 200 ] || fail "/ answered $code"
-grep -q '<div id="app">' "$TMP/root.html" || fail "/ does not look like the Orbit frontend"
+grep -q '<div id="app">' "$TMP/root.html" || fail "/ does not look like the Oarfish frontend"
 grep -qi '^content-type: text/html' "$TMP/root.hdr" || fail "/ is not served as text/html"
 grep -qi '^content-security-policy:' "$TMP/root.hdr" || fail "/ lacks a Content-Security-Policy header"
 echo "GET /         -> 200 text/html, embedded frontend"

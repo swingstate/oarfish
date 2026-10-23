@@ -4,7 +4,7 @@
 #
 # Usage: scripts/verify-release.sh DIR PUBKEY
 #   DIR     holds checksums.txt, checksums.txt.sig, manifest.json, the bundle, ...
-#   PUBKEY  minisign public key file (release/orbit-release.pub)
+#   PUBKEY  minisign public key file (release/oarfish-release.pub)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 command -v minisign >/dev/null || die "minisign not found"
