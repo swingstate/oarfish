@@ -2,7 +2,7 @@
 // dictionary with the same keys (ORB-GEN-006).
 export const de = {
   tagline: 'Verwaltung für ARM-Einzelplatinencomputer und Embedded Linux',
-  statusLabel: 'Orbit-Dienst',
+  statusLabel: 'Oarfish-Dienst',
   checking: 'Wird geprüft …',
   ok: 'Läuft',
   unreachable: 'Nicht erreichbar',

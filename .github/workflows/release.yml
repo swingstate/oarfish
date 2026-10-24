@@ -1,0 +1,265 @@
+name: Release
+
+# A pushed version tag (v*) builds, signs and publishes a GitHub Release. That is
+# the only way to publish.
+# A manual run (workflow_dispatch) is always a dry run: it builds and checks
+# everything, signs with a throwaway key, and publishes nothing. Pull requests
+# that touch the release machinery run the same dry run (GitHub only offers
+# workflow_dispatch for workflows that are already on the default branch).
+#
+# The release signing key (secret OARFISH_RELEASE_SIGNING_KEY) is referenced in
+# exactly one step, in the job `sign`, which only starts for a tag push. On pull
+# requests and manual runs that job is skipped, so the secret is never sent to a
+# runner there; those runs use the job `sign-dry-run` with a throwaway key.
+#
+# GitHub-hosted runners only. Nothing in this workflow connects to a device
+# (ADR 0003, ORB-CICD-005). Procedure and key handling: docs/RELEASING.md.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/ci.yml"
+      - "scripts/**"
+      - "release/**"
+      - "LICENSE"
+  workflow_dispatch:
+
+# Least privilege: only the publish job gets contents: write.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # true only for a tag push (the push trigger above is limited to v* tags).
+  PUBLISH: ${{ github.event_name == 'push' }}
+
+jobs:
+  ci:
+    name: CI checks
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  build:
+    name: Build bundle
+    needs: [ci]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      commit: ${{ steps.meta.outputs.commit }}
+      publish: ${{ steps.meta.outputs.publish }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve version
+        id: meta
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          commit="$(git rev-parse HEAD)"
+          if [ "$PUBLISH" = true ]; then
+            [ "$REF_TYPE" = tag ] || { echo "::error::publishing needs a v* tag, got $REF_TYPE '$REF_NAME'"; exit 1; }
+            if ! [[ "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::tag '$REF_NAME' is not vMAJOR.MINOR.PATCH[-prerelease]"
+              exit 1
+            fi
+            version="${REF_NAME#v}"
+            # Releases come from main only.
+            git merge-base --is-ancestor "$commit" origin/main \
+              || { echo "::error::tag $REF_NAME points to a commit that is not on main"; exit 1; }
+          else
+            version="0.0.0-dryrun.$(git rev-parse --short=7 HEAD)"
+          fi
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          {
+            echo "version=$version"
+            echo "tag=v$version"
+            echo "commit=$commit"
+            echo "publish=$PUBLISH"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## Oarfish $version"
+            echo "- commit \`$commit\`"
+            echo "- mode: $([ "$PUBLISH" = true ] && echo "**publish** (prerelease: $prerelease)" || echo "**dry run**, nothing is published")"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies (lockfile)
+        working-directory: frontend
+        run: npm ci
+      - name: Frontend production build
+        working-directory: frontend
+        run: npm run build
+      - name: Linux ARM64 bundle and manifest
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
+        run: scripts/release-bundle.sh -o dist/release
+      - name: Reproducibility, two clean rebuilds must match this bundle
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          COMMIT: ${{ steps.meta.outputs.commit }}
+        run: scripts/check-reproducible.sh --rebuild-frontend dist/release
+      - name: Size budgets (ORB-NFR-005, ORB-NFR-006)
+        run: scripts/check-budgets.sh dist/release/oarfish_*_linux_arm64.tar.gz
+      - name: Install qemu-user
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends qemu-user
+      - name: ARM64 smoke test under emulation (ORB-CICD-004)
+        env:
+          EXPECTED_VERSION: ${{ steps.meta.outputs.version }}
+        run: scripts/smoke-test-arm64.sh dist/release/oarfish_*_linux_arm64.tar.gz
+      - name: SBOMs (CycloneDX)
+        run: scripts/make-sbom.sh dist/release
+      - name: checksums.txt
+        run: scripts/make-checksums.sh dist/release
+      - name: Hand over unsigned release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-unsigned
+          path: dist/release
+          retention-days: 7
+          if-no-files-found: error
+
+  # Pull requests and manual runs: same sign and verify path, throwaway key,
+  # no reference to the release secret anywhere in this job.
+  sign-dry-run:
+    name: Sign and verify (dry run)
+    needs: [build]
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-unsigned
+          path: ${{ runner.temp }}/release
+      - name: Install minisign (pinned version and SHA-256)
+        run: scripts/install-minisign.sh
+      - name: Tamper tests with throwaway keys
+        run: scripts/test-signing.sh
+      - name: Sign and verify with a throwaway key
+        run: |
+          scripts/sign-release.sh --ephemeral "$RUNNER_TEMP/dryrun.pub" "$RUNNER_TEMP/release"
+          scripts/verify-release.sh "$RUNNER_TEMP/release" "$RUNNER_TEMP/dryrun.pub"
+          echo "Dry run: signed with a throwaway key, nothing is published." >> "$GITHUB_STEP_SUMMARY"
+
+  # Tag push only. The one job that references the release secret.
+  sign:
+    name: Sign and verify
+    needs: [build]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-unsigned
+          path: ${{ runner.temp }}/release
+      - name: Install minisign (pinned version and SHA-256)
+        run: scripts/install-minisign.sh
+      - name: Tamper tests with throwaway keys
+        run: scripts/test-signing.sh
+      # The key exists only as a secret, only in this step.
+      - name: Sign checksums.txt with the release key
+        env:
+          OARFISH_RELEASE_SIGNING_KEY: ${{ secrets.OARFISH_RELEASE_SIGNING_KEY }}
+          OARFISH_SIGN_COMMENT: oarfish ${{ needs.build.outputs.tag }} ${{ needs.build.outputs.commit }}
+        run: scripts/sign-release.sh "$RUNNER_TEMP/release"
+      - name: Verify with the committed public key
+        run: |
+          [ -f release/oarfish-release.pub ] || { echo "::error::release/oarfish-release.pub is not committed"; exit 1; }
+          scripts/verify-release.sh "$RUNNER_TEMP/release" release/oarfish-release.pub
+      - name: Hand over signed release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-signed
+          path: ${{ runner.temp }}/release
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build, sign]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-signed
+          path: ${{ runner.temp }}/release
+      - name: Install minisign (pinned version and SHA-256)
+        run: scripts/install-minisign.sh
+      # The files crossed a job boundary; check them again before they become public.
+      - name: Verify signature, hashes, manifest and tarball
+        run: scripts/verify-release.sh "$RUNNER_TEMP/release" release/oarfish-release.pub
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          cd "$RUNNER_TEMP/release"
+          cat > notes.md <<EOF
+          Oarfish $VERSION, Linux ARM64 bundle. Commit \`$COMMIT\`.
+
+          Verify before use: \`minisign -Vm checksums.txt -x checksums.txt.sig -p oarfish-release.pub\`,
+          then \`sha256sum -c checksums.txt\`. The public key is \`release/oarfish-release.pub\` in the repository.
+          Steps: docs/RELEASING.md. This build is not installed by any script yet.
+          EOF
+          flags=()
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "Oarfish $VERSION" --notes-file notes.md \
+            "${flags[@]}" \
+            "oarfish_${VERSION}_linux_arm64.tar.gz" manifest.json checksums.txt checksums.txt.sig \
+            sbom-backend.cdx.json sbom-frontend.cdx.json
+          echo "Published $TAG" >> "$GITHUB_STEP_SUMMARY"

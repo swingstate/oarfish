@@ -1,4 +1,4 @@
-# Orbit Starter Pack v0.3
+# Oarfish Starter Pack v0.3
 
 Dieses Paket enthält die freigegebene Arbeitsgrundlage für Gate G1.
 
@@ -10,14 +10,14 @@ Dieses Paket enthält die freigegebene Arbeitsgrundlage für Gate G1.
 - `docs/adr/`: bestätigte Architekturentscheidungen
 - `docs/DECISIONS.md`: bestätigte und später fällige Entscheidungen
 - `docs/ROADMAP.md`: Gate-Reihenfolge
-- `docs/export/Orbit_Pflichtenheft_v0.3.docx`: lesbare Word-Fassung
+- `docs/export/Orbit_Pflichtenheft_v0.3.docx`: lesbare Word-Fassung (Stand v0.3, vor der Umbenennung in Oarfish; nennt das Produkt noch Orbit)
 
 ## Start auf dem MacBook
 
 ```bash
-mkdir -p ~/Projects/orbit-linux
-cd ~/Projects/orbit-linux
-unzip /PFAD/ZU/Orbit_Starter_Pack_v0.3.zip
+mkdir -p ~/Projects/oarfish
+cd ~/Projects/oarfish
+unzip /PFAD/ZU/Oarfish_Starter_Pack_v0.3.zip
 
 git init -b main
 claude
@@ -36,7 +36,7 @@ Gate G1 erstellt nur Repository-Skeleton und CI. Es erstellt noch keine Release-
 - CI: GitHub-hosted Actions Runner
 - Distribution: GitHub Releases
 - Erstinstallation: pull-basiertes `install.sh`
-- Updates: pull-basiert aus der Orbit-GUI
+- Updates: pull-basiert aus der Oarfish-GUI
 - Tailscale: optionales Plugin
 - Kein Self-hosted Runner
 - Kein SSH-Deployment aus GitHub Actions

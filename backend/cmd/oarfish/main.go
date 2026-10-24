@@ -1,4 +1,4 @@
-// Command orbit is the Orbit core process.
+// Command oarfish is the Oarfish core process.
 package main
 
 import (
@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/swingstate/orbit-linux/backend/internal/server"
-	"github.com/swingstate/orbit-linux/backend/internal/version"
-	"github.com/swingstate/orbit-linux/backend/internal/web"
+	"github.com/swingstate/oarfish/backend/internal/server"
+	"github.com/swingstate/oarfish/backend/internal/version"
+	"github.com/swingstate/oarfish/backend/internal/web"
 )
 
 // defaultListen is loopback only; a public bind needs an explicit -listen value.
@@ -27,13 +27,13 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("orbit %s (%s)\n", version.Version, version.Commit)
+		fmt.Printf("oarfish %s (%s)\n", version.Version, version.Commit)
 		return
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if err := run(*listen, log); err != nil {
-		log.Error("orbit stopped", "error", err)
+		log.Error("oarfish stopped", "error", err)
 		os.Exit(1)
 	}
 }
@@ -46,7 +46,7 @@ func run(addr string, log *slog.Logger) error {
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	log.Info("orbit listening", "addr", addr, "version", version.Version, "commit", version.Commit)
+	log.Info("oarfish listening", "addr", addr, "version", version.Version, "commit", version.Commit)
 
 	select {
 	case err := <-errc:

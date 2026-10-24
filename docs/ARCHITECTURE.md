@@ -1,19 +1,22 @@
-# Architecture (Gate G1 state)
+# Architecture (Gate G2 state)
 
-This document describes what exists after Gate G1 and the boundaries later gates build on. The normative target architecture is section 8 of [`PFLICHTENHEFT.md`](PFLICHTENHEFT.md); where this document and the specification differ, the specification wins.
+This document describes what exists after Gate G2 and the boundaries later gates build on. The normative target architecture is section 8 of [`PFLICHTENHEFT.md`](PFLICHTENHEFT.md); where this document and the specification differ, the specification wins.
 
 ## Repository layout
 
 ```text
-backend/                     Go module github.com/swingstate/orbit-linux/backend
-  cmd/orbit/                 process entry point: flags, signal handling, graceful shutdown
+backend/                     Go module github.com/swingstate/oarfish/backend
+  cmd/oarfish/                 process entry point: flags, signal handling, graceful shutdown
   internal/server/           HTTP handler: /healthz, static frontend, security headers
   internal/web/              go:embed of the built frontend (dist/)
   internal/version/          Version and Commit, injected with -ldflags
 frontend/                    Svelte 5 + TypeScript + Vite
   src/                       App.svelte, lib/ (health client, i18n dictionary)
 docs/                        specification, ADRs, roadmap, prompts, this file
-.github/workflows/ci.yml     CI
+scripts/                     release packaging, signing, verification, budget and smoke tests
+  bundlegen/                 stdlib-only Go module: tar.gz, manifest.json, checksums.txt (not part of the product)
+release/                     public signing key (oarfish-release.pub, added with the first release)
+.github/workflows/           ci.yml, release.yml
 Makefile
 ```
 
@@ -22,7 +25,7 @@ The Go module lives in `backend/` rather than the repository root so the Go tool
 ## Frontend delivery
 
 ```text
-frontend/src ──vite build──▶ backend/internal/web/dist ──go:embed──▶ orbit binary
+frontend/src ──vite build──▶ backend/internal/web/dist ──go:embed──▶ oarfish binary
 ```
 
 - Vite writes straight into the Go embed directory (`backend/internal/web/dist`).
@@ -55,12 +58,25 @@ Not implemented, only reserved by the layout and by CLAUDE.md rules:
 
 - Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3). Nothing in G1 reads `/etc/os-release`, procfs or sysfs.
 - No privileged code exists. Privilege Broker and Update Helper are separate future components (spec 8.6).
-- Plugins, self-update, and release signing are out of scope until their gates (ADR 0003, ADR 0004).
+- Plugins and self-update are out of scope until their gates (ADR 0003, ADR 0004). Release signing exists (below), but nothing in the Oarfish binary verifies signatures yet.
 
 ## Build and CI
 
 - Builds use `CGO_ENABLED=0` for the Linux ARM64 cross-build, producing a static binary.
-- CI runs on GitHub-hosted runners only and never connects to a device (ADR 0003, ORB-CICD-005). Third-party actions are pinned to commit SHAs (ORB-SEC-008) and the workflow has `contents: read` permissions.
-- CI jobs: Go checks (gofmt, vet, `go test -race`), frontend checks (`npm ci`, type check, tests, production build), and a build job that embeds the frontend artifact and produces the host and `linux/arm64` binaries.
+- CI runs on GitHub-hosted runners only and never connects to a device (ADR 0003, ORB-CICD-005). Third-party actions are pinned to commit SHAs (ORB-SEC-008) and workflows default to `contents: read`.
+- CI jobs: Go checks, frontend checks, release bundle with size budgets and an ARM64 smoke test under qemu-user, reproducibility check, signing and tamper tests, dependency scan and SBOM trial.
 
-Details and commands are in [`DEVELOPMENT.md`](DEVELOPMENT.md).
+## Release pipeline
+
+```text
+tag vX.Y.Z ──▶ ci (reused) ──▶ build ──▶ sign ──▶ publish ──▶ GitHub Release
+                               no secret  secret   contents: write
+                                          only here only here
+```
+
+- `scripts/release-bundle.sh` builds the bundle; `scripts/bundlegen` writes the tarball (sorted, commit-time mtimes, numeric owner 0, no gzip name or time), `manifest.json` and `checksums.txt`. The same script runs locally (`make release-bundle`) and in both workflows.
+- `checksums.txt` is signed with minisign (Ed25519), `checksums.txt.sig` is published next to it (ADR 0005). The private key exists only as a GitHub Actions secret; the public key is committed as `release/oarfish-release.pub`.
+- A tag push publishes; a manual run is a dry run that signs with a throwaway key and publishes nothing.
+- The device side (installer, updater, signature verification, key embedding) does not exist yet: Gates G3 and G6.
+
+Details: [`RELEASING.md`](RELEASING.md) and [`DEVELOPMENT.md`](DEVELOPMENT.md).

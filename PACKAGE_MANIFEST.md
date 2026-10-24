@@ -1,4 +1,4 @@
-# Orbit Starter Pack v0.3
+# Oarfish Starter Pack v0.3
 
 **Baseline date:** 22 October 2026  
 **Purpose:** Complete input package for starting Gate G1 with Claude Code on macOS.
@@ -15,7 +15,7 @@
 
 ## Review copy
 
-- `docs/export/Orbit_Pflichtenheft_v0.3.docx`: formatted Word version of the specification
+- `docs/export/Orbit_Pflichtenheft_v0.3.docx`: formatted Word version of the specification (export of v0.3 made before the rename to Oarfish; still says Orbit, not regenerated)
 
 ## Baseline
 
@@ -25,10 +25,10 @@
 - CI and release builds: GitHub-hosted Actions runners
 - Distribution: signed GitHub Releases
 - Initial installation: pull-based install script
-- Updates: pull-based Orbit GUI updater with rollback
+- Updates: pull-based Oarfish GUI updater with rollback
 - Tailscale: optional First-Party plugin
 - No self-hosted runner and no direct GitHub-to-device deployment
 
 ## Integrity
 
-`SHA256SUMS.txt` contains SHA-256 digests for all package files except itself.
+The starter pack no longer ships a checksum file. Integrity of the repository content is given by its Git history. Release artifacts carry their own `checksums.txt` and signature, see `docs/RELEASING.md`.

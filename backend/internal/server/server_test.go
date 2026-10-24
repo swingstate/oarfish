@@ -43,17 +43,17 @@ func TestHealthzRejectsNonGet(t *testing.T) {
 
 func TestServesEmbeddedFrontend(t *testing.T) {
 	assets := fstest.MapFS{
-		"index.html":    {Data: []byte("<!doctype html><title>Orbit</title>")},
-		"assets/app.js": {Data: []byte("console.log('orbit')")},
+		"index.html":    {Data: []byte("<!doctype html><title>Oarfish</title>")},
+		"assets/app.js": {Data: []byte("console.log('oarfish')")},
 	}
 	h := NewHandler(assets)
 
 	rec := get(t, h, http.MethodGet, "/")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Orbit</title>") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<title>Oarfish</title>") {
 		t.Fatalf("GET / = %d %q", rec.Code, rec.Body.String())
 	}
 	rec = get(t, h, http.MethodGet, "/assets/app.js")
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "orbit") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "oarfish") {
 		t.Fatalf("GET /assets/app.js = %d %q", rec.Code, rec.Body.String())
 	}
 	rec = get(t, h, http.MethodGet, "/missing")

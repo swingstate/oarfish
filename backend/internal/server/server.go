@@ -1,4 +1,4 @@
-// Package server implements the Orbit HTTP surface.
+// Package server implements the Oarfish HTTP surface.
 package server
 
 import (

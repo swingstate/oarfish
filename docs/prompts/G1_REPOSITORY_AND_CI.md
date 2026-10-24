@@ -1,6 +1,6 @@
 # Claude Code Prompt: Gate G1, Repository foundation and CI
 
-You are working in the local Orbit repository.
+You are working in the local Oarfish repository.
 
 Your task is to implement **Gate G1 only: repository foundation and continuous integration**.
 
@@ -15,7 +15,7 @@ Your task is to implement **Gate G1 only: repository foundation and continuous i
 
 ## Product baseline
 
-- Orbit is a GUI-first management platform for ARM SBCs and embedded Linux.
+- Oarfish is a GUI-first management platform for ARM SBCs and embedded Linux.
 - Raspberry Pi Zero 2 W running Raspberry Pi OS Lite 64-bit is the initial verified target.
 - Ubuntu Server LTS ARM64 is a mandatory future target.
 - Hardware detection and OS detection must remain independent.
@@ -27,7 +27,7 @@ Your task is to implement **Gate G1 only: repository foundation and continuous i
 - GitHub Actions must not connect to or deploy directly to the Raspberry Pi.
 - Do not configure a self-hosted GitHub runner.
 - Initial installation will later pull a signed GitHub Release through an install script.
-- Subsequent updates will later be initiated through the Orbit GUI and pulled from GitHub Releases.
+- Subsequent updates will later be initiated through the Oarfish GUI and pulled from GitHub Releases.
 - Tailscale is an optional plugin and must not be required for build, installation, updates, or recovery.
 
 ## Operating-system architecture constraints
@@ -111,7 +111,7 @@ You may choose a more idiomatic Go module layout, but explain it and keep the fr
 - plugin runtime
 - Tailscale integration
 - Docker or Podman integration
-- Orbit Assist
+- Oarfish Assist
 - privileged helpers
 - package installation on the Pi
 
@@ -123,7 +123,7 @@ Do not add placeholders that falsely imply these features work. Do not implement
 2. Do not overwrite or reuse an existing remote repository without explicit confirmation.
 3. If no remote exists, prepare the local repository first.
 4. Before creating a remote, show the intended GitHub owner, repository name, visibility, and exact command.
-5. Intended initial repository name: `orbit-linux`.
+5. Intended initial repository name: `oarfish`.
 6. Intended initial visibility: private.
 7. After user confirmation, create the private repository, set `origin`, and push the initial `main` branch.
 8. Do not change repository visibility in Gate G1.

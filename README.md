@@ -1,19 +1,19 @@
-# Orbit
+# Oarfish
 
-Orbit is a GUI-first management platform for ARM single-board computers and embedded Linux.
+Oarfish is a GUI-first management platform for ARM single-board computers and embedded Linux.
 
 The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.md). Architecture decisions live in [`docs/adr/`](docs/adr/), the gate sequence in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Status
 
-**Gate G1 (repository foundation and CI) is implemented.** The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, and a GitHub Actions CI workflow.
+**Gate G1 (repository foundation and CI) is implemented; Gate G2 (signed Linux ARM64 release pipeline) is in progress.** The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, a GitHub Actions CI workflow, and a release workflow that turns a version tag into a signed GitHub Release ([`docs/RELEASING.md`](docs/RELEASING.md)).
 
 What the binary does today:
 
 - serves `GET /healthz` (`{"status":"ok"}`)
 - serves the embedded frontend, which shows whether `/healthz` answers
 
-What it does **not** do yet: hardware or OS detection, metrics, authentication, plugins, self-update, release packaging, installation. Those belong to later gates. Nothing in this repository has been run on a Raspberry Pi yet.
+What it does **not** do yet: hardware or OS detection, metrics, authentication, plugins, self-update, installation. Those belong to later gates. Nothing in this repository has been run on a Raspberry Pi yet.
 
 ## Platform baseline
 
@@ -21,7 +21,7 @@ What it does **not** do yet: hardware or OS detection, metrics, authentication, 
 - Mandatory future target: Ubuntu Server LTS ARM64
 - Primary runtime architecture: Linux ARM64
 - Backend: Go. Frontend: Svelte 5 and TypeScript, embedded into the Go binary
-- Delivery (later gates): signed GitHub Releases, pull-based installer, GUI self-update
+- Delivery: signed GitHub Releases (pipeline: Gate G2), pull-based installer and GUI self-update (later gates)
 
 The target device needs no Node.js, Python, database, Git, or container runtime.
 
@@ -31,22 +31,27 @@ Requirements on the development machine: Go (version in [`backend/go.mod`](backe
 
 ```bash
 make deps    # npm ci
-make build   # frontend build + host binary -> bin/orbit
-bin/orbit    # listens on 127.0.0.1:8484
+make build   # frontend build + host binary -> bin/oarfish
+bin/oarfish    # listens on 127.0.0.1:8484
 ```
 
 Open <http://127.0.0.1:8484/> or `curl http://127.0.0.1:8484/healthz`.
 
-Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`, `make release-bundle`. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Repository layout
 
 | Path | Content |
 |---|---|
-| `backend/` | Go module: `cmd/orbit` entry point, `internal/` packages |
+| `backend/` | Go module: `cmd/oarfish` entry point, `internal/` packages |
 | `frontend/` | Svelte 5 + TypeScript + Vite (build time only) |
 | `docs/` | Specification, ADRs, roadmap, architecture, development guide, gate prompts |
-| `.github/workflows/` | CI (hosted runners only; no deployment to devices) |
+| `scripts/` | Release packaging, signing, verification and smoke tests |
+| `.github/workflows/` | CI and release (hosted runners only; no deployment to devices) |
 | `Makefile` | Developer entry points |
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces fit together.
+
+## License
+
+Oarfish is licensed under the Apache License 2.0 (SPDX identifier `Apache-2.0`), see [`LICENSE`](LICENSE). The repository is private until shortly before the MVP release (decisions D-C13 to D-C15 in [`docs/DECISIONS.md`](docs/DECISIONS.md)).

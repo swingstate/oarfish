@@ -5,11 +5,11 @@
 
 ## Context
 
-A generic Linux management platform would compete on a broad feature surface and dilute the product. Orbit is intended to be small, device-aware, and useful on constrained ARM systems.
+A generic Linux management platform would compete on a broad feature surface and dilute the product. Oarfish is intended to be small, device-aware, and useful on constrained ARM systems.
 
 ## Decision
 
-Orbit targets ARM SBCs, edge devices, and small embedded Linux appliances. Raspberry Pi Zero 2 W is the MVP resource baseline and initial reference device. Generic enterprise server management is not the primary product category.
+Oarfish targets ARM SBCs, edge devices, and small embedded Linux appliances. Raspberry Pi Zero 2 W is the MVP resource baseline and initial reference device. Generic enterprise server management is not the primary product category.
 
 ## Consequences
 

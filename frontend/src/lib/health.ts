@@ -1,6 +1,6 @@
 export type HealthState = 'checking' | 'ok' | 'unreachable';
 
-/** Asks the Orbit core whether it is alive. Never throws. */
+/** Asks the Oarfish core whether it is alive. Never throws. */
 export async function fetchHealth(
   fetchFn: typeof fetch = fetch,
   timeoutMs = 5000,
