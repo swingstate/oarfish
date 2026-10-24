@@ -54,4 +54,4 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the pieces fit togeth
 
 ## License
 
-Oarfish is licensed under the Apache License 2.0 (SPDX identifier `Apache-2.0`), see [`LICENSE`](LICENSE). The repository is private until shortly before the MVP release (decisions D-C13 to D-C15 in [`docs/DECISIONS.md`](docs/DECISIONS.md)).
+Oarfish is licensed under the Apache License 2.0 (SPDX identifier `Apache-2.0`), see [`LICENSE`](LICENSE). The repository becomes public after Gate G2 and a publication review, before Gate G3 (decisions D-C13, D-C14 and D-C17 in [`docs/DECISIONS.md`](docs/DECISIONS.md); checklist in [`docs/PUBLICATION_CHECKLIST.md`](docs/PUBLICATION_CHECKLIST.md)).

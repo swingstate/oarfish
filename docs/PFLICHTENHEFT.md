@@ -2,7 +2,7 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.3
+- Dokumentversion: 0.3.1
 - Status: Baseline-Kandidat für Gate G0
 - Stand: 22. Oktober 2026
 - Zielrelease: Oarfish MVP 0.1
