@@ -18,8 +18,9 @@
 | D-C12 | The ARM64 smoke test required by ORB-CICD-004 is an explicit acceptance criterion of Gate G2, not of Gate G1. |
 | D-C13 | Public release channel: the repository and its GitHub Releases become public (anonymous HTTPS pull). No permanent GitHub token on the target device in the default architecture. |
 | D-C14 | License: Apache-2.0. |
-| D-C15 | The repository stays private until shortly before the MVP release. Before it becomes public, the full Git history must be reviewed for secrets and machine-specific values and the license must be in place. |
+| D-C15 | The repository stays private until shortly before the MVP release. Before it becomes public, the full Git history must be reviewed for secrets and machine-specific values and the license must be in place. **Superseded by D-C17.** |
 | D-C16 | Product, repository and binary are renamed from Orbit to Oarfish before the first release tag. Requirement IDs ORB-* remain unchanged for traceability. |
+| D-C17 | The repository swingstate/oarfish becomes public after Gate G2 and a successful publication review, before Gate G3. The review covers a full history scan for secrets and machine-specific values, license check, fork-workflow approval, branch and tag protection. D-C15 is superseded by this decision. |
 
 ## Deferred, not blocking Gate G1
 

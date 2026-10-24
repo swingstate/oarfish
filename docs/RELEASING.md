@@ -82,6 +82,33 @@ Order matters: check the signature first, because the hashes are only as trustwo
 
 Releases are signed with `minisign -S -l` (legacy mode, algorithm id `Ed`), so the signature is plain Ed25519 over the bytes of `checksums.txt` and can be verified with Go's `crypto/ed25519` without BLAKE2b. `minisign -V` accepts both modes; `scripts/verify-release.sh` additionally rejects anything that is not `Ed`. **The format is fixed once `v0.1.0-alpha.1` is published:** installer and updater will be written against it, so `-l` in `scripts/sign-release.sh` must not be removed afterwards. Rationale and file layout: ADR 0005, Amendment.
 
+## Verify a release anonymously
+
+For a reader without a GitHub account, token or `gh`. This works only once the repository is public (D-C17); while it is private the URLs answer 404. Needs `curl` and `minisign`.
+
+```bash
+TAG=v0.1.0-alpha.1
+VER=${TAG#v}
+mkdir verify && cd verify
+base="https://github.com/swingstate/oarfish/releases/download/$TAG"
+for f in checksums.txt checksums.txt.sig manifest.json sbom-backend.cdx.json sbom-frontend.cdx.json \
+         "oarfish_${VER}_linux_arm64.tar.gz"; do
+  curl -fsSLO "$base/$f"
+done
+# The public key at the tagged commit (the file the release workflow verifies against).
+curl -fsSL -o oarfish-release.pub \
+  "https://raw.githubusercontent.com/swingstate/oarfish/$TAG/release/oarfish-release.pub"
+
+minisign -Vm checksums.txt -x checksums.txt.sig -p oarfish-release.pub   # 1. signature
+sha256sum -c checksums.txt                                               # 2. hashes (macOS: shasum -a 256 -c checksums.txt)
+```
+
+`minisign` prints `Signature and comment signature verified` and the trusted comment `oarfish <tag> <commit>`. Only then are the hashes in `checksums.txt` worth anything. Download every file listed in `checksums.txt` (the loop does), otherwise `sha256sum -c` reports the missing ones.
+
+What this does and does not prove: the signature proves the release files were signed with the private key behind `release/oarfish-release.pub`. The public key comes from the same repository, so it does not protect against someone who controls the repository itself. For that, compare the key id (`11F1C52777090BFC`, the number in the `untrusted comment` line of the key file) and the key line with a copy obtained through an independent channel. No such second channel exists yet; installer and updater will carry the key themselves (Gates G3 and G6).
+
+Status: the commands were checked with `gh release download` and the real public key (signature, hashes and `scripts/verify-release.sh` all passed). The anonymous `curl` URLs themselves could only be tested after the visibility change, see `docs/PUBLICATION_CHECKLIST.md`, step (h).
+
 ## Build a bundle locally (unsigned)
 
 ```bash
@@ -108,6 +135,21 @@ make check-reproducible    # rebuilds the frontend and the bundle twice, empty G
 ## Public key in installer and updater (not implemented in this gate)
 
 `release/oarfish-release.pub` is the single source of the trusted key. Gate G3 will embed its key line in `install.sh`; Gate G6 will embed the file in the Oarfish binary with `go:embed`. Both must verify `checksums.txt.sig` before trusting any hash. The updater can use `crypto/ed25519` from the standard library (legacy mode). See ADR 0005 for the open point (key rotation).
+
+## Before making the repository public
+
+Decision D-C17 makes the repository public after Gate G2 and this review, before Gate G3. Gate G2.1 did the review; the visibility change is a manual step by the maintainer. Run through this list again right before flipping the switch, because history and workflows may have changed since.
+
+- [ ] **Secret scan, full history and tree.** `gitleaks git --redact --log-opts="--all" .` and `gitleaks dir --redact .` report no leaks. `--redact` keeps values out of the output.
+- [ ] **Authors.** `git log --all --format='%an <%ae>%n%cn <%ce>' | sort -u` lists only GitHub noreply addresses (plus `GitHub <noreply@github.com>` for web merges and the `Co-Authored-By` trailer address).
+- [ ] **Machine-specific values.** No hits for home directories, local user or host names, private IPs or e-mail addresses in `git grep -I -n -E '<pattern>' $(git rev-list --all)` (zsh: use an array, the list is not word-split).
+- [ ] **No private key, `.env` or build artifact ever committed.** `git log --all --diff-filter=A --name-only --format= | sort -u` shows none. Only `release/oarfish-release.pub` and the public test fixtures under `scripts/bundlegen/testdata/` carry minisign material.
+- [ ] **Workflows.** No `pull_request_target`, no `workflow_run`, no untrusted `github.event` field in a shell, every third-party action pinned to a full commit SHA, minimal `permissions`, `OARFISH_RELEASE_SIGNING_KEY` referenced in one step of one job that only starts for a tag push.
+- [ ] **License.** `LICENSE` is Apache-2.0, `README.md` names it, no manifest claims another one, no dependency with an incompatible license.
+- [ ] **GitHub settings** (a) to (f) in `docs/PUBLICATION_CHECKLIST.md`.
+- [ ] **Visibility change to public** (step (g) there), then the anonymous download test (step (h)).
+
+Rewriting history is not part of this list. If a scan ever finds a real secret in history, rotate it first (for the release key: new key pair, new public key, and the consequences in ADR 0005), then decide about a rewrite.
 
 ## Known limitations
 
