@@ -29,7 +29,7 @@ Node.js is a build-time tool only. The Oarfish binary and the target device do n
 | `make release-bundle` | frontend build, then `scripts/release-bundle.sh`: unsigned `dist/release/oarfish_<version>_linux_arm64.tar.gz` and `manifest.json`, the same script CI and the release workflow use |
 | `make check-reproducible` | builds the bundle twice from scratch (frontend rebuilt, empty Go cache) and compares SHA-256 |
 | `make test-signing` | sign, verify and tamper-rejection tests with throwaway keys (needs `minisign`) |
-| `make test-installer` | `scripts/test-installer.sh`: the installer against a fake root with a throwaway key, 99 checks including every refusal and tamper case (needs `minisign` and OpenSSL 3). `OARFISH_TEST_OPENSSL=<path>` selects the OpenSSL, `OARFISH_TEST_SH=<shell>` the shell that runs the installer (default `dash`) |
+| `make test-installer` | `scripts/test-installer.sh`: the installer against a fake root with a throwaway key, 98 checks on Linux (99 on macOS) including every refusal and tamper case (needs `minisign` and OpenSSL 3). `OARFISH_TEST_OPENSSL=<path>` selects the OpenSSL, `OARFISH_TEST_SH=<shell>` the shell that runs the installer (default `dash`) |
 | `make lint-shell` | shellcheck: `install/install.sh` and the container scripts as POSIX sh at every severity, `scripts/*.sh` at warning level |
 | `make clean` | removes `bin/`, `dist/` and the generated frontend build (keeps `dist/.gitkeep`) |
 
