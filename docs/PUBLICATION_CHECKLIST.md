@@ -60,6 +60,8 @@ Settings → means the repository's Settings tab: `https://github.com/swingstate
   - `Reproducible bundle`
   - `Signing and tamper tests`
   - `Dependency scan and SBOM generation`
+  - `Installer checks and tests` (added in Gate G3)
+  - `Installer in arm64 container (debian:12)` and `Installer in arm64 container (ubuntu:24.04)` (added in Gate G3; these pull container images from Docker Hub and need arm64 emulation on the runner, so they are the most likely to fail for reasons outside the repository; require them only if you accept that)
 
   Do not require the `Release / ...` checks: that workflow only runs on pull requests that touch release files, so a required check would block every other pull request.
 - **Consequence:** changes reach `main` only through a pull request whose checks are green; direct pushes are rejected.

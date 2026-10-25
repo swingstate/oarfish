@@ -44,6 +44,8 @@ Do not pipe the download into a shell (`curl ... | sudo sh`). The two-step way l
 
 The installer you download from a release belongs to that release and installs exactly that version. To install another version, pass it: `sudo sh install.sh --version v0.1.0-alpha.3`. A copy of `install.sh` taken from the source repository is not tied to a release; it stops and asks for `--version`.
 
+Releases before `v0.1.0-alpha.2` (that is, `v0.1.0-alpha.1`) have no installer and a different bundle layout; this installer refuses them.
+
 For later stable releases the address `https://github.com/swingstate/oarfish/releases/latest/download/install.sh` is expected to work (GitHub's "latest" skips prereleases). That is **expected, to be verified with the first stable release**; no stable release exists yet, so do not rely on it.
 
 ### What the installer does, in order

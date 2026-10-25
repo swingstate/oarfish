@@ -6,14 +6,25 @@ The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.
 
 ## Status
 
-**Gate G1 (repository foundation and CI) is implemented; Gate G2 (signed Linux ARM64 release pipeline) is in progress.** The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, a GitHub Actions CI workflow, and a release workflow that turns a version tag into a signed GitHub Release ([`docs/RELEASING.md`](docs/RELEASING.md)).
+**Gates G1 (repository foundation and CI) and G2 (signed Linux ARM64 release pipeline) are implemented; Gate G3 (installer) is in review.** The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, GitHub Actions CI, a release workflow that turns a version tag into a signed GitHub Release ([`docs/RELEASING.md`](docs/RELEASING.md)), and `install/install.sh`, an installer that pulls a release anonymously, verifies it and installs Oarfish as a systemd service ([`docs/INSTALL.md`](docs/INSTALL.md)).
 
 What the binary does today:
 
 - serves `GET /healthz` (`{"status":"ok"}`)
 - serves the embedded frontend, which shows whether `/healthz` answers
 
-What it does **not** do yet: hardware or OS detection, metrics, authentication, plugins, self-update, installation. Those belong to later gates. Nothing in this repository has been run on a Raspberry Pi yet.
+What it does **not** do yet: hardware or OS detection, metrics, authentication, plugins, self-update. Those belong to later gates. **Nothing in this repository has been run on a Raspberry Pi, a Raspberry Pi OS or an Ubuntu Server image yet.** The installer is tested against a fake root directory and in plain arm64 container images under qemu; see [`docs/INSTALL.md`](docs/INSTALL.md) for what is and is not verified.
+
+## Install (Linux ARM64 with systemd and OpenSSL 3)
+
+```bash
+curl -fsSLO https://github.com/swingstate/oarfish/releases/download/<tag>/install.sh
+less install.sh                  # read it first
+sudo sh install.sh --dry-run
+sudo sh install.sh
+```
+
+The GUI listens on `127.0.0.1:8484` only; reach it from another machine with an SSH tunnel. Release signing key id: `11F1C52777090BFC`. Full instructions, uninstall and troubleshooting: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Platform baseline
 
@@ -21,7 +32,7 @@ What it does **not** do yet: hardware or OS detection, metrics, authentication, 
 - Mandatory future target: Ubuntu Server LTS ARM64
 - Primary runtime architecture: Linux ARM64
 - Backend: Go. Frontend: Svelte 5 and TypeScript, embedded into the Go binary
-- Delivery: signed GitHub Releases (pipeline: Gate G2), pull-based installer and GUI self-update (later gates)
+- Delivery: signed GitHub Releases (Gate G2), pull-based installer (Gate G3), GUI self-update (later gate)
 
 The target device needs no Node.js, Python, database, Git, or container runtime.
 
@@ -45,8 +56,9 @@ Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`, `make r
 |---|---|
 | `backend/` | Go module: `cmd/oarfish` entry point, `internal/` packages |
 | `frontend/` | Svelte 5 + TypeScript + Vite (build time only) |
-| `docs/` | Specification, ADRs, roadmap, architecture, development guide, gate prompts |
-| `scripts/` | Release packaging, signing, verification and smoke tests |
+| `install/` | `install.sh` (POSIX sh installer) and `oarfish.service` (systemd unit, shipped inside the bundle) |
+| `docs/` | Specification, ADRs, roadmap, architecture, install and development guides, gate prompts |
+| `scripts/` | Release packaging, signing, verification, installer tests and smoke tests |
 | `.github/workflows/` | CI and release (hosted runners only; no deployment to devices) |
 | `Makefile` | Developer entry points |
 
