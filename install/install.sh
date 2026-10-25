@@ -599,6 +599,8 @@ main() {
   BUNDLE=$BUNDLE_ROOT.tar.gz
   BASE_URL=${BASE_URL_OVERRIDE:-https://github.com/$OARFISH_REPO/releases/download/$TAG}
 
+  # Tell a non-root user straight away; a dry run only reads, so it needs no root.
+  if [ "$DRY_RUN" = 0 ]; then require_root; fi
   check_platform
   check_tools
   check_openssl
@@ -606,7 +608,6 @@ main() {
   print_plan_install
   if [ "$DRY_RUN" = 1 ]; then say "Dry run: nothing was downloaded or changed."; exit 0; fi
 
-  require_root
   WORK=$(mktemp -d "${TMPDIR:-/tmp}/oarfish-install.XXXXXX") || die "cannot create a temporary directory."
   download_and_verify
   do_install

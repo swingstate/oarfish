@@ -416,15 +416,18 @@ left="$(find "$R" \( -type f -o -type l \) ! -path "$R/etc/os-release")"
 [ -z "$left" ] || fail "files remain after purge: $left"
 pass "no installed file or link remains after purge"
 
-echo "== real mode refuses a non-root user (Linux with systemd only)"
-if [ "$(uname -s)" = Linux ] && [ -d /run/systemd/system ]; then
-  set +e
-  env -i PATH="$PATH" "$SH" "$TMP/prod/install.sh" > "$TMP/out" 2>&1; RC=$?
-  set -e
-  [ "$RC" != 0 ] && grep -q "must run as root" "$TMP/out" || fail "non-root real run: exit $RC"
-  pass "non-root real run refused"
-else
-  echo "SKIP  real-mode root check needs Linux with systemd; covered by the CI job"
-fi
+echo "== real mode (no OARFISH_TEST_ROOT) refuses a non-root user before doing anything"
+# Not in test mode, so it would touch the real system if it got past the root check;
+# the root check comes first, and the suite itself refuses to run as root.
+set +e
+env -i PATH="$TMP/shim:$PATH" "$SH" "$TMP/prod/install.sh" > "$TMP/out" 2>&1; RC=$?
+set -e
+if [ "$RC" = 0 ] || ! grep -q "must run as root" "$TMP/out"; then fail "non-root real run: exit $RC"; fi
+pass "non-root real run refused: must run as root"
+set +e
+env -i PATH="$TMP/shim:$PATH" FAKE_UNAME_M=x86_64 "$SH" "$TMP/prod/install.sh" --dry-run > "$TMP/out" 2>&1; RC=$?
+set -e
+if [ "$RC" = 0 ] || ! grep -q "unsupported CPU architecture" "$TMP/out"; then fail "real-mode dry run on a wrong architecture: exit $RC"; fi
+pass "real-mode dry run needs no root and refuses a wrong architecture"
 
 echo "ALL $N INSTALLER CHECKS PASSED"
