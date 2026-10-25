@@ -60,20 +60,61 @@ if ! command -v sha256sum >/dev/null 2>&1; then
   printf '#!/bin/sh\nexec shasum -a 256 "$@"\n' > "$TMP/shim/sha256sum"
 fi
 # systemctl stand-in: records calls and keeps enabled/active state in files.
+# Health is a file ($state/healthz, read by the installer through a file:// URL):
+# start/restart writes it, unless the version that "current" points to is listed
+# in $state/unhealthy, in which case it is removed, as a service that fails to come up.
 cat > "$TMP/shim/systemctl-stub" <<'EOF'
 #!/bin/sh
-echo "$*" >> "$FAKE_SYSTEMD_STATE/calls.log"
+S="$FAKE_SYSTEMD_STATE"
+echo "$*" >> "$S/calls.log"
+set_health() {
+  cur="$(readlink "$FAKE_ROOT/opt/oarfish/current" 2>/dev/null || true)"
+  cur="${cur#releases/}"
+  if [ -f "$S/unhealthy" ] && grep -qx "$cur" "$S/unhealthy"; then rm -f "$S/healthz"
+  else echo '{"status":"ok"}' > "$S/healthz"; fi
+}
 case "$1" in
-  is-enabled) [ -f "$FAKE_SYSTEMD_STATE/enabled" ] ;;
-  enable)     : > "$FAKE_SYSTEMD_STATE/enabled" ;;
-  disable)    rm -f "$FAKE_SYSTEMD_STATE/enabled" ;;
-  is-active)  [ -f "$FAKE_SYSTEMD_STATE/active" ] ;;
-  start|restart) : > "$FAKE_SYSTEMD_STATE/active" ;;
-  stop)       rm -f "$FAKE_SYSTEMD_STATE/active" ;;
+  is-enabled) [ -f "$S/enabled" ] ;;
+  enable)     : > "$S/enabled" ;;
+  disable)    rm -f "$S/enabled"
+              case " $* " in *" --now "*) rm -f "$S/active" "$S/healthz" ;; esac ;;
+  is-active)  [ -f "$S/active" ] ;;
+  start|restart) : > "$S/active"; set_health ;;
+  stop)       rm -f "$S/active" "$S/healthz" ;;
+  reset-failed) ;;
   cat)        [ -f "$FAKE_ROOT/etc/systemd/system/oarfish.service" ] ;;
   daemon-reload) ;;
   *) exit 1 ;;
 esac
+EOF
+# User and ownership tools for the tests that run with OARFISH_TEST_USERS=1: record
+# their arguments instead of touching the machine. "id -u oarfish" follows useradd/userdel.
+REAL_ID="$(command -v id)"
+cat > "$TMP/shim/chown" <<'EOF'
+#!/bin/sh
+echo "$*" >> "$FAKE_SYSTEMD_STATE/chown.log"
+EOF
+cat > "$TMP/shim/useradd" <<'EOF'
+#!/bin/sh
+echo "useradd $*" >> "$FAKE_SYSTEMD_STATE/users.log"
+: > "$FAKE_SYSTEMD_STATE/user-exists"
+EOF
+cat > "$TMP/shim/userdel" <<'EOF'
+#!/bin/sh
+echo "userdel $*" >> "$FAKE_SYSTEMD_STATE/users.log"
+rm -f "$FAKE_SYSTEMD_STATE/user-exists"
+EOF
+cat > "$TMP/shim/getent" <<'EOF'
+#!/bin/sh
+exit 2
+EOF
+cat > "$TMP/shim/id" <<EOF
+#!/bin/sh
+if [ "\$1" = -u ] && [ "\${2:-}" = oarfish ]; then
+  if [ -f "\$FAKE_SYSTEMD_STATE/user-exists" ]; then echo 998; exit 0; fi
+  exit 1
+fi
+exec "$REAL_ID" "\$@"
 EOF
 chmod +x "$TMP/shim/"*
 # The real tools that point to a different binary on this machine.
@@ -233,7 +274,7 @@ pass "refused runs left the root untouched"
 # Tools: a PATH that lacks one required tool.
 tool_path() { # tool_path EXCLUDE: a PATH dir with every needed tool except EXCLUDE
   local d="$TMP/path-$1"; mkdir -p "$d"
-  for t in curl tar gzip sha256sum od base64 mktemp awk df id mv ln rm mkdir chmod cat cp sed grep tr head tail wc sleep readlink dirname find; do
+  for t in curl tar gzip sha256sum od base64 mktemp awk df id mv ln rm mkdir chmod cat cp sed grep tr head tail wc sleep readlink dirname find chown useradd userdel getent; do
     [ "$t" != "$1" ] || continue
     src="$(PATH="$TMP/shim:$PATH" command -v "$t")" || die "test host lacks $t"
     ln -sf "$src" "$d/$t"
@@ -367,16 +408,84 @@ assert "current was not created" test ! -e "$R/opt/oarfish/current"
 R="$(new_root)"; mkdir -p "$R/opt/oarfish/current"
 expect_reject "current is a real directory" "not a symlink" "$R" "$TMP/inst-v1.sh" "$REL1"
 
-echo "== health check failure"
-R="$(new_root)"
-INST_HEALTHCHECK='' INST_ENV="OARFISH_HEALTH_URL=http://127.0.0.1:9/healthz OARFISH_HEALTH_TIMEOUT=2" \
-  expect_reject "first install that never becomes healthy" "did not become healthy" "$R" "$TMP/inst-v1.sh" "$REL1"
-expect_ok "install v1 (health skipped)" "$(new_root)" "$TMP/inst-v1.sh" "$REL1"
-R="$(new_root)"; expect_ok "install v1 again" "$R" "$TMP/inst-v1.sh" "$REL1"
-INST_HEALTHCHECK='' INST_ENV="OARFISH_HEALTH_URL=http://127.0.0.1:9/healthz OARFISH_HEALTH_TIMEOUT=2" \
-  expect_reject "upgrade that never becomes healthy is rolled back" "rolling back" "$R" "$TMP/inst-v2.sh" "$REL2"
+echo "== health check failure: rollback, and the first installation"
+# The stub systemctl writes the health file on start/restart unless the active version is listed in $state/unhealthy.
+state_of() { echo "$TMP/state/$(basename "$1")"; }
+HEALTH_ENV() { echo "OARFISH_HEALTH_URL=file://$(state_of "$1")/healthz OARFISH_HEALTH_TIMEOUT=2"; }
+line_of() { grep -n -- "$1" "$2" | head -n "${3:-1}" | tail -n 1 | cut -d: -f1; }
+
+R="$(new_root)"; ST="$(state_of "$R")"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_ok "install v1 with the health check on" "$R" "$TMP/inst-v1.sh" "$REL1"
+out_has "healthy" || fail "no healthy line"
+echo "$V2" > "$ST/unhealthy"; : > "$ST/calls.log"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "upgrade that fails its health check: rollback is healthy" "previous version $V1 is active again and healthy" "$R" "$TMP/inst-v2.sh" "$REL2"
 assert "current points to the previous release again" test "$(readlink "$R/opt/oarfish/current")" = "releases/$V1"
-grep -q "installation of $V2 failed" "$TMP/out" || fail "rollback message"
+assert "reset-failed was called" grep -q '^reset-failed oarfish.service' "$ST/calls.log"
+rs="$(line_of '^restart oarfish.service' "$ST/calls.log" 2)"; rf="$(line_of '^reset-failed oarfish.service' "$ST/calls.log")"
+[ -n "$rs" ] && [ -n "$rf" ] && [ "$rf" -lt "$rs" ] || fail "reset-failed must come before the restart of the rollback (log: $(tr '\n' ';' < "$ST/calls.log"))"
+pass "reset-failed comes before the rollback's restart"
+assert "the service is healthy again after the rollback" test -f "$ST/healthz"
+out_lacks "AND the rollback" || fail "a healthy rollback must not report a failed rollback"
+
+printf '%s\n%s\n' "$V1" "$V2" > "$ST/unhealthy"; : > "$ST/calls.log"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "upgrade that fails and whose rollback is unhealthy too" "rollback to $V1 did not become healthy either" "$R" "$TMP/inst-v2.sh" "$REL2"
+out_has "journalctl -u oarfish" || fail "no journalctl hint"
+out_lacks "is active again and healthy" || fail "an unhealthy rollback must not claim the old version is healthy"
+assert "reset-failed was called for the failed rollback too" grep -q '^reset-failed oarfish.service' "$ST/calls.log"
+assert "current points to the previous release" test "$(readlink "$R/opt/oarfish/current")" = "releases/$V1"
+
+R="$(new_root)"; ST="$(state_of "$R")"; echo "$V1" > "$ST/unhealthy"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "first installation that never becomes healthy" "stopped and disabled" "$R" "$TMP/inst-v1.sh" "$REL1"
+out_has "journalctl -u oarfish" || fail "no journalctl hint"
+assert "disable --now was issued" grep -q '^disable --now oarfish.service' "$ST/calls.log"
+assert "the stub service is disabled and stopped" test ! -e "$ST/enabled" -a ! -e "$ST/active"
+assert "the files are kept" test -x "$R/opt/oarfish/releases/$V1/oarfish" -a "$(readlink "$R/opt/oarfish/current")" = "releases/$V1" -a -f "$R/etc/systemd/system/oarfish.service"
+out_lacks "rolling back" || fail "a first installation has nothing to roll back to"
+
+echo "== ownership and users (stub chown, useradd, userdel, getent, id)"
+R="$(new_root)"; ST="$(state_of "$R")"
+INST_ENV="OARFISH_TEST_USERS=1" expect_ok "install acting as root with stub user tools" "$R" "$TMP/inst-v1.sh" "$REL1"
+grep -q '^useradd --system --user-group --no-create-home --home-dir /var/lib/oarfish --shell [^ ]*nologin oarfish$' "$ST/users.log" \
+  || fail "useradd was not called as expected: $(cat "$ST/users.log" 2>/dev/null)"
+pass "useradd: system user, own group, no home, nologin shell"
+for f in "" /oarfish /oarfish.service /LICENSE /THIRD_PARTY_NOTICES.txt; do
+  grep -q "^root:root .*/release$f\$" "$ST/chown.log" || fail "chown root:root was not applied to the release path '...${f:-/release}' (chown.log: $(tr '\n' ';' < "$ST/chown.log"))"
+done
+pass "chown root:root was applied to every one of the five release paths"
+grep -q "^root:oarfish $R/etc/oarfish\$" "$ST/chown.log" && grep -q "^oarfish:oarfish $R/etc/oarfish/secrets\$" "$ST/chown.log" \
+  && grep -q "^oarfish:oarfish $R/var/lib/oarfish\$" "$ST/chown.log" && grep -q "^oarfish:oarfish $R/var/cache/oarfish\$" "$ST/chown.log" \
+  || fail "directory ownership: $(tr '\n' ';' < "$ST/chown.log")"
+pass "directories got their owners"
+: > "$ST/users.log"
+INST_ENV="OARFISH_TEST_USERS=1" expect_ok "re-run with the user present" "$R" "$TMP/inst-v1.sh" "$REL1"
+[ ! -s "$ST/users.log" ] || fail "a re-run must not create the user again: $(cat "$ST/users.log")"
+out_has "service user oarfish exists" || fail "no 'exists' line"
+pass "re-run did not call useradd"
+
+echo '{"keep":"me"}' > "$R/etc/oarfish/config.json"
+INST_ENV="OARFISH_TEST_USERS=1" INST_PATH="$(tool_path userdel)" expect_reject "--uninstall --purge needs userdel" "userdel was not found" "$R" "$TMP/inst-v1.sh" "$REL1" --uninstall --purge
+INST_ENV="OARFISH_TEST_USERS=1" INST_PATH="$(tool_path userdel)" expect_reject "--uninstall --purge --dry-run warns about userdel too" "userdel was not found" "$R" "$TMP/inst-v1.sh" "$REL1" --uninstall --purge --dry-run
+assert "the refusal changed nothing" test -f "$R/etc/oarfish/config.json" -a -x "$R/opt/oarfish/releases/$V1/oarfish"
+INST_ENV="OARFISH_TEST_USERS=1" INST_PATH="$(tool_path userdel)" expect_ok "--uninstall without --purge does not need userdel" "$R" "$TMP/inst-v1.sh" "$REL1" --uninstall
+R="$(new_root)"; ST="$(state_of "$R")"
+INST_ENV="OARFISH_TEST_USERS=1" expect_ok "install again" "$R" "$TMP/inst-v1.sh" "$REL1"
+INST_ENV="OARFISH_TEST_USERS=1" expect_ok "--uninstall --purge removes the user" "$R" "$TMP/inst-v1.sh" "$REL1" --uninstall --purge
+grep -q '^userdel oarfish$' "$ST/users.log" || fail "userdel was not called: $(cat "$ST/users.log")"
+pass "userdel oarfish was called"
+
+echo "== an existing unit is replaced, and the output says so"
+R="$(new_root)"; mkdir -p "$R/etc/systemd/system"; echo "[Service]" > "$R/etc/systemd/system/oarfish.service"
+expect_ok "install over a unit that differs" "$R" "$TMP/inst-v1.sh" "$REL1"
+out_has "replaced the existing" || fail "no 'replaced' message"
+out_has "drop-in" || fail "no drop-in hint"
+assert "the unit is the release's unit" cmp -s "$ROOT/install/oarfish.service" "$R/etc/systemd/system/oarfish.service"
+
+echo "== the unit and the installer agree on the listen address"
+unit_listen="$(sed -n 's/^ExecStart=.* -listen \([^ ]*\).*$/\1/p' "$ROOT/install/oarfish.service")"
+inst_listen="$(sed -n "s/^LISTEN_ADDR='\(.*\)'\$/\1/p" "$ROOT/install/install.sh")"
+[ -n "$unit_listen" ] && [ "$unit_listen" = "$inst_listen" ] || fail "unit -listen '$unit_listen' vs installer LISTEN_ADDR '$inst_listen'"
+pass "ExecStart -listen $unit_listen equals the installer's LISTEN_ADDR"
+case "$unit_listen" in 127.0.0.1:*) pass "the unit listens on loopback only" ;; *) fail "unit listens on $unit_listen" ;; esac
 
 echo "== dry run"
 R="$(new_root)"

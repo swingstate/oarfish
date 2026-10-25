@@ -203,11 +203,19 @@ jobs:
         run: |
           # The unit refers to a binary and a user that do not exist on the runner; point it at /bin/true.
           sed 's#^ExecStart=.*#ExecStart=/bin/true#' install/oarfish.service > "$RUNNER_TEMP/oarfish.service"
+          systemd-analyze --version | head -1
           systemd-analyze verify "$RUNNER_TEMP/oarfish.service"
+          # Informational only: the unit is not changed to improve the score.
+          set +e
+          systemd-analyze security --offline=true --no-pager "$RUNNER_TEMP/oarfish.service" > "$RUNNER_TEMP/security.txt" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/security.txt"
+          echo "systemd-analyze security exit status: $status"
           {
-            echo "### systemd-analyze security (offline, informational)"
+            echo "### systemd-analyze security --offline=true (informational, ExecStart replaced by /bin/true)"
             echo '```'
-            systemd-analyze security --offline=true --no-pager "$RUNNER_TEMP/oarfish.service" | tail -n 4 || true
+            cat "$RUNNER_TEMP/security.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Installer tests against a fake root (dash, as on Debian and Ubuntu)

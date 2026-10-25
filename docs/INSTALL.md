@@ -82,7 +82,30 @@ sed -n 2p oarfish-release.pub | base64 -d | od -An -tx1 -j2 -N8
 #  fc 0b 09 77 27 c5 f1 11     ->  11 F1 C5 27 77 09 0B FC
 ```
 
-What this does and does not give you: the key is inside the script you downloaded, and the script is from the same GitHub repository as the key file, so comparing them only shows that the two copies agree. It does not protect against someone who controls the repository and replaces both. For that, compare the key id with a copy you got somewhere else, for example from a person you trust or from another machine. No second official channel exists yet. `install.sh` is also listed in the signed `checksums.txt`, so you can verify the script itself with minisign before you run it (see [RELEASING.md](RELEASING.md), "Verify a release anonymously").
+What this does and does not give you: the key is inside the script you downloaded, and the script is from the same GitHub repository as the key file, so comparing them only shows that the two copies agree. It does not protect against someone who controls the repository and replaces both. For that, compare the key id with a copy you got somewhere else, for example from a person you trust or from another machine. No second official channel exists yet.
+
+### Verify `install.sh` itself (optional)
+
+`install.sh` is listed in the signed `checksums.txt`, so you can check that the script you downloaded is the one the release signed, before you run it. This needs `minisign`, which is not installed by default (`apt install minisign` on current Debian and Ubuntu, `brew install minisign` on macOS); you do it on any computer, not necessarily on the device.
+
+```bash
+TAG=v0.1.0-alpha.2
+base=https://github.com/swingstate/oarfish/releases/download/$TAG
+mkdir verify && cd verify
+curl -fsSLO $base/install.sh
+curl -fsSLO $base/checksums.txt
+curl -fsSLO $base/checksums.txt.sig
+curl -fsSL -o oarfish-release.pub https://raw.githubusercontent.com/swingstate/oarfish/$TAG/release/oarfish-release.pub
+
+# 1. The signature of checksums.txt, made with the release key.
+minisign -Vm checksums.txt -x checksums.txt.sig -p oarfish-release.pub
+# 2. The SHA-256 of install.sh must be the one listed in checksums.txt.
+grep ' install.sh$' checksums.txt                 # the signed value
+sha256sum install.sh                              # yours (macOS: shasum -a 256 install.sh); the two must be equal
+grep ' install.sh$' checksums.txt | sha256sum -c -   # or let sha256sum compare (macOS: shasum -a 256 -c -)
+```
+
+Step 1 must print `Signature and comment signature verified`. Do step 2 only after step 1 succeeded, because the hashes in `checksums.txt` are only worth something once its signature is checked. This proves the script is the signed one; it does not remove the need to compare the key (the public key file comes from the same repository, see above). The installer itself repeats the signature check for everything it downloads.
 
 ## First start and opening the GUI
 
@@ -106,7 +129,13 @@ ssh -L 8484:127.0.0.1:8484 USER@DEVICE
 
 Leave that window open, then open <http://127.0.0.1:8484> in the browser on your own computer. If port 8484 is already in use there, take another local port: `ssh -L 9000:127.0.0.1:8484 USER@DEVICE` and open <http://127.0.0.1:9000>.
 
-Do not edit `/etc/systemd/system/oarfish.service` to listen on another address. Reverse proxy, TLS and network access come in later gates, together with authentication. A re-run of the installer replaces the unit file with the one from the release. Local changes belong in a drop-in (`sudo systemctl edit oarfish`).
+Do not change the service to listen on another address. Reverse proxy, TLS and network access come in later gates, together with authentication.
+
+**The installer overwrites `/etc/systemd/system/oarfish.service`.** If the file exists and differs from the one in the release, it is replaced (the installer says so), also when you re-run it. Do not edit that file. Local changes belong in a drop-in directory, which the installer never touches:
+
+```bash
+sudo systemctl edit oarfish        # creates /etc/systemd/system/oarfish.service.d/override.conf
+```
 
 ## Run it again
 
@@ -157,13 +186,15 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 | `does not match the SHA-256 in the signed checksums.txt` | The download is damaged or has been changed. Try again; if it repeats, do not install. |
 | `download of ... failed` | The tag does not exist, there is no network, or GitHub is unreachable. |
 | `not tied to a release` | You used the `install.sh` from the repository. Pass `--version`, or use the one from the release page. |
-| `did not become healthy` | The files are installed but the service does not answer. Look at `journalctl -u oarfish`. If an older version was active, the installer went back to it. |
+| `did not become healthy` | The files are installed but the service does not answer. Look at `journalctl -u oarfish`. If an older version was active, the installer went back to it and tells you whether that one is healthy. On a first installation the installer stops and disables the service (the files stay); after fixing the cause start it with `sudo systemctl enable --now oarfish`. |
+| `rollback ... did not become healthy either` | Neither the new nor the previous version runs. Check `systemctl status oarfish` and `journalctl -u oarfish`. |
+| `userdel was not found` | `--uninstall --purge` has to remove the service user and needs `userdel`. Nothing was changed. |
 
 ## What is verified, and what is not
 
 **Verified automatically (CI, every change):**
 
-- The installer functions against a fake root directory with a throwaway signing key, run with `dash` and with `bash`: wrong architecture, non-Linux, missing systemd, missing tools, LibreSSL and OpenSSL 1.1, a "verifier" that accepts everything, tampered `checksums.txt`, tampered and truncated signature, signature from another key, a valid prehashed signature, replayed signature, tampered and truncated bundle, tampered manifest, missing files, interrupted download (old installation untouched), bundles with extra files, links or an x86-64 binary, re-run without changes, upgrade, rollback after a failed health check, dry run, uninstall and purge. `scripts/test-installer.sh`.
+- The installer functions against a fake root directory with a throwaway signing key, run with `dash` and with `bash`: wrong architecture, non-Linux, missing systemd, missing tools, LibreSSL and OpenSSL 1.1, a "verifier" that accepts everything, tampered `checksums.txt`, tampered and truncated signature, signature from another key, a valid prehashed signature, replayed signature, tampered and truncated bundle, tampered manifest, missing files, interrupted download (old installation untouched), bundles with extra files, links or an x86-64 binary, re-run without changes, upgrade, rollback after a failed health check (with a healthy and with an unhealthy rollback, and `reset-failed` before the restart), a first installation that never becomes healthy (service stopped and disabled, files kept), `useradd`, `chown` on every path and `userdel` with stub tools, dry run, uninstall and purge. `scripts/test-installer.sh`. The `systemctl` used there is a stub, so these tests prove the installer's logic, not systemd behaviour.
 - The release pipeline: `install.sh` is stamped with the version, listed in the signed `checksums.txt`, and a tampered or wrongly stamped `install.sh` is rejected by `scripts/verify-release.sh`. The bundle, manifest and `install.sh` are reproducible.
 - End to end in plain `debian:12` and `ubuntu:24.04` **arm64** container images under qemu-user: signature verification with the image's OpenSSL, real `useradd`/`chown`, the real ARM64 binary started as the `oarfish` user, `/healthz` and the GUI answer, only `127.0.0.1:8484` listens, a second run changes nothing, uninstall and purge. Result of the first CI run: both passed. The minimal images contained **neither `curl` nor `openssl`** (the test installed both with `apt-get`, giving OpenSSL 3.0.22 on Debian 12 and 3.0.13 on Ubuntu 24.04); `tar`, `gzip`, `sha256sum`, `od`, `base64`, `awk`, `useradd` and `getent` were present. On a minimal system run `sudo apt install curl openssl` first. The per-job tool report is in the job summary of the "Installer in arm64 container" jobs.
 - The unit file passes `systemd-analyze verify` on the CI runner.

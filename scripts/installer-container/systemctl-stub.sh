@@ -1,11 +1,13 @@
 #!/bin/sh
 # systemctl stand-in for containers that have no systemd. "start" and "restart"
-# run the installed oarfish binary as the oarfish user, which is what the unit
-# would do, minus everything systemd adds (sandboxing, restart policy, boot).
+# run the installed binary as the oarfish user with exactly the command line of
+# the installed unit's ExecStart (so unit and binary cannot drift apart: an
+# argument the binary does not know makes it exit and the health check fail),
+# minus everything systemd adds (sandboxing, restart policy, boot).
 S=/tmp/fake-systemd
 mkdir -p "$S"
 echo "$*" >> "$S/calls.log"
-BIN="$FAKE_ROOT/opt/oarfish/current/oarfish"
+UNIT="$FAKE_ROOT/etc/systemd/system/oarfish.service"
 
 running() { [ -f "$S/pid" ] && kill -0 "$(cat "$S/pid")" 2>/dev/null; }
 stop_proc() {
@@ -18,7 +20,14 @@ stop_proc() {
   rm -f "$S/pid"
 }
 start_proc() {
-  setpriv --reuid=oarfish --regid=oarfish --clear-groups "$BIN" -listen 127.0.0.1:8484 </dev/null >"$S/oarfish.log" 2>&1 &
+  line="$(sed -n 's/^ExecStart=//p' "$UNIT")"
+  # shellcheck disable=SC2086 # splitting the command line into words is the point
+  set -- $line
+  exe="$1"
+  shift
+  if [ "$exe" != /opt/oarfish/current/oarfish ]; then echo "unexpected ExecStart binary: $exe" >&2; exit 1; fi
+  echo "ExecStart arguments: $*" >> "$S/calls.log"
+  setpriv --reuid=oarfish --regid=oarfish --clear-groups "$FAKE_ROOT$exe" "$@" </dev/null >"$S/oarfish.log" 2>&1 &
   echo $! > "$S/pid"
 }
 

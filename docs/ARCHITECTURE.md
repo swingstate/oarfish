@@ -100,4 +100,6 @@ manifest.json, bundle      embedded key; then SHA-256 against the        current
 - **No network exposure.** The installer never opens a port or changes a firewall.
 - **Out of scope here:** authentication, onboarding, platform and hardware detection, metrics, self-update, plugins, reverse proxy and TLS.
 
+- **The hardening is tuned to what the service does today.** `ProtectSystem=strict` makes `/etc` (and everything but the three directories above) read-only for the service, `PrivateDevices=yes` hides physical devices, and `RestrictAddressFamilies` allows only `AF_UNIX`, `AF_INET` and `AF_INET6`, without `AF_NETLINK`. Later gates that need more (G4/G5 reading hardware, sensors and network state, G6 writing releases through the update helper, G7 journal and service control, plugins, Tailscale, containers) must revisit the unit: add a narrow, documented relaxation for the specific access that gate needs (for example one `ReadWritePaths=` entry, `DeviceAllow=` for one device, or `AF_NETLINK`, each with a comment saying which requirement needs it) and test it. Removing hardening wholesale, or setting the unit to run unconfined because something did not work, is not an acceptable fix. Privileged operations belong in the broker and update helper (spec 8.6), not in a weaker service unit.
+
 User instructions: [`INSTALL.md`](INSTALL.md).

@@ -48,10 +48,21 @@ ok "installer succeeded, /healthz answered through the installer's own check"
 echo "== checks"
 "$R/opt/oarfish/current/oarfish" -version | grep -q "oarfish $VER " || fail "oarfish -version does not report $VER"
 ok "installed binary runs and reports $VER"
-code="$(curl -s -o /tmp/healthz.json -w '%{http_code}' http://127.0.0.1:8484/healthz)"
+
+# The service was started with the arguments of the unit's ExecStart (see the stub);
+# the address to check comes from the same line, not from a copy of it here.
+UNIT="$R/etc/systemd/system/oarfish.service"
+cmp -s "$UNIT" "$R/opt/oarfish/releases/$VER/oarfish.service" || fail "installed unit differs from the release's unit"
+grep -q '^ExecStart=/opt/oarfish/current/oarfish ' "$UNIT" || fail "unexpected ExecStart in the unit"
+listen="$(sed -n 's/^ExecStart=.* -listen \([^ ]*\).*$/\1/p' "$UNIT")"
+[ -n "$listen" ] || fail "the unit's ExecStart has no -listen argument"
+[ "$listen" = "$(sed -n "s/^LISTEN_ADDR='\(.*\)'\$/\1/p" /work/install.sh)" ] || fail "unit -listen $listen differs from the installer's LISTEN_ADDR"
+grep -q "^ExecStart arguments: .*-listen $listen" /tmp/fake-systemd/calls.log || fail "the process was not started with the unit's arguments"
+ok "the process was started with the ExecStart arguments of the installed unit (-listen $listen)"
+code="$(curl -s -o /tmp/healthz.json -w '%{http_code}' "http://$listen/healthz")"
 if [ "$code" != 200 ] || ! grep -q '"status":"ok"' /tmp/healthz.json; then fail "/healthz answered $code"; fi
 ok "GET /healthz -> 200 $(cat /tmp/healthz.json)"
-code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8484/)"
+code="$(curl -s -o /dev/null -w '%{http_code}' "http://$listen/")"
 [ "$code" = 200 ] || fail "/ answered $code"
 ok "GET / -> 200 (embedded frontend)"
 
@@ -68,16 +79,23 @@ own() { stat -c '%U:%G %a' "$1"; }
 [ "$(own "$R/var/cache/oarfish")" = "oarfish:oarfish 750" ] || fail "/var/cache/oarfish is $(own "$R/var/cache/oarfish")"
 [ "$(own "$R/opt/oarfish/releases/$VER")" = "root:root 755" ] || fail "release dir is $(own "$R/opt/oarfish/releases/$VER")"
 [ "$(own "$R/opt/oarfish/releases/$VER/oarfish")" = "root:root 755" ] || fail "binary is $(own "$R/opt/oarfish/releases/$VER/oarfish")"
-ok "ownership and modes of directories and binary"
+for f in oarfish.service LICENSE THIRD_PARTY_NOTICES.txt; do
+  [ "$(own "$R/opt/oarfish/releases/$VER/$f")" = "root:root 644" ] || fail "$f is $(own "$R/opt/oarfish/releases/$VER/$f")"
+done
+ok "ownership and modes of directories, binary and the other release files"
 
 pid="$(cat /tmp/fake-systemd/pid)"
 [ "$(awk '/^Uid:/ {print $2}' "/proc/$pid/status")" = "$(id -u oarfish)" ] || fail "process $pid does not run as oarfish"
 ok "the process runs as the oarfish user (not root)"
 
-# 127.0.0.1:8484 is 0100007F:2124 in /proc/net/tcp; state 0A = LISTEN.
-awk '$2 == "0100007F:2124" && $4 == "0A" { f = 1 } END { exit !f }' /proc/net/tcp || fail "nothing listens on 127.0.0.1:8484"
-if awk '$4 == "0A" && $2 ~ /^0+:2124$/ { f = 1 } END { exit !f }' /proc/net/tcp /proc/net/tcp6 2>/dev/null; then fail "port 8484 is open on all interfaces"; fi
-ok "listening on 127.0.0.1:8484 only"
+# /proc/net/tcp lists addresses as little-endian hex; state 0A = LISTEN. Only loopback is acceptable.
+host="${listen%:*}"
+port="${listen##*:}"
+[ "$host" = 127.0.0.1 ] || fail "the unit does not listen on loopback: $listen"
+hexport="$(printf '%04X' "$port")"
+awk -v want="0100007F:$hexport" '$2 == want && $4 == "0A" { f = 1 } END { exit !f }' /proc/net/tcp || fail "nothing listens on $listen"
+if awk -v p=":$hexport" '$4 == "0A" && $2 ~ /^0+:/ && index($2, p) { f = 1 } END { exit !f }' /proc/net/tcp /proc/net/tcp6 2>/dev/null; then fail "port $port is open on all interfaces"; fi
+ok "listening on $listen only"
 
 echo "== re-run"
 sh /work/install.sh > /tmp/install2.out 2>&1 || { cat /tmp/install2.out; fail "second run failed"; }

@@ -30,8 +30,9 @@
 #
 # Tests only: when OARFISH_TEST_ROOT is set, all paths live below that directory,
 # root and a running systemd are not required, and OARFISH_RELEASE_BASE_URL,
-# OARFISH_OPENSSL, OARFISH_SYSTEMCTL, OARFISH_HEALTH_URL, OARFISH_HEALTH_TIMEOUT
-# and OARFISH_HEALTHCHECK=skip are honoured. Without it they are ignored.
+# OARFISH_OPENSSL, OARFISH_SYSTEMCTL, OARFISH_HEALTH_URL, OARFISH_HEALTH_TIMEOUT,
+# OARFISH_HEALTHCHECK=skip and OARFISH_TEST_USERS=1 (act as root for the user and
+# ownership steps, with stub tools on PATH) are honoured. Without it they are ignored.
 
 set -eu
 umask 022
@@ -108,7 +109,7 @@ EOF
 file_sha() { sha256sum "$1" | awk '{print $1}'; }
 
 # True when we may really create users and change ownership.
-can_manage_users() { [ "$TESTMODE" = 0 ] || [ "$(id -u)" = 0 ]; }
+can_manage_users() { [ "$TESTMODE" = 0 ] || [ "$(id -u)" = 0 ] || [ "${OARFISH_TEST_USERS:-}" = 1 ]; }
 
 valid_version() {
   case $1 in *[!0-9A-Za-z.-]*) return 1 ;; esac
@@ -319,8 +320,12 @@ download_and_verify() {
 }
 
 # ---- installation ----------------------------------------------------------
-set_owner() { # set_owner OWNER:GROUP PATH
-  if can_manage_users; then chown "$1" "$2"; fi
+set_owner() { # set_owner OWNER:GROUP PATH...: the owner applies to every path
+  owner=$1
+  shift
+  if can_manage_users; then
+    for path in "$@"; do chown "$owner" "$path"; done
+  fi
 }
 
 make_dir() { # make_dir PATH MODE OWNER:GROUP (mode and owner only for new directories)
@@ -395,11 +400,17 @@ install_unit() { # install_unit SRC: replace the unit only if it differs
   mkdir -p "$(dirname "$UNIT_PATH")"
   if [ -f "$UNIT_PATH" ] && [ "$(file_sha "$UNIT_PATH")" = "$(file_sha "$1")" ]; then return 0; fi
   tmp=$UNIT_PATH.new.$$
+  had_unit=0
+  if [ -e "$UNIT_PATH" ]; then had_unit=1; fi
   cp "$1" "$tmp"
   chmod 0644 "$tmp"
   mv -f "$tmp" "$UNIT_PATH"
   UNIT_CHANGED=1
-  say "    installed $UNIT_PATH"
+  if [ "$had_unit" = 1 ]; then
+    say "    replaced the existing $UNIT_PATH (local changes belong in a drop-in: systemctl edit oarfish)"
+  else
+    say "    installed $UNIT_PATH"
+  fi
 }
 
 # Atomic switch: build the new symlink beside the old one, then rename over it.
@@ -430,6 +441,23 @@ health_check() {
     sleep 1
   done
   return 1
+}
+
+# Switch back to the previous release after a failed health check and prove that
+# it works. Always ends the run with an error.
+roll_back() {
+  warn "rolling back to $PREV"
+  UNIT_CHANGED=0
+  if [ -f "$RELEASES_DIR/$PREV/oarfish.service" ]; then install_unit "$RELEASES_DIR/$PREV/oarfish.service"; fi
+  switch_current "$PREV"
+  if [ "$UNIT_CHANGED" = 1 ]; then systemctl_cmd daemon-reload; fi
+  # The failed start counts against systemd's start limit; clear it so the restart is not refused.
+  systemctl_cmd reset-failed oarfish.service || true
+  systemctl_cmd restart oarfish.service || true
+  if health_check; then
+    die "installation of $VERSION failed its health check; the previous version $PREV is active again and healthy. See: journalctl -u oarfish"
+  fi
+  die "installation of $VERSION failed its health check AND the rollback to $PREV did not become healthy either. The service is probably not running. See: journalctl -u oarfish and systemctl status oarfish"
 }
 
 do_install() {
@@ -472,13 +500,13 @@ do_install() {
   if ! health_check; then
     warn "the service did not become healthy within ${HEALTH_TIMEOUT}s."
     if [ -n "$PREV" ] && [ "$SWITCHED" = 1 ] && [ -d "$RELEASES_DIR/$PREV" ]; then
-      warn "rolling back to $PREV"
-      UNIT_CHANGED=0
-      if [ -f "$RELEASES_DIR/$PREV/oarfish.service" ]; then install_unit "$RELEASES_DIR/$PREV/oarfish.service"; fi
-      switch_current "$PREV"
-      if [ "$UNIT_CHANGED" = 1 ]; then systemctl_cmd daemon-reload; fi
-      systemctl_cmd restart oarfish.service || true
-      die "installation of $VERSION failed its health check; $PREV is active again. See: journalctl -u oarfish"
+      roll_back
+    fi
+    if [ -z "$PREV" ]; then
+      # First installation: nothing to go back to. Do not leave a failing service
+      # restarting in the background or starting at the next boot; keep the files.
+      systemctl_cmd disable --now oarfish.service || warn "could not disable oarfish.service"
+      die "Oarfish $VERSION is installed but its service did not become healthy, so it was stopped and disabled. The files are kept in $OPT_DIR. See: journalctl -u oarfish and systemctl status oarfish. Start it again with: systemctl enable --now oarfish"
     fi
     die "the service did not become healthy. See: systemctl status oarfish and journalctl -u oarfish"
   fi
@@ -578,6 +606,9 @@ main() {
 
   if [ "$MODE" = uninstall ]; then
     print_plan_uninstall
+    if [ "$PURGE" = 1 ] && can_manage_users && ! command -v userdel >/dev/null 2>&1; then
+      die "userdel was not found, but --purge has to remove the user $SERVICE_USER. Nothing was changed."
+    fi
     if [ "$DRY_RUN" = 1 ]; then say "Dry run: nothing was changed."; exit 0; fi
     require_root
     do_uninstall
