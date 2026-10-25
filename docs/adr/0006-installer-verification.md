@@ -1,6 +1,6 @@
 # ADR 0006: How the installer verifies the release signature
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-25
 
 ## Context
@@ -61,7 +61,7 @@ A `oarfish-verify` static binary (Go `crypto/ed25519`) is published as a release
 - Trusting HTTPS plus the `checksums.txt` hash only: forbidden by spec 9.8.
 - Fetching the public key at install time from the repository: the key would arrive over the same channel as the files it authenticates (explicitly excluded by the gate prompt).
 
-## Decision (proposed)
+## Decision
 
 Option A.
 
@@ -78,8 +78,10 @@ Option A.
 - Not verified on real hardware: `openssl` presence and version on a fresh Pi OS Lite or Ubuntu Server image. This stays on the G3 acceptance list until someone runs the installer on a device.
 - If a later gate needs the updater to verify in the Go binary, nothing here constrains it: legacy-mode signatures are checked with `crypto/ed25519`.
 
-## Questions for the maintainer
+## Maintainer decisions (2026-10-25)
 
-1. Accept option A?
-2. Default version of `install.sh`: stamped with the tag of the release it is attached to (my recommendation: the script and the bundle it installs are then signed together; `--version` overrides), or always the newest release? "Latest" cannot be resolved anonymously for prereleases without the GitHub API, which rate-limits unauthenticated calls.
-3. Refuse OpenSSL older than 3.0 (my recommendation), or additionally accept a `minisign` already installed on the device (adds a second code path to test)?
+1. **Option A is accepted**: the installer verifies the release signature with the system `openssl` 3.x (`pkeyutl -verify -rawin`).
+2. **Default version:** `install.sh` installs the tag of the release it is attached to; `--version` overrides. The release build writes that version into the script by replacing a fixed placeholder on one fixed line, with no timestamps, so the file is reproducible and covered by `checksums.txt` and its signature. A copy without a stamped version (a checkout, a local build) refuses to run unless `--version` is given, and says why. Prereleases are installed from their explicit tag URL. The `releases/latest/download/` URL is only an expectation for later stable releases and is to be verified with the first stable release.
+3. **OpenSSL older than 3.0 is refused** with a clear message. There is no second code path through a `minisign` binary. LibreSSL is refused too (its `openssl` has no raw Ed25519 verification).
+
+Recorded in `docs/DECISIONS.md` as D-C18.

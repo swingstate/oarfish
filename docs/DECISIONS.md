@@ -21,6 +21,7 @@
 | D-C15 | The repository stays private until shortly before the MVP release. Before it becomes public, the full Git history must be reviewed for secrets and machine-specific values and the license must be in place. **Superseded by D-C17.** |
 | D-C16 | Product, repository and binary are renamed from Orbit to Oarfish before the first release tag. Requirement IDs ORB-* remain unchanged for traceability. |
 | D-C17 | The repository swingstate/oarfish becomes public after Gate G2 and a successful publication review, before Gate G3. The review covers a full history scan for secrets and machine-specific values, license check, fork-workflow approval, branch and tag protection. D-C15 is superseded by this decision. |
+| D-C18 | Installer verifies the release signature with system openssl 3.x, see ADR 0006. `install.sh` defaults to the tag of the release it is attached to (stamped at build time), `--version` overrides; OpenSSL older than 3.0 and LibreSSL are refused. |
 
 ## Deferred, not blocking Gate G1
 
