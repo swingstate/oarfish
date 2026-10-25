@@ -289,9 +289,11 @@ check_bundle_entries() {
 
 # An ELF64 little-endian executable for machine 0xB7 (AArch64).
 check_binary() {
-  [ "$(od -An -tx1 -N6 "$1" | tr -d ' \n')" = 7f454c460201 ] \
-    && [ "$(od -An -tx1 -j18 -N2 "$1" | tr -d ' \n')" = b700 ] \
-    || die "the oarfish binary in the bundle is not a 64-bit ARM (aarch64) executable."
+  magic=$(od -An -tx1 -N6 "$1" | tr -d ' \n')
+  machine=$(od -An -tx1 -j18 -N2 "$1" | tr -d ' \n')
+  if [ "$magic" != 7f454c460201 ] || [ "$machine" != b700 ]; then
+    die "the oarfish binary in the bundle is not a 64-bit ARM (aarch64) executable."
+  fi
 }
 
 download_and_verify() {
@@ -369,8 +371,9 @@ install_release() {
   RELEASE_DIR=$RELEASES_DIR/$VERSION
   if [ -e "$RELEASE_DIR" ]; then
     for f in oarfish oarfish.service LICENSE THIRD_PARTY_NOTICES.txt; do
-      [ -f "$RELEASE_DIR/$f" ] && [ "$(file_sha "$RELEASE_DIR/$f")" = "$(file_sha "$src/$f")" ] \
-        || die "$RELEASE_DIR already exists and differs from the verified release (file $f). Releases are immutable; remove that directory if it is damaged and run the installer again. Nothing was changed."
+      if [ ! -f "$RELEASE_DIR/$f" ] || [ "$(file_sha "$RELEASE_DIR/$f")" != "$(file_sha "$src/$f")" ]; then
+        die "$RELEASE_DIR already exists and differs from the verified release (file $f). Releases are immutable; remove that directory if it is damaged and run the installer again. Nothing was changed."
+      fi
     done
     say "    release $VERSION is already installed and identical"
     return 0

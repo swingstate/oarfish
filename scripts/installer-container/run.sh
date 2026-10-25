@@ -87,12 +87,12 @@ ok "second run changed nothing and did not restart the process"
 
 echo "== uninstall"
 sh /work/install.sh --uninstall > /tmp/un.out 2>&1 || { cat /tmp/un.out; fail "uninstall failed"; }
-[ ! -e "$R/opt/oarfish" ] && [ ! -e "$R/etc/systemd/system/oarfish.service" ] || fail "uninstall left files"
-[ -d "$R/etc/oarfish" ] && [ -d "$R/var/lib/oarfish" ] || fail "uninstall removed user data"
+if [ -e "$R/opt/oarfish" ] || [ -e "$R/etc/systemd/system/oarfish.service" ]; then fail "uninstall left files"; fi
+if [ ! -d "$R/etc/oarfish" ] || [ ! -d "$R/var/lib/oarfish" ]; then fail "uninstall removed user data"; fi
 id oarfish >/dev/null 2>&1 || fail "uninstall removed the user without --purge"
 ok "uninstall kept data and user"
 sh /work/install.sh --uninstall --purge > /tmp/purge.out 2>&1 || { cat /tmp/purge.out; fail "purge failed"; }
-[ ! -e "$R/etc/oarfish" ] && [ ! -e "$R/var/lib/oarfish" ] || fail "purge left data"
+if [ -e "$R/etc/oarfish" ] || [ -e "$R/var/lib/oarfish" ]; then fail "purge left data"; fi
 if id oarfish >/dev/null 2>&1; then fail "purge left the user"; fi
 ok "purge removed data and user"
 echo "CONTAINER TEST PASSED"
