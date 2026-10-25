@@ -26,8 +26,8 @@
 
 | ID | Decision | Due |
 |---|---|---|
-| D-D01 | Public release channel and repository visibility | Resolved by D-C13, D-C14 and D-C15 |
-| D-D02 | Final open-source license | Resolved by D-C13, D-C14 and D-C15 |
+| D-D01 | Public release channel and repository visibility | Resolved by D-C13, D-C14 and D-C17 |
+| D-D02 | Final open-source license | Resolved by D-C13, D-C14 and D-C17 |
 | D-D03 | Exact Ed25519 signing implementation | Resolved by ADR 0005 (minisign 0.12) |
 | D-D04 | Local admin authentication details | Gate G4/G7 |
 | D-D05 | First container engine physically verified on Pi | Gate G10 |

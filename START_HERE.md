@@ -10,7 +10,6 @@ Dieses Paket enthält die freigegebene Arbeitsgrundlage für Gate G1.
 - `docs/adr/`: bestätigte Architekturentscheidungen
 - `docs/DECISIONS.md`: bestätigte und später fällige Entscheidungen
 - `docs/ROADMAP.md`: Gate-Reihenfolge
-- `docs/export/Orbit_Pflichtenheft_v0.3.docx`: lesbare Word-Fassung (Stand v0.3, vor der Umbenennung in Oarfish; nennt das Produkt noch Orbit)
 
 ## Start auf dem MacBook
 
