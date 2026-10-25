@@ -49,6 +49,8 @@ cd ../backend && go run ./cmd/oarfish      # http://127.0.0.1:8484
 
 Adding a dependency should be justified in the change that adds it.
 
+`THIRD_PARTY_NOTICES.txt` (repository root, shipped in the release bundle) holds the verbatim licence texts of the third-party code that ends up inside the binary: the Svelte runtime and a small Vite helper in the frontend bundle, and the Go standard library. The production build strips source comments, so the licence notices do not survive in the minified JavaScript. When `svelte` or `vite` is upgraded or a new dependency ships code into the bundle, update the file from the packages' licence files; do not type holder names by hand.
+
 ## CI
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`, and is also called by the release workflow (`workflow_call`):

@@ -51,6 +51,6 @@ LDFLAGS="-s -w \
 build_bundlegen "$WORK/bundlegen"
 mkdir -p "$OUT"
 "$WORK/bundlegen" bundle \
-  -binary "$WORK/oarfish" -license "$ROOT/LICENSE" \
+  -binary "$WORK/oarfish" -license "$ROOT/LICENSE" -notices "$ROOT/THIRD_PARTY_NOTICES.txt" \
   -version "$VERSION" -commit "$COMMIT" -epoch "$EPOCH" -out "$OUT"
 echo "==> wrote $OUT"

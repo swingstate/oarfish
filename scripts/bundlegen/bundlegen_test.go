@@ -18,6 +18,7 @@ func testInput() bundleInput {
 	return bundleInput{
 		Binary:  []byte("\x7fELF-fake-oarfish-binary"),
 		License: []byte("Apache License\n"),
+		Notices: []byte("Third-party notices\n"),
 		Version: "0.1.0-alpha.1",
 		Commit:  testCommit,
 		Epoch:   1_790_000_000,
@@ -84,7 +85,7 @@ func TestBundleLayout(t *testing.T) {
 			t.Errorf("%s: mtime %v, want commit time", h.Name, h.ModTime)
 		}
 	}
-	want := []string{root + "/", root + "/LICENSE", root + "/oarfish"}
+	want := []string{root + "/", root + "/LICENSE", root + "/THIRD_PARTY_NOTICES.txt", root + "/oarfish"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("entries %v, want %v", names, want)
 	}

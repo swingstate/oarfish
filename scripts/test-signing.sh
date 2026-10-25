@@ -17,7 +17,7 @@ COMMIT=0123456789abcdef0123456789abcdef01234567
 make_release() { # make_release DIR VERSION
   mkdir -p "$1"
   printf 'not a real binary %s\n' "$2" > "$TMP/fake-oarfish"
-  "$TMP/bundlegen" bundle -binary "$TMP/fake-oarfish" -license "$ROOT/LICENSE" \
+  "$TMP/bundlegen" bundle -binary "$TMP/fake-oarfish" -license "$ROOT/LICENSE" -notices "$ROOT/THIRD_PARTY_NOTICES.txt" \
     -version "$2" -commit "$COMMIT" -epoch 1700000000 -out "$1" >/dev/null
   printf '{"fixture":true}\n' > "$1/sbom.json"
   "$TMP/bundlegen" checksums -dir "$1" "oarfish_$2_linux_arm64.tar.gz" manifest.json sbom.json

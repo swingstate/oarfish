@@ -6,7 +6,7 @@ How a version tag becomes a signed GitHub Release (Gate G2). The release path is
 
 | File | Purpose |
 |---|---|
-| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded) and `LICENSE` |
+| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded), `LICENSE` and `THIRD_PARTY_NOTICES.txt` (licence texts of the Svelte runtime, the Vite helper snippet and the Go runtime, which are compiled into the binary and whose licences require the notice to travel with it) |
 | `manifest.json` | Machine-readable metadata (see below) |
 | `checksums.txt` | SHA-256 of the bundle, `manifest.json` and the SBOMs, in `sha256sum` format |
 | `checksums.txt.sig` | minisign signature of `checksums.txt`, legacy mode: plain Ed25519 over the file bytes (ADR 0005) |

@@ -25,6 +25,7 @@ on:
       - "scripts/**"
       - "release/**"
       - "LICENSE"
+      - "THIRD_PARTY_NOTICES.txt"
   workflow_dispatch:
 
 # Least privilege: only the publish job gets contents: write.
