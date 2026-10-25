@@ -18,9 +18,11 @@ make_release() { # make_release DIR VERSION
   mkdir -p "$1"
   printf 'not a real binary %s\n' "$2" > "$TMP/fake-oarfish"
   "$TMP/bundlegen" bundle -binary "$TMP/fake-oarfish" -license "$ROOT/LICENSE" -notices "$ROOT/THIRD_PARTY_NOTICES.txt" \
+  -unit "$ROOT/install/oarfish.service" \
     -version "$2" -commit "$COMMIT" -epoch 1700000000 -out "$1" >/dev/null
   printf '{"fixture":true}\n' > "$1/sbom.json"
-  "$TMP/bundlegen" checksums -dir "$1" "oarfish_$2_linux_arm64.tar.gz" manifest.json sbom.json
+  "$ROOT/scripts/stamp-installer.sh" "$2" "$1/install.sh" >/dev/null
+  "$TMP/bundlegen" checksums -dir "$1" "oarfish_$2_linux_arm64.tar.gz" install.sh manifest.json sbom.json
 }
 
 N=0
@@ -54,6 +56,28 @@ expect_reject "tampered manifest.json" "hash check failed" "${VERIFY[@]}" "$TMP/
 
 cp -R "$REL" "$TMP/t4"; flip_byte "$TMP/t4/sbom.json"
 expect_reject "tampered SBOM" "hash check failed" "${VERIFY[@]}" "$TMP/t4" "$TMP/a.pub"
+
+cp -R "$REL" "$TMP/t3b"; echo "# evil" >> "$TMP/t3b/install.sh"
+expect_reject "tampered install.sh (signature and checksums intact)" "hash check failed" "${VERIFY[@]}" "$TMP/t3b" "$TMP/a.pub"
+
+# Replacing install.sh and rewriting checksums.txt to match breaks the signature.
+cp -R "$REL" "$TMP/t3c"; echo "# evil" >> "$TMP/t3c/install.sh"
+(cd "$TMP/t3c" && "$TMP/bundlegen" checksums -dir . oarfish_0.1.0-test.1_linux_arm64.tar.gz install.sh manifest.json sbom.json)
+expect_reject "install.sh replaced and checksums.txt rewritten" "signature verification" "${VERIFY[@]}" "$TMP/t3c" "$TMP/a.pub"
+
+# Even a correctly signed release must not carry an installer stamped for another version
+# or an unstamped one.
+for variant in other-version unstamped; do
+  cp -R "$REL" "$TMP/t3d-$variant"; rm "$TMP/t3d-$variant/checksums.txt.sig"
+  if [ "$variant" = other-version ]; then
+    "$ROOT/scripts/stamp-installer.sh" 9.9.9 "$TMP/t3d-$variant/install.sh" >/dev/null
+  else
+    cp "$ROOT/install/install.sh" "$TMP/t3d-$variant/install.sh"
+  fi
+  (cd "$TMP/t3d-$variant" && "$TMP/bundlegen" checksums -dir . oarfish_0.1.0-test.1_linux_arm64.tar.gz install.sh manifest.json sbom.json)
+  "$ROOT/scripts/sign-release.sh" --ephemeral "$TMP/d-$variant.pub" "$TMP/t3d-$variant" >/dev/null
+  expect_reject "validly signed release with install.sh ($variant)" "manifest/content check failed" "${VERIFY[@]}" "$TMP/t3d-$variant" "$TMP/d-$variant.pub"
+done
 
 cp -R "$REL" "$TMP/t5"; flip_byte "$TMP/t5/checksums.txt.sig"
 expect_reject "tampered signature file" "signature verification" "${VERIFY[@]}" "$TMP/t5" "$TMP/a.pub"

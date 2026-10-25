@@ -8,7 +8,7 @@
 //
 // Subcommands:
 //
-//	bundlegen bundle    -binary F -license F -notices F -version V -commit C -epoch N -out DIR
+//	bundlegen bundle    -binary F -license F -notices F -unit F -version V -commit C -epoch N -out DIR
 //	bundlegen checksums -dir DIR FILE...
 //	bundlegen check     -dir DIR
 package main

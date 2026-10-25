@@ -23,6 +23,7 @@ on:
       - ".github/workflows/release.yml"
       - ".github/workflows/ci.yml"
       - "scripts/**"
+      - "install/**"
       - "release/**"
       - "LICENSE"
       - "THIRD_PARTY_NOTICES.txt"
@@ -207,6 +208,8 @@ jobs:
         run: |
           [ -f release/oarfish-release.pub ] || { echo "::error::release/oarfish-release.pub is not committed"; exit 1; }
           scripts/verify-release.sh "$RUNNER_TEMP/release" release/oarfish-release.pub
+      - name: The installer being released embeds that same key
+        run: scripts/check-installer-key.sh "$RUNNER_TEMP/release/install.sh" release/oarfish-release.pub
       - name: Hand over signed release files
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -250,17 +253,23 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/release"
           cat > notes.md <<EOF
-          Oarfish $VERSION, Linux ARM64 bundle. Commit \`$COMMIT\`.
+          Oarfish $VERSION, Linux ARM64 (systemd, OpenSSL 3). Commit \`$COMMIT\`.
 
-          Verify before use: \`minisign -Vm checksums.txt -x checksums.txt.sig -p oarfish-release.pub\`,
-          then \`sha256sum -c checksums.txt\`. The public key is \`release/oarfish-release.pub\` in the repository.
-          Steps: docs/RELEASING.md. This build is not installed by any script yet.
+          Install: download \`install.sh\` from this release, read it, then run it:
+
+              curl -fsSLO https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/install.sh
+              less install.sh
+              sudo sh install.sh --dry-run
+              sudo sh install.sh
+
+          The installer verifies the Ed25519 signature of \`checksums.txt\` (release key \`11F1C52777090BFC\`) and the SHA-256 of every file before it installs anything.
+          Manual verification and details: docs/INSTALL.md and docs/RELEASING.md. Not yet verified on real hardware.
           EOF
           flags=()
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" --verify-tag --title "Oarfish $VERSION" --notes-file notes.md \
             "${flags[@]}" \
-            "oarfish_${VERSION}_linux_arm64.tar.gz" manifest.json checksums.txt checksums.txt.sig \
+            "oarfish_${VERSION}_linux_arm64.tar.gz" install.sh manifest.json checksums.txt checksums.txt.sig \
             sbom-backend.cdx.json sbom-frontend.cdx.json
           echo "Published $TAG" >> "$GITHUB_STEP_SUMMARY"

@@ -19,6 +19,7 @@ func testInput() bundleInput {
 		Binary:  []byte("\x7fELF-fake-oarfish-binary"),
 		License: []byte("Apache License\n"),
 		Notices: []byte("Third-party notices\n"),
+		Unit:    []byte("[Service]\n"),
 		Version: "0.1.0-alpha.1",
 		Commit:  testCommit,
 		Epoch:   1_790_000_000,
@@ -85,7 +86,7 @@ func TestBundleLayout(t *testing.T) {
 			t.Errorf("%s: mtime %v, want commit time", h.Name, h.ModTime)
 		}
 	}
-	want := []string{root + "/", root + "/LICENSE", root + "/THIRD_PARTY_NOTICES.txt", root + "/oarfish"}
+	want := []string{root + "/", root + "/LICENSE", root + "/THIRD_PARTY_NOTICES.txt", root + "/oarfish", root + "/oarfish.service"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("entries %v, want %v", names, want)
 	}
@@ -136,12 +137,17 @@ func writeRelease(t *testing.T) string {
 	must(t, os.WriteFile(filepath.Join(dir, mf.Bundle.File), tgz, 0o644))
 	must(t, os.WriteFile(filepath.Join(dir, manifestName), mj, 0o644))
 	must(t, os.WriteFile(filepath.Join(dir, "sbom.json"), []byte("{}"), 0o644))
-	txt, err := buildChecksums(dir, []string{mf.Bundle.File, manifestName, "sbom.json"})
+	must(t, os.WriteFile(filepath.Join(dir, installerName), []byte(stampedInstaller("0.1.0-alpha.1")), 0o644))
+	txt, err := buildChecksums(dir, []string{mf.Bundle.File, installerName, manifestName, "sbom.json"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	must(t, os.WriteFile(filepath.Join(dir, checksumName), []byte(txt), 0o644))
 	return dir
+}
+
+func stampedInstaller(version string) string {
+	return "#!/bin/sh\nset -eu\nOARFISH_STAMPED_VERSION='" + version + "'\ncase $OARFISH_STAMPED_VERSION in @@*@@) exit 1 ;; esac\n"
 }
 
 func must(t *testing.T, err error) {
@@ -161,8 +167,8 @@ func TestChecksumsAreSortedAndSha256sumShaped(t *testing.T) {
 	dir := writeRelease(t)
 	raw, _ := os.ReadFile(filepath.Join(dir, checksumName))
 	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
-	if len(lines) != 3 || !strings.HasSuffix(lines[0], "  manifest.json") ||
-		!strings.HasSuffix(lines[1], "  oarfish_0.1.0-alpha.1_linux_arm64.tar.gz") || !strings.HasSuffix(lines[2], "  sbom.json") {
+	if len(lines) != 4 || !strings.HasSuffix(lines[0], "  install.sh") || !strings.HasSuffix(lines[1], "  manifest.json") ||
+		!strings.HasSuffix(lines[2], "  oarfish_0.1.0-alpha.1_linux_arm64.tar.gz") || !strings.HasSuffix(lines[3], "  sbom.json") {
 		t.Fatalf("unexpected checksums.txt:\n%s", raw)
 	}
 }
@@ -188,6 +194,32 @@ func TestCheckRejectsTampering(t *testing.T) {
 	tamper("bundle", flip("oarfish_0.1.0-alpha.1_linux_arm64.tar.gz"))
 	tamper("manifest", flip("manifest.json"))
 	tamper("sbom", flip("sbom.json"))
+	tamper("install.sh content", flip("install.sh"))
+	tamper("install.sh removed", func(dir string) { must(t, os.Remove(filepath.Join(dir, "install.sh"))) })
+	tamper("install.sh not listed", func(dir string) {
+		p := filepath.Join(dir, checksumName)
+		b, _ := os.ReadFile(p)
+		var keep []string
+		for _, l := range strings.Split(string(b), "\n") {
+			if l != "" && !strings.HasSuffix(l, installerName) {
+				keep = append(keep, l)
+			}
+		}
+		must(t, os.WriteFile(p, []byte(strings.Join(keep, "\n")+"\n"), 0o644))
+	})
+	// A consistent checksums.txt does not help an installer with the wrong stamp.
+	restamp := func(content string) func(string) {
+		return func(dir string) {
+			must(t, os.WriteFile(filepath.Join(dir, installerName), []byte(content), 0o644))
+			txt, err := buildChecksums(dir, []string{"oarfish_0.1.0-alpha.1_linux_arm64.tar.gz", installerName, manifestName, "sbom.json"})
+			must(t, err)
+			must(t, os.WriteFile(filepath.Join(dir, checksumName), []byte(txt), 0o644))
+		}
+	}
+	tamper("install.sh stamped for another version", restamp(stampedInstaller("9.9.9")))
+	tamper("install.sh not stamped", restamp(strings.Replace(stampedInstaller("0.1.0-alpha.1"), "'0.1.0-alpha.1'", "'@@OARFISH_VERSION@@'", 1)))
+	tamper("install.sh without shebang", restamp("set -eu\nOARFISH_STAMPED_VERSION='0.1.0-alpha.1'\n"))
+	tamper("install.sh stamped twice", restamp(stampedInstaller("0.1.0-alpha.1")+"OARFISH_STAMPED_VERSION='0.1.0-alpha.1'\n"))
 	tamper("missing file", func(dir string) { must(t, os.Remove(filepath.Join(dir, "sbom.json"))) })
 	tamper("manifest not listed", func(dir string) {
 		p := filepath.Join(dir, checksumName)
@@ -209,7 +241,7 @@ func TestCheckRejectsManifestBundleMismatch(t *testing.T) {
 	in.Binary = []byte("other binary")
 	tgz, mf, _ := buildBundle(in)
 	must(t, os.WriteFile(filepath.Join(dir, mf.Bundle.File), tgz, 0o644))
-	txt, _ := buildChecksums(dir, []string{mf.Bundle.File, manifestName, "sbom.json"})
+	txt, _ := buildChecksums(dir, []string{mf.Bundle.File, installerName, manifestName, "sbom.json"})
 	must(t, os.WriteFile(filepath.Join(dir, checksumName), []byte(txt), 0o644))
 	if err := checkRelease(dir); err == nil {
 		t.Fatal("manifest/bundle mismatch was accepted")

@@ -11,7 +11,7 @@ LISTEN ?= 127.0.0.1:8484
 .DEFAULT_GOAL := help
 .PHONY: help dev dev-backend dev-frontend deps test test-backend test-frontend test-release-tools \
 	lint lint-backend lint-frontend frontend-build build build-arm64 \
-	release-bundle check-reproducible test-signing clean
+	release-bundle check-reproducible test-signing test-installer lint-shell clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -69,6 +69,13 @@ check-reproducible: ## Build the bundle twice from scratch and compare SHA-256 (
 
 test-signing: ## Sign/verify tests with throwaway keys, incl. tamper rejection (needs minisign)
 	scripts/test-signing.sh
+
+test-installer: ## Installer tests against a fake root (needs minisign and OpenSSL 3; OARFISH_TEST_OPENSSL=... on macOS)
+	scripts/test-installer.sh
+
+lint-shell: ## shellcheck the installer (POSIX sh, all severities) and the repository scripts (warnings)
+	shellcheck -s sh install/install.sh scripts/installer-container/run.sh scripts/installer-container/systemctl-stub.sh
+	shellcheck -x -S warning scripts/*.sh
 
 clean: ## Remove build outputs (keeps the tracked embed placeholder)
 	rm -rf bin dist
