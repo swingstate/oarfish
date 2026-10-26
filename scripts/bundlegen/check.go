@@ -68,7 +68,8 @@ func runCheck(args []string) error {
 
 // checkRelease verifies, without trusting any single file on its own:
 //  1. every file listed in checksums.txt exists and matches its hash,
-//  2. manifest.json and the bundle are both listed,
+//  2. manifest.json, install.sh and the bundle are all listed, and install.sh
+//     is stamped with exactly the manifest's version,
 //  3. the manifest agrees with the bundle (name, size, SHA-256),
 //  4. the tarball holds exactly the files the manifest declares, with the
 //     declared modes and hashes, owned by uid/gid 0.
@@ -110,6 +111,16 @@ func checkRelease(dir string) error {
 	}
 	if mf.Bundle.File != bundleFileName(mf.Version) {
 		return fmt.Errorf("manifest: bundle.file %q does not match version", mf.Bundle.File)
+	}
+	if _, ok := listed[installerName]; !ok {
+		return fmt.Errorf("%s is not listed in %s", installerName, checksumName)
+	}
+	iraw, err := os.ReadFile(filepath.Join(dir, installerName))
+	if err != nil {
+		return err
+	}
+	if err := checkInstaller(iraw, mf.Version); err != nil {
+		return err
 	}
 	if want, ok := listed[mf.Bundle.File]; !ok || want != mf.Bundle.SHA256 {
 		return fmt.Errorf("manifest: bundle SHA-256 differs from %s", checksumName)
@@ -207,6 +218,34 @@ func checkTarball(tgz []byte, mf *Manifest) error {
 		if !seen[p] {
 			return fmt.Errorf("bundle: %s is declared in the manifest but missing", p)
 		}
+	}
+	return nil
+}
+
+const installerPlaceholder = "@@OARFISH_VERSION@@"
+
+// checkInstaller verifies that install.sh is a shell script stamped with the
+// release version: exactly one OARFISH_STAMPED_VERSION line holding that version
+// and no placeholder left anywhere.
+func checkInstaller(raw []byte, version string) error {
+	if !bytes.HasPrefix(raw, []byte("#!/bin/sh\n")) {
+		return errors.New("install.sh: does not start with #!/bin/sh")
+	}
+	if bytes.Contains(raw, []byte(installerPlaceholder)) {
+		return errors.New("install.sh: version placeholder is still present (not stamped)")
+	}
+	want := "OARFISH_STAMPED_VERSION='" + version + "'"
+	n := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "OARFISH_STAMPED_VERSION=") {
+			n++
+			if line != want {
+				return fmt.Errorf("install.sh: stamped version line is %q, want %q", line, want)
+			}
+		}
+	}
+	if n != 1 {
+		return fmt.Errorf("install.sh: found %d OARFISH_STAMPED_VERSION lines, want 1", n)
 	}
 	return nil
 }

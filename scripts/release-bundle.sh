@@ -10,7 +10,8 @@
 #            timestamp of that commit, which makes the output reproducible.
 #
 # Requires the frontend to be built already (backend/internal/web/dist). Output:
-#   OUTDIR/oarfish_<version>_linux_arm64.tar.gz and OUTDIR/manifest.json
+#   OUTDIR/oarfish_<version>_linux_arm64.tar.gz, OUTDIR/manifest.json and
+#   OUTDIR/install.sh (install/install.sh stamped with the version)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
@@ -51,6 +52,8 @@ LDFLAGS="-s -w \
 build_bundlegen "$WORK/bundlegen"
 mkdir -p "$OUT"
 "$WORK/bundlegen" bundle \
-  -binary "$WORK/oarfish" -license "$ROOT/LICENSE" \
+  -binary "$WORK/oarfish" -license "$ROOT/LICENSE" -notices "$ROOT/THIRD_PARTY_NOTICES.txt" \
+  -unit "$ROOT/install/oarfish.service" \
   -version "$VERSION" -commit "$COMMIT" -epoch "$EPOCH" -out "$OUT"
+"$ROOT/scripts/stamp-installer.sh" "$VERSION" "$OUT/install.sh" >/dev/null
 echo "==> wrote $OUT"

@@ -13,10 +13,6 @@
 - `docs/ROADMAP.md`: gate sequence
 - `START_HERE.md`: operator instructions
 
-## Review copy
-
-- `docs/export/Orbit_Pflichtenheft_v0.3.docx`: formatted Word version of the specification (export of v0.3 made before the rename to Oarfish; still says Orbit, not regenerated)
-
 ## Baseline
 
 - Initial verified platform: Raspberry Pi Zero 2 W with Raspberry Pi OS Lite 64-bit

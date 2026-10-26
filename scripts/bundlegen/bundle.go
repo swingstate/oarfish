@@ -25,6 +25,9 @@ const (
 	archName     = "arm64"
 	manifestName = "manifest.json"
 	checksumName = "checksums.txt"
+	// installerName is the release's install.sh, stamped with the release version
+	// (scripts/stamp-installer.sh) and covered by checksums.txt like every asset.
+	installerName = "install.sh"
 )
 
 // versionPattern is SemVer 2.0 without a leading "v".
@@ -75,6 +78,12 @@ type Entry struct {
 type bundleInput struct {
 	Binary  []byte
 	License []byte
+	// Notices is THIRD_PARTY_NOTICES.txt: the licence texts of the third-party
+	// code compiled into the binary, which their licences require to ship with it.
+	Notices []byte
+	// Unit is the systemd unit (install/oarfish.service). It travels inside the
+	// signed bundle so that it always matches the binary it starts.
+	Unit    []byte
 	Version string
 	Commit  string
 	Epoch   int64
@@ -84,14 +93,16 @@ func runBundle(args []string) error {
 	fs := flag.NewFlagSet("bundle", flag.ExitOnError)
 	binary := fs.String("binary", "", "path to the linux/arm64 oarfish binary")
 	license := fs.String("license", "", "path to the LICENSE file")
+	notices := fs.String("notices", "", "path to THIRD_PARTY_NOTICES.txt")
+	unit := fs.String("unit", "", "path to the systemd unit oarfish.service")
 	version := fs.String("version", "", "version without leading v, e.g. 0.1.0-alpha.1")
 	commit := fs.String("commit", "", "full 40-character commit hash")
 	epoch := fs.Int64("epoch", -1, "commit timestamp (Unix seconds); used for tar mtimes and build_date")
 	out := fs.String("out", "", "output directory")
 	fs.Parse(args)
 
-	if *binary == "" || *license == "" || *out == "" || *epoch < 0 {
-		return errors.New("bundle: -binary, -license, -epoch and -out are required")
+	if *binary == "" || *license == "" || *notices == "" || *unit == "" || *out == "" || *epoch < 0 {
+		return errors.New("bundle: -binary, -license, -notices, -unit, -epoch and -out are required")
 	}
 	bin, err := os.ReadFile(*binary)
 	if err != nil {
@@ -101,7 +112,15 @@ func runBundle(args []string) error {
 	if err != nil {
 		return err
 	}
-	in := bundleInput{Binary: bin, License: lic, Version: *version, Commit: *commit, Epoch: *epoch}
+	not, err := os.ReadFile(*notices)
+	if err != nil {
+		return err
+	}
+	unitData, err := os.ReadFile(*unit)
+	if err != nil {
+		return err
+	}
+	in := bundleInput{Binary: bin, License: lic, Notices: not, Unit: unitData, Version: *version, Commit: *commit, Epoch: *epoch}
 	tgz, mf, err := buildBundle(in)
 	if err != nil {
 		return err
@@ -137,8 +156,8 @@ func buildBundle(in bundleInput) ([]byte, *Manifest, error) {
 	if !commitPattern.MatchString(in.Commit) {
 		return nil, nil, fmt.Errorf("invalid commit %q (want 40 lowercase hex characters)", in.Commit)
 	}
-	if len(in.Binary) == 0 || len(in.License) == 0 {
-		return nil, nil, errors.New("binary and license must not be empty")
+	if len(in.Binary) == 0 || len(in.License) == 0 || len(in.Notices) == 0 || len(in.Unit) == 0 {
+		return nil, nil, errors.New("binary, license, third-party notices and unit must not be empty")
 	}
 
 	root := fmt.Sprintf("%s_%s_%s_%s", productName, in.Version, osName, archName)
@@ -151,7 +170,9 @@ func buildBundle(in bundleInput) ([]byte, *Manifest, error) {
 	}
 	files := []file{
 		{root + "/LICENSE", 0o644, in.License},
+		{root + "/THIRD_PARTY_NOTICES.txt", 0o644, in.Notices},
 		{root + "/oarfish", 0o755, in.Binary},
+		{root + "/oarfish.service", 0o644, in.Unit},
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
 

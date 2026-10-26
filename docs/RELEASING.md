@@ -1,18 +1,21 @@
 # Releasing
 
-How a version tag becomes a signed GitHub Release (Gate G2). The release path is pull-based: GitHub-hosted runners build and publish, nothing connects to a device (ADR 0003, ORB-CICD-005). There is no installer yet; `install.sh` is Gate G3.
+How a version tag becomes a signed GitHub Release (Gate G2) that includes the installer (Gate G3). The release path is pull-based: GitHub-hosted runners build and publish, nothing connects to a device (ADR 0003, ORB-CICD-005). What a user does with a release is in [`INSTALL.md`](INSTALL.md).
 
 ## What a release contains
 
 | File | Purpose |
 |---|---|
-| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded) and `LICENSE` |
+| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded), `oarfish.service`, `LICENSE` and `THIRD_PARTY_NOTICES.txt` (licence texts of the Svelte runtime, the Vite helper snippet and the Go runtime, which are compiled into the binary and whose licences require the notice to travel with it) |
+| `install.sh` | The installer ([`INSTALL.md`](INSTALL.md)): `install/install.sh` with the release version written into one line (below). Listed in `checksums.txt`, so the signature covers it |
 | `manifest.json` | Machine-readable metadata (see below) |
-| `checksums.txt` | SHA-256 of the bundle, `manifest.json` and the SBOMs, in `sha256sum` format |
+| `checksums.txt` | SHA-256 of the bundle, `install.sh`, `manifest.json` and the SBOMs, in `sha256sum` format |
 | `checksums.txt.sig` | minisign signature of `checksums.txt`, legacy mode: plain Ed25519 over the file bytes (ADR 0005) |
 | `sbom-backend.cdx.json`, `sbom-frontend.cdx.json` | CycloneDX SBOMs (ORB-SEC-009, SOLL) |
 
 `<version>` is the tag without the leading `v`. A tag with a hyphen (`v0.1.0-alpha.1`) is published as a prerelease.
+
+The bundle contains `oarfish`, `oarfish.service` (the systemd unit the installer installs), `LICENSE` and `THIRD_PARTY_NOTICES.txt`. The manifest schema did not change for the installer: `install.sh` is a release asset next to the bundle, covered by `checksums.txt`, not part of the tarball, so the manifest's `contents` do not list it. `bundlegen check` requires it in `checksums.txt` and checks its stamp instead.
 
 `manifest.json` fields: `schema_version`, `name`, `version`, `tag`, `prerelease`, `commit` (40 hex), `build_date` (RFC 3339, equal to the commit timestamp so the file is reproducible), `os`, `architecture`, `requirements` (`os`, `architecture`, `cpu`, `libc`, `runtime_dependencies`), `bundle` (`file`, `sha256`, `size`) and `contents` (path, mode, size, SHA-256 of every file in the tarball). Kernel and memory minimums are not included yet because they have not been measured on a device (ORB-REL-002 is met for architecture, OS and libc only).
 
@@ -91,7 +94,7 @@ TAG=v0.1.0-alpha.1
 VER=${TAG#v}
 mkdir verify && cd verify
 base="https://github.com/swingstate/oarfish/releases/download/$TAG"
-for f in checksums.txt checksums.txt.sig manifest.json sbom-backend.cdx.json sbom-frontend.cdx.json \
+for f in checksums.txt checksums.txt.sig install.sh manifest.json sbom-backend.cdx.json sbom-frontend.cdx.json \
          "oarfish_${VER}_linux_arm64.tar.gz"; do
   curl -fsSLO "$base/$f"
 done
@@ -132,9 +135,15 @@ make check-reproducible    # rebuilds the frontend and the bundle twice, empty G
 
 `scripts/check-reproducible.sh` compares the SHA-256 of both bundles and the manifests. CI runs it on every change (job "Reproducible bundle"), and the release workflow additionally compares two rebuilds with the bundle it is about to publish. Not covered: a different Go version or Node version can change the output (the Go version is pinned through `go.mod`, Node through `frontend/.node-version` and the lockfile); SBOM files contain timestamps and UUIDs and are not reproducible.
 
-## Public key in installer and updater (not implemented in this gate)
+## How `install.sh` is built and checked
 
-`release/oarfish-release.pub` is the single source of the trusted key. Gate G3 will embed its key line in `install.sh`; Gate G6 will embed the file in the Oarfish binary with `go:embed`. Both must verify `checksums.txt.sig` before trusting any hash. The updater can use `crypto/ed25519` from the standard library (legacy mode). See ADR 0005 for the open point (key rotation).
+`release/oarfish-release.pub` is the single source of the trusted key. Gate G3 embeds its key line and key id as constants in `install/install.sh` (ADR 0006); Gate G6 will embed the file in the Oarfish binary with `go:embed`. Both must verify `checksums.txt.sig` before trusting any hash. The updater can use `crypto/ed25519` from the standard library (legacy mode). See ADR 0005 for the open point (key rotation).
+
+- `scripts/release-bundle.sh` calls `scripts/stamp-installer.sh`, which copies `install/install.sh` and replaces the single line `OARFISH_STAMPED_VERSION='@@OARFISH_VERSION@@'` with the release version. No timestamps, no host data: the result is a pure function of the file and the version, and `check-reproducible.sh` compares it across two builds. An installer taken from the release installs that release; `--version` overrides.
+- `bundlegen check` (part of `verify-release.sh`, run in the dry run, in `sign` and again in `publish`) requires `install.sh` in `checksums.txt`, a `#!/bin/sh` first line, no remaining placeholder and exactly one stamp line equal to the manifest's version. A tampered installer fails the hash, a replaced one fails the signature, a wrongly stamped one fails the check; `scripts/test-signing.sh` tests all three.
+- `scripts/check-installer-key.sh` (CI, and in the `sign` job against the file being released) requires the embedded key and key id to equal `release/oarfish-release.pub`. If the key ever changes, change both and release a new installer.
+- `scripts/check-budgets.sh` keeps `install.sh` under 50,000 bytes.
+- The installer tests use a copy with a throwaway key (`scripts/make-test-installer.sh`). Such copies are never part of a release.
 
 ## Before making the repository public
 
@@ -152,6 +161,9 @@ Decision D-C17 makes the repository public after Gate G2 and this review, before
 Rewriting history is not part of this list. If a scan ever finds a real secret in history, rotate it first (for the release key: new key pair, new public key, and the consequences in ADR 0005), then decide about a rewrite.
 
 ## Known limitations
+
+- The installer is described in `INSTALL.md`, including what has and has not been verified; nothing has run on real hardware.
+- `v0.1.0-alpha.1` was published before the installer existed. It has no `install.sh`, no `oarfish.service` and no `THIRD_PARTY_NOTICES.txt` in the bundle, so the current `verify-release.sh` and the installer reject it by design. Releases from `v0.1.0-alpha.2` on follow the layout described here.
 
 - Unverified until the first real release: the publish job, `gh release create`, prerelease flag, and the secret-based signing path. The dry run exercises everything except those and the committed public key.
 - The ARM64 smoke test runs under qemu-user on an x86-64 runner. It proves the binary starts and serves; it is not a test on real hardware (nothing has run on a Raspberry Pi yet).

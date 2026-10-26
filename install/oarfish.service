@@ -1,0 +1,52 @@
+# Oarfish systemd unit. Installed by install.sh from the verified release bundle
+# to /etc/systemd/system/oarfish.service.
+#
+# Listens on loopback only (D-C11, ORB-ONB-003). Changing -listen is a deliberate
+# act of the administrator and not something the installer does.
+
+[Unit]
+Description=Oarfish management platform for ARM single-board computers
+Documentation=https://github.com/swingstate/oarfish
+
+[Service]
+Type=simple
+User=oarfish
+Group=oarfish
+ExecStart=/opt/oarfish/current/oarfish -listen 127.0.0.1:8484
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+
+# Directories under /var/lib, /var/cache and /run, owned by the service user.
+# With ProtectSystem=strict they are the only writable places.
+StateDirectory=oarfish
+CacheDirectory=oarfish
+RuntimeDirectory=oarfish
+RuntimeDirectoryMode=0750
+UMask=0077
+
+# Hardening. The process needs no privilege, no home directory and no devices.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

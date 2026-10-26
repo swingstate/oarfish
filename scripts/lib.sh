@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared helpers, sourced by the other scripts. Not executable on its own.
 # Scripts never enable `set -x`: signing scripts handle secret material.
 
