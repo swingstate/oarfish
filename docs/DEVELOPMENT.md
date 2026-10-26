@@ -21,9 +21,10 @@ Node.js is a build-time tool only. The Oarfish binary and the target device do n
 | Target | What it does |
 |---|---|
 | `make deps` | `npm ci` in `frontend/` (installs exactly the lockfile) |
-| `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` to the backend. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`). |
+| `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` and `/api` to the backend. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`). |
 | `make test` | `go test ./...` (backend and `scripts/bundlegen`) and `vitest run` |
 | `make lint` | gofmt check, `go vet` (backend and `scripts/bundlegen`), `svelte-check` (TypeScript and Svelte type check) |
+| `make fuzz` | native Go fuzzing of the os-release parser and the device-tree compatible parser, `FUZZTIME=10s` each (CI runs 5 s each; the seed corpora also run in `make test`) |
 | `make build` | frontend production build, then host binary `bin/oarfish` with the frontend embedded |
 | `make build-arm64` | same, cross-compiled with `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` to `bin/oarfish-linux-arm64` |
 | `make release-bundle` | frontend build, then `scripts/release-bundle.sh`: unsigned `dist/release/oarfish_<version>_linux_arm64.tar.gz` and `manifest.json`, the same script CI and the release workflow use |
@@ -46,6 +47,17 @@ cd ../backend && go run ./cmd/oarfish      # http://127.0.0.1:8484
 
 `go vet`, `go test` and `go build` work without a frontend build, because `backend/internal/web/dist/.gitkeep` is tracked. UI requests then return `503`.
 
+## Detection code and its tests (Gate G4)
+
+`backend/internal/platform/` is read-only detection ([`DETECTION.md`](DETECTION.md)). Working on it:
+
+- Detection takes an `fs.FS`. Tests give it a fixture directory from `backend/internal/platform/testdata/` (synthetic, see its README) or an in-memory `fstest.MapFS` built with `platformtest.Clone`. Never read an absolute path in detection code; only `platform/source` touches the host.
+- `platformtest.Recording` records which files a detector opens. `TestDetectionOpensOnlyAllowListedFiles` is the list of files detection may read; adding a new file is a privacy decision and needs a line in that list and in `DETECTION.md`.
+- `architecture_test.go` checks the import graph of the detection packages. It parses imports with `go/parser`; it needs no network and no `go list`.
+- Fixtures must stay synthetic: no serial numbers, MAC addresses, machine ids, host names, user names or IP addresses (`TestFixturesContainNoPrivateData`). Tests that need such values create them in memory.
+- UI texts for values coming from the API must be added to `frontend/src/lib/locales/de.ts` and `en.ts`; `TestEveryAPIValueHasATranslation` (backend) and `i18n.test.ts` (frontend) check that.
+- `TestTraceabilityTableIsComplete` checks the requirement-to-test table in `DETECTION.md`. When you rename a test, update the table.
+
 ## Dependencies
 
 - Backend: standard library only. There are no third-party Go modules.
@@ -59,7 +71,7 @@ Adding a dependency should be justified in the change that adds it.
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`, and is also called by the release workflow (`workflow_call`):
 
-1. **backend**: gofmt, `go vet`, `go test -race`, plus the same three for `scripts/bundlegen` and a check that both modules declare the same Go version
+1. **backend**: gofmt, `go vet`, `go test -race`, a 5-second fuzz run of each detection parser, plus gofmt, vet and test for `scripts/bundlegen` and a check that both modules declare the same Go version
 2. **frontend**: `npm ci`, `svelte-check`, `vitest`, `vite build`, upload of the built assets
 3. **build** (needs both): host build; the ARM64 release bundle via `scripts/release-bundle.sh`; aarch64 ELF check; size budgets (below); ARM64 smoke test under `qemu-user`
 4. **reproducibility**: `scripts/check-reproducible.sh --rebuild-frontend`
@@ -126,6 +138,8 @@ The tests need to run the installer without root, without systemd and without th
 Rules when changing the installer: keep it dependency-light (only tools Raspberry Pi OS Lite and Ubuntu Server carry), keep every check before the first change to the system, keep the negative control, add a test for every new refusal, and keep the file under the size budget.
 
 ## Known limitations at Gate G3
+
+(Detection limits are in [`DETECTION.md`](DETECTION.md), "Verification status".)
 
 - Real hardware: one Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit) ran the installer and the service (single data point, see `INSTALL.md`, "Hardware test results"). Nothing has run on an Ubuntu Server image or another board. The release bundle's ARM64 binary is exercised under `qemu-user` (smoke test, installer container jobs), which is not a hardware test.
 - The unit file was checked with `systemd-analyze verify` and started by a real systemd (257) on that one device, including a reboot (AT-007). The containers have no systemd. Other kernels and images, and the 512 MB memory budget under load, are untested.
