@@ -2,7 +2,7 @@
 
 Oarfish runs on a 64-bit ARM Linux device with systemd. You download one script, read it, and run it. The script downloads the release from GitHub, checks the signature, and installs Oarfish as a service. No GitHub account, no token, no Docker, no Node.js, no Python.
 
-**Status (Gate G3):** this installer has **not been run on a real Raspberry Pi, Raspberry Pi OS or Ubuntu Server image yet**. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today only shows a health page; there is no login and no device management yet (later gates).
+**Status (Gate G3):** this installer has run on **one** real Raspberry Pi Zero 2 W (see [Hardware test results](#hardware-test-results)); it has **not** been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today only shows a health page; there is no login and no device management yet (later gates).
 
 **Kurzfassung (Deutsch):** `install.sh` von der Release-Seite laden, lesen, mit `sudo sh install.sh --dry-run` prüfen, dann mit `sudo sh install.sh` installieren. Die Oberfläche läuft nur auf `127.0.0.1:8484` (nur lokal). Von einem anderen Rechner erreichst du sie über einen SSH-Tunnel: `ssh -L 8484:127.0.0.1:8484 BENUTZER@GERAET`, dann im Browser <http://127.0.0.1:8484> öffnen. Deinstallieren: `sudo sh install.sh --uninstall` (Daten bleiben), mit `--purge` werden auch Daten und Benutzer gelöscht.
 
@@ -20,7 +20,7 @@ Oarfish runs on a 64-bit ARM Linux device with systemd. You download one script,
 
 Hardware and operating system are not checked against a list. Any ARM64 Linux with systemd and OpenSSL 3 is accepted ("generic mode"). The installer prints what it finds in `/etc/os-release`. It does not need Raspberry Pi tools, and it does not assume a user called `pi`.
 
-Data point, not proof: the maintainer confirmed that OpenSSL 3 is present on one of their own devices. Nobody has confirmed it for a fresh Raspberry Pi OS Lite or Ubuntu Server image. If `openssl version` shows 1.x or the command is missing, install or upgrade the `openssl` package of your distribution first.
+Data point, not proof: OpenSSL 3.5.7 was present on one freshly flashed and updated Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit) (see [Hardware test results](#hardware-test-results)). Nobody has confirmed it for an Ubuntu Server image or for other versions of either system. If `openssl version` shows 1.x or the command is missing, install or upgrade the `openssl` package of your distribution first.
 
 ## Install
 
@@ -109,7 +109,7 @@ Step 1 must print `Signature and comment signature verified`. Do step 2 only aft
 
 ## First start and opening the GUI
 
-The service starts by itself after the installation and after every reboot (reboot behaviour is **not yet tested**, see below).
+The service starts by itself after the installation and after every reboot (the reboot was tested on one device, see [Hardware test results](#hardware-test-results)).
 
 ```bash
 systemctl status oarfish          # should say "active (running)"
@@ -146,6 +146,36 @@ Running the installer again is safe.
 - A download or verification problem at any point: the existing installation stays exactly as it was.
 
 This is the installer's job for the first installation. Updating from the GUI comes in a later gate (G6).
+
+## Hardware test results
+
+One test on one device. This is a single data point, not general proof: it does not show that the installer works on other boards, other images or other versions of the same image.
+
+| Item | Result |
+|---|---|
+| Device | Raspberry Pi Zero 2 W (the "test device") |
+| System | Freshly flashed and updated Debian GNU/Linux 13 (trixie), `aarch64`, kernel `6.18.50+rpt-rpi-v8`. The tester reports that this is the Raspberry Pi OS Lite 64-bit image. |
+| OpenSSL | 3.5.7 |
+| systemd | 257 |
+| Installer | `install.sh` of release `v0.1.0-alpha.2`; the file size on the device (27956 bytes) matches the release asset. |
+| Dry run and real install | Both succeeded. |
+| Service | `active` and `enabled`. |
+| Reboot | Passed: after a reboot the service started by itself and `/healthz` returned `ok`. |
+| Memory | Process `VmRSS` 7020 kB. |
+| GUI | Reached from another computer through an SSH tunnel (see [First start and opening the GUI](#first-start-and-opening-the-gui)). |
+
+Memory note: `systemctl status` shows no `Memory:` line on this image, because cgroup memory accounting is not enabled by default. The memory figure was therefore read from `/proc/<pid>/status` (`VmRSS`). It is the resident size of the Oarfish process at one moment, not a measurement under load and not a test of the 512 MB budget.
+
+Anonymous download and verification of the release: checked on 2026-10-26 for `v0.1.0-alpha.2` (`curl` without token, signature, SHA-256 of the files, version stamp in `install.sh`). The `releases/latest/download/install.sh` address is a different matter and is still to be verified with the first stable release (see [Install](#install)).
+
+The test setup is deliberately not identified here: no host or user names, no addresses.
+
+**Not verified on hardware:**
+
+- Ubuntu Server (any version) and any other board or image.
+- Uninstall, and running the installer again, on the device.
+- A tampered or damaged download on the device.
+- Key rotation and revocation (not designed, ADR 0005).
 
 ## Uninstall
 
@@ -201,10 +231,16 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 
 **Not verified:**
 
-- **Nothing has run on real hardware.** No Raspberry Pi Zero 2 W, no Raspberry Pi OS Lite image, no Ubuntu Server image.
-- The containers have **no systemd**: a small stand-in starts the binary. The unit file has never been started by a real systemd. A setting in it that does not work on a given kernel would show up as a failed start; the installer would report the failed health check.
-- Starting after a reboot (AT-007), the 512 MB memory budget, and write load on a microSD card are not tested.
-- The presence of OpenSSL 3 and the other tools on fresh Raspberry Pi OS and Ubuntu Server images is assumed from package information, plus one data point from the maintainer. Container results are no proof for those images.
-- The anonymous download of `install.sh` and the release from the real GitHub address is checked once, by hand, when the prerelease is published (see [RELEASING.md](RELEASING.md)).
+**Verified on hardware (one device, see [Hardware test results](#hardware-test-results)):** dry run and install on a Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit), the unit file started by a real systemd (257), service active and enabled, start after a reboot, `/healthz`, the GUI through an SSH tunnel, and one process memory reading.
+
+**Not verified:**
+
+- **Ubuntu Server and any other board or image** have not run on real hardware. Container results are no proof for them.
+- Uninstall and running the installer again have not been tried on the device (only in the containers and the CI tests).
+- A tampered or damaged download has not been tried on the device (only in the CI tests).
+- The containers have **no systemd**: a small stand-in starts the binary. Only the one device above has run the unit file under a real systemd; other kernels and images may differ.
+- The 512 MB memory budget under load, and write load on a microSD card, are not tested. The single `VmRSS` reading is not a budget test.
+- The presence of OpenSSL 3 and the other tools on Ubuntu Server images, and on other versions of Raspberry Pi OS, is assumed from package information. One device had OpenSSL 3.5.7.
+- `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified on 2026-10-26 for `v0.1.0-alpha.2` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.
 - Two installers running at the same time are not guarded against.

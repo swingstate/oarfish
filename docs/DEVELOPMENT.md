@@ -127,8 +127,8 @@ Rules when changing the installer: keep it dependency-light (only tools Raspberr
 
 ## Known limitations at Gate G3
 
-- Nothing has run on a Raspberry Pi, a Raspberry Pi OS image or an Ubuntu Server image. The release bundle's ARM64 binary is exercised under `qemu-user` (smoke test, installer container jobs), which is not a hardware test.
-- The unit file has been checked with `systemd-analyze verify` only. No real systemd has started it (the containers have none), so reboot persistence (AT-007), sandboxing options on a real kernel, and the 512 MB memory budget are untested.
+- Real hardware: one Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit) ran the installer and the service (single data point, see `INSTALL.md`, "Hardware test results"). Nothing has run on an Ubuntu Server image or another board. The release bundle's ARM64 binary is exercised under `qemu-user` (smoke test, installer container jobs), which is not a hardware test.
+- The unit file was checked with `systemd-analyze verify` and started by a real systemd (257) on that one device, including a reboot (AT-007). The containers have no systemd. Other kernels and images, and the 512 MB memory budget under load, are untested.
 - The installer container jobs use plain `debian:12` and `ubuntu:24.04` arm64 images. They are not Raspberry Pi OS Lite or Ubuntu Server images; the results (including which tools the minimal images lacked) say nothing certain about those.
 - The embedded UI was verified by fetching the served HTML and assets, and the frontend by unit tests in jsdom. It has not been opened in Chromium, Firefox or Safari.
 - Reproducibility is verified for the same commit, version string, Go and Node versions. Cross-toolchain-version reproducibility is not claimed.
