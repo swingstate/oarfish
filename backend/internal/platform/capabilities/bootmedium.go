@@ -18,6 +18,9 @@ const (
 	MediumUnknown = "unknown"
 )
 
+// Media lists every boot medium type.
+var Media = []string{MediumMMC, MediumNVMe, MediumUSB, MediumUnknown}
+
 // BootMedium is the kind of device the root file system is on.
 type BootMedium struct {
 	Type string

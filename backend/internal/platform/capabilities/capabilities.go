@@ -39,6 +39,9 @@ const (
 	ReasonSensorUnreadable = "sensor_unreadable"
 )
 
+// Reasons lists every reason code a capability can carry.
+var Reasons = []string{ReasonNotFound, ReasonImplausible, ReasonUnrecognised, ReasonNoRootMount, ReasonNoSensor, ReasonSensorUnreadable}
+
 // Capability is one probed ability. Source says what was probed (a path or a
 // path pattern, never data read from the system); Reason is a machine-readable
 // code, set only when the capability is unavailable.

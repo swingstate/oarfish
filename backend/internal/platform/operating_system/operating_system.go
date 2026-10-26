@@ -19,6 +19,9 @@ const (
 	StatusUnrecognised    = "unrecognised"
 )
 
+// Statuses lists every adapter status value.
+var Statuses = []string{StatusInitialTarget, StatusNotYetQualified, StatusGeneric, StatusUnrecognised}
+
 // Adapter is the boundary for operating-system specific behaviour. In G4 an
 // adapter only recognises its system; package, network and service adapters
 // come with later gates. An adapter must not know about hardware.
