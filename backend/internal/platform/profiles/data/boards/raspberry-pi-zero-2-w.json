@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "kind": "board",
+  "profile_id": "raspberry-pi-zero-2-w",
+  "version": "1.0.0",
+  "vendor": "Raspberry Pi",
+  "model": "Raspberry Pi Zero 2 W",
+  "soc_family": "BCM2837",
+  "compatible_patterns": ["raspberrypi,model-zero-2-w"],
+  "os_constraints": { "adapters": ["raspberry_pi_os", "ubuntu"] },
+  "support_tier": "compatible",
+  "maintainers": ["Oarfish maintainers"],
+  "tested_combinations": [
+    {
+      "os_adapter": "raspberry_pi_os",
+      "os_version_id": "13",
+      "oarfish_version": "v0.1.0-alpha.2",
+      "functions_tested": ["install"],
+      "evidence_ref": "docs/INSTALL.md#hardware-test-results"
+    }
+  ],
+  "capabilities": ["procfs", "sysfs", "systemd", "journald", "cpu_temperature", "boot_medium"],
+  "sensor_bindings": [
+    { "sensor": "cpu_temperature", "handler": "sensor.thermal_zone.v1" }
+  ],
+  "storage_hints": { "boot_media": ["mmc"] },
+  "known_limitations": ["memory_512mb", "evidence_install_only"],
+  "documentation_links": ["docs/DETECTION.md", "docs/INSTALL.md#hardware-test-results"]
+}

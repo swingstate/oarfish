@@ -5,15 +5,42 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"strings"
 	"time"
 )
 
-// NewHandler returns the HTTP handler serving /healthz and the given frontend assets.
-func NewHandler(assets fs.FS) http.Handler {
+// Option configures NewHandler.
+type Option func(*config)
+
+type config struct {
+	device DeviceSource
+}
+
+// WithDevice enables GET /api/v1/device, backed by src.
+func WithDevice(src DeviceSource) Option {
+	return func(c *config) { c.device = src }
+}
+
+// NewHandler returns the HTTP handler serving /healthz, the read-only API
+// under /api/ and the given frontend assets.
+func NewHandler(assets fs.FS, opts ...Option) http.Handler {
+	var cfg config
+	for _, o := range opts {
+		o(&cfg)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /", staticHandler(assets))
-	return securityHeaders(mux)
+	api := apiHandler(cfg)
+	return securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// /api/ is routed by prefix, not by the mux, so that every method and
+		// every unknown path under it gets the same typed JSON error.
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			api.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 }
 
 // New returns an http.Server for addr with conservative timeouts.

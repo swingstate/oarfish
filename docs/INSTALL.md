@@ -2,7 +2,7 @@
 
 Oarfish runs on a 64-bit ARM Linux device with systemd. You download one script, read it, and run it. The script downloads the release from GitHub, checks the signature, and installs Oarfish as a service. No GitHub account, no token, no Docker, no Node.js, no Python.
 
-**Status (Gate G3):** this installer has run on **one** real Raspberry Pi Zero 2 W (see [Hardware test results](#hardware-test-results)); it has **not** been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today only shows a health page; there is no login and no device management yet (later gates).
+**Status (Gate G3):** this installer has run on **one** real Raspberry Pi Zero 2 W (see [Hardware test results](#hardware-test-results)); it has **not** been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today shows a health page and a read-only device page (what it detected about the board and the system); there is no login and no device management yet (later gates).
 
 **Kurzfassung (Deutsch):** `install.sh` von der Release-Seite laden, lesen, mit `sudo sh install.sh --dry-run` prüfen, dann mit `sudo sh install.sh` installieren. Die Oberfläche läuft nur auf `127.0.0.1:8484` (nur lokal). Von einem anderen Rechner erreichst du sie über einen SSH-Tunnel: `ssh -L 8484:127.0.0.1:8484 BENUTZER@GERAET`, dann im Browser <http://127.0.0.1:8484> öffnen. Deinstallieren: `sudo sh install.sh --uninstall` (Daten bleiben), mit `--purge` werden auch Daten und Benutzer gelöscht.
 
@@ -153,7 +153,10 @@ One test on one device. This is a single data point, not general proof: it does 
 
 | Item | Result |
 |---|---|
-| Device | Raspberry Pi Zero 2 W (the "test device") |
+| Device | Raspberry Pi Zero 2 W Rev 1.0, revision code 902120 (the "test device") |
+| Image | "Raspberry Pi reference 2026-10-06", pi-gen stage2, pi-gen commit `b2cd98a9ee08a31ef7d0110ed09f2492bbd972ec` |
+| Tested release | `v0.1.0-alpha.2`, commit `2d150d6e59b55edb18592b95b26d6fa1bfe7320b` |
+| Support status | Compatible, not Verified. |
 | System | Freshly flashed and updated Debian GNU/Linux 13 (trixie), `aarch64`, kernel `6.18.50+rpt-rpi-v8`. The tester reports that this is the Raspberry Pi OS Lite 64-bit image. |
 | OpenSSL | 3.5.7 |
 | systemd | 257 |

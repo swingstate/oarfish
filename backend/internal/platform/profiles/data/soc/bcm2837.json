@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "kind": "soc_family",
+  "profile_id": "soc-bcm2837",
+  "version": "1.0.0",
+  "vendor": "Broadcom",
+  "soc_family": "BCM2837",
+  "compatible_patterns": ["brcm,bcm2837"],
+  "maintainers": ["Oarfish maintainers"],
+  "sensor_bindings": [
+    { "sensor": "cpu_temperature", "handler": "sensor.thermal_zone.v1" }
+  ]
+}

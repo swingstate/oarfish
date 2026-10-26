@@ -1,0 +1,5 @@
+22 1 179:2 / / rw,noatime shared:1 - ext4 /dev/root rw
+23 22 0:5 / /dev rw,nosuid,relatime shared:2 - devtmpfs devtmpfs rw
+24 22 0:21 / /proc rw,nosuid,nodev,noexec,relatime shared:5 - proc proc rw
+25 22 0:22 / /sys rw,nosuid,nodev,noexec,relatime shared:6 - sysfs sysfs rw
+26 22 179:1 / /boot/firmware rw,relatime shared:7 - vfat /dev/mmcblk0p1 rw

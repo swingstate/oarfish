@@ -13,6 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/swingstate/oarfish/backend/internal/platform/detector"
+	"github.com/swingstate/oarfish/backend/internal/platform/hardware"
+	"github.com/swingstate/oarfish/backend/internal/platform/profiles"
+	"github.com/swingstate/oarfish/backend/internal/platform/source"
 	"github.com/swingstate/oarfish/backend/internal/server"
 	"github.com/swingstate/oarfish/backend/internal/version"
 	"github.com/swingstate/oarfish/backend/internal/web"
@@ -42,7 +46,19 @@ func run(addr string, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	srv := server.New(addr, server.NewHandler(web.Assets()))
+	// Detection runs once, now. It only reads files and cannot fail; the
+	// profiles are embedded, so an error here is a defect in the build.
+	reg, err := profiles.Load()
+	if err != nil {
+		return fmt.Errorf("embedded profiles: %w", err)
+	}
+	dev := detector.New(source.Host(), hardware.HostEnv(), reg)
+	res := dev.Result()
+	log.Info("platform detected",
+		"arch", res.Hardware.Arch, "os_adapter", res.OS.Adapter, "profile", res.Profile.ID,
+		"tier", res.Support.Tier, "reason", res.Support.Reason)
+
+	srv := server.New(addr, server.NewHandler(web.Assets(), server.WithDevice(dev)))
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()

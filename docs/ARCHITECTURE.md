@@ -1,17 +1,18 @@
-# Architecture (Gate G3 state)
+# Architecture (Gate G4 state)
 
-This document describes what exists after Gate G3 and the boundaries later gates build on. The normative target architecture is section 8 of [`PFLICHTENHEFT.md`](PFLICHTENHEFT.md); where this document and the specification differ, the specification wins.
+This document describes what exists after Gate G4 and the boundaries later gates build on. The normative target architecture is section 8 of [`PFLICHTENHEFT.md`](PFLICHTENHEFT.md); where this document and the specification differ, the specification wins.
 
 ## Repository layout
 
 ```text
 backend/                     Go module github.com/swingstate/oarfish/backend
-  cmd/oarfish/                 process entry point: flags, signal handling, graceful shutdown
-  internal/server/           HTTP handler: /healthz, static frontend, security headers
+  cmd/oarfish/                 process entry point: flags, signal handling, graceful shutdown, runs detection once
+  internal/server/           HTTP handler: /healthz, GET /api/v1/device, static frontend, security headers
+  internal/platform/         read-only detection: source, hardware, operating_system, capabilities, profiles, detector (docs/DETECTION.md)
   internal/web/              go:embed of the built frontend (dist/)
   internal/version/          Version and Commit, injected with -ldflags
 frontend/                    Svelte 5 + TypeScript + Vite
-  src/                       App.svelte, lib/ (health client, i18n dictionary)
+  src/                       App.svelte (navigation), Device.svelte (Gerät page), lib/ (health and device clients, locales/de.ts + en.ts)
 docs/                        specification, ADRs, roadmap, prompts, this file
 install/                     install.sh (POSIX sh installer) and oarfish.service (unit, shipped in the bundle)
 scripts/                     release packaging, signing, verification, installer tests, budget and smoke tests
@@ -39,25 +40,26 @@ frontend/src ──vite build──▶ backend/internal/web/dist ──go:embed�
 | Route | Behaviour |
 |---|---|
 | `GET /healthz` | `200 {"status":"ok"}`, `Cache-Control: no-store` |
+| `GET /api/v1/device` | detection result (G4): hardware, OS, kernel, profile, support tier, capabilities, CPU temperature, boot medium. Read-only: other methods `405`, a request body `400`, unknown `/api/` paths typed `404`; `Cache-Control: no-store`. See [`DETECTION.md`](DETECTION.md) |
 | `GET /` and below | embedded frontend; unknown paths `404`; `503` if no frontend is embedded |
 
 All responses carry `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`. The server sets read-header, read, write and idle timeouts and a header size limit.
 
 The process listens on `127.0.0.1:8484` by default (loopback only, ORB-ONB-003). Another address requires an explicit `-listen` flag. The port is a G1 default, not a specification value.
 
-`/readyz`, `/api/v1/*`, Server-Sent Events and authentication are specified (sections 8.7, 13.1) but are not part of G1.
+`/readyz`, further `/api/v1/*` endpoints, Server-Sent Events and authentication are specified (sections 8.7, 13.1) but do not exist yet. The device endpoint has no authentication; the service therefore stays on loopback (D-C11). Authentication is not assigned to a gate yet.
 
 ## Frontend
 
 - Svelte 5 (runes), TypeScript strict mode, no router, no UI framework.
 - UI strings come from `src/lib/i18n.ts` (German default, ORB-GEN-006); an English dictionary can be added with the same keys.
-- The only feature is a health indicator backed by `/healthz`. No other functionality is shown, in line with the "no fake functions" rule (section 7.1).
+- Two views, switched by a `#/device` hash (no router): the health indicator backed by `/healthz`, and the "Gerät" page backed by `/api/v1/device`. Nothing else is shown, in line with the "no fake functions" rule (section 7.1). All UI text is in `src/lib/locales/de.ts` (default) and `en.ts` (prepared).
 
 ## Boundaries prepared for later gates
 
 Not implemented, only reserved by the layout and by CLAUDE.md rules:
 
-- Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3). Nothing in G1 reads `/etc/os-release`, procfs or sysfs.
+- Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3) and implemented in G4 (below). Package, network and service adapters (`packages/`, `network/`, `services/` in spec 8.3) do not exist yet.
 - No privileged code exists. Privilege Broker and Update Helper are separate future components (spec 8.6).
 - Plugins and self-update are out of scope until their gates (ADR 0003, ADR 0004). Release signing exists (below); the installer verifies signatures with the system `openssl`, but nothing in the Oarfish binary verifies signatures yet.
 
@@ -81,6 +83,21 @@ tag vX.Y.Z ──▶ ci (reused) ──▶ build ──▶ sign ──▶ publis
 - A release holds the bundle, `manifest.json`, `install.sh` (the repository's installer with the release version written into one fixed line), `checksums.txt` (covers all of them), `checksums.txt.sig` and the SBOMs. The updater (Gate G6) does not exist yet.
 
 Details: [`RELEASING.md`](RELEASING.md) and [`DEVELOPMENT.md`](DEVELOPMENT.md).
+
+## Platform detection (Gate G4)
+
+```text
+internal/platform/
+  source/  hardware/  operating_system/  capabilities/  profiles/  detector/
+```
+
+- **Read-only, files only.** Detection reads `/proc`, `/sys`, `/run/systemd` and os-release files through an injectable `fs.FS` (`os.DirFS("/")` in production, a fixture directory in tests) with bounded reads. It runs no program and uses no cgo. Which files may be read is fixed and tested (privacy, [`DETECTION.md`](DETECTION.md)).
+- **Three separate concepts.** `hardware` (board, SoC, architecture), `operating_system` (os-release, kernel, OS adapter) and `capabilities` (what probes found). Hardware and OS packages do not import each other or the server; only `detector` combines them. An architecture test enforces this.
+- **Ubuntu boundary.** `operating_system/ubuntu.go` recognises Ubuntu and reports `not-yet-qualified`. It has no Ubuntu-specific behaviour; the same detector runs on Ubuntu fixtures unchanged.
+- **Profiles** are embedded JSON (`go:embed`), strictly decoded and validated: no commands, only allow-listed named handlers, no Verified tier without evidence for all core functions. Proposed in [ADR 0007](adr/0007-detection-and-profiles.md).
+- **Support tier** (Verified, Compatible, Community, Experimental, Generic, Unsupported) is computed from hardware, OS adapter, capabilities and profile. Unknown ARM64 starts in Generic Mode with no board-specific actions.
+- **Run once, cache, read the temperature per request.** Detection runs at startup. Only the CPU temperature is read again per request.
+- The unit file is unchanged. Reading `/proc` and `/sys` is expected to work under the current sandbox, but that is not yet confirmed under a real systemd; see "Verification status" in [`DETECTION.md`](DETECTION.md).
 
 ## Installer and the device layout (Gate G3)
 

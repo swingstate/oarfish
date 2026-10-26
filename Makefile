@@ -7,10 +7,11 @@ LDFLAGS := -s -w \
 	-X github.com/swingstate/oarfish/backend/internal/version.Commit=$(COMMIT)
 
 LISTEN ?= 127.0.0.1:8484
+FUZZTIME ?= 10s
 
 .DEFAULT_GOAL := help
 .PHONY: help dev dev-backend dev-frontend deps test test-backend test-frontend test-release-tools \
-	lint lint-backend lint-frontend frontend-build build build-arm64 \
+	lint lint-backend lint-frontend fuzz frontend-build build build-arm64 \
 	release-bundle check-reproducible test-signing test-installer lint-shell clean
 
 help: ## List targets
@@ -51,6 +52,10 @@ lint-backend:
 
 lint-frontend:
 	cd frontend && npm run check
+
+fuzz: ## Fuzz the os-release and device-tree parsers (FUZZTIME=10s each)
+	cd backend && go test -run '^$$' -fuzz '^FuzzParseOSRelease$$' -fuzztime $(FUZZTIME) ./internal/platform/operating_system
+	cd backend && go test -run '^$$' -fuzz '^FuzzParseCompatible$$' -fuzztime $(FUZZTIME) ./internal/platform/hardware
 
 frontend-build:
 	cd frontend && npm run build

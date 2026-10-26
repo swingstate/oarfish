@@ -6,6 +6,7 @@
   --border: #d5d9e0;
   --ok: #1a7f37;
   --bad: #b42318;
+  --warn: #9a6700;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -17,6 +18,7 @@
     --border: #2b303b;
     --ok: #3fb950;
     --bad: #f97066;
+    --warn: #d29922;
   }
 }
 
@@ -82,4 +84,126 @@ button {
 button:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0.25rem 0;
+}
+
+nav a[aria-current='page'] {
+  color: var(--fg);
+  font-weight: 600;
+  border-bottom: 2px solid var(--fg);
+}
+
+nav a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+h3 {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.notice {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 0.375rem;
+}
+
+.notice[data-tier='generic'],
+.notice[data-tier='experimental'] {
+  border-left-color: var(--warn);
+}
+
+.notice[data-tier='unsupported'] {
+  border-left-color: var(--bad);
+}
+
+.status[data-tier='verified'],
+.status[data-tier='compatible'] {
+  color: var(--ok);
+}
+
+.status[data-tier='generic'],
+.status[data-tier='experimental'],
+.status[data-tier='community'] {
+  color: var(--warn);
+}
+
+.status[data-tier='unsupported'] {
+  color: var(--bad);
+}
+
+.capabilities {
+  list-style: none;
+  padding: 0;
+}
+
+.capabilities li {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.capabilities li > strong {
+  margin-left: 0.5rem;
+}
+
+.capabilities li[data-available='true'] > strong {
+  color: var(--ok);
+}
+
+.capabilities li[data-available='false'] > strong {
+  color: var(--bad);
+}
+
+details {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+details p {
+  margin: 0.25rem 0;
 }

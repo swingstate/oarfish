@@ -1,0 +1,6 @@
+processor	: 0
+vendor_id	: SyntheticCPU
+cpu family	: 6
+model		: 142
+model name	: Synthetic x86_64 Processor
+flags		: fpu vme de pse

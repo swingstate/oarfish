@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "kind": "generic",
+  "profile_id": "generic-arm64",
+  "version": "1.0.0",
+  "vendor": "Oarfish",
+  "model": "Generic ARM64",
+  "compatible_patterns": [],
+  "support_tier": "generic",
+  "maintainers": ["Oarfish maintainers"],
+  "known_limitations": ["generic_mode"],
+  "documentation_links": ["docs/DETECTION.md"]
+}
