@@ -214,12 +214,12 @@ func TestParseModel(t *testing.T) {
 func TestParseMemTotal(t *testing.T) {
 	cases := map[string]uint64{
 		"MemTotal:       415404 kB\nMemFree: 1 kB\n": 415404 * 1024,
-		"MemFree: 1 kB\n":                            0,
-		"MemTotal: 12 MB\n":                          0,
-		"MemTotal: abc kB\n":                         0,
-		"MemTotal: 0 kB\n":                           0,
-		"MemTotal: 99999999999999999999 kB\n":        0,
-		"":                                           0,
+		"MemFree: 1 kB\n":                     0,
+		"MemTotal: 12 MB\n":                   0,
+		"MemTotal: abc kB\n":                  0,
+		"MemTotal: 0 kB\n":                    0,
+		"MemTotal: 99999999999999999999 kB\n": 0,
+		"":                                    0,
 	}
 	for in, want := range cases {
 		if got := ParseMemTotal([]byte(in)); got != want {
