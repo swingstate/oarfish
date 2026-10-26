@@ -87,10 +87,10 @@ Releases are signed with `minisign -S -l` (legacy mode, algorithm id `Ed`), so t
 
 ## Verify a release anonymously
 
-For a reader without a GitHub account, token or `gh`. This works only once the repository is public (D-C17); while it is private the URLs answer 404. Needs `curl` and `minisign`.
+For a reader without a GitHub account, token or `gh`. The repository is public (D-C17), so the URLs answer without a login. Needs `curl` and `minisign`.
 
 ```bash
-TAG=v0.1.0-alpha.1
+TAG=v0.1.0-alpha.2
 VER=${TAG#v}
 mkdir verify && cd verify
 base="https://github.com/swingstate/oarfish/releases/download/$TAG"
@@ -110,7 +110,7 @@ sha256sum -c checksums.txt                                               # 2. ha
 
 What this does and does not prove: the signature proves the release files were signed with the private key behind `release/oarfish-release.pub`. The public key comes from the same repository, so it does not protect against someone who controls the repository itself. For that, compare the key id (`11F1C52777090BFC`, the number in the `untrusted comment` line of the key file) and the key line with a copy obtained through an independent channel. No such second channel exists yet; installer and updater will carry the key themselves (Gates G3 and G6).
 
-Status: the commands were checked with `gh release download` and the real public key (signature, hashes and `scripts/verify-release.sh` all passed). The anonymous `curl` URLs themselves could only be tested after the visibility change, see `docs/PUBLICATION_CHECKLIST.md`, step (h).
+Status: verified on 2026-10-26 for `v0.1.0-alpha.2`: anonymous `curl` without a token, the signature, the SHA-256 of the files and the version stamp in `install.sh`. (`v0.1.0-alpha.1` has no `install.sh`; the loop above does not fit it.) The `releases/latest/download/` address is not covered by this; it is to be verified with the first stable release (see `INSTALL.md`).
 
 ## Build a bundle locally (unsigned)
 
@@ -162,10 +162,10 @@ Rewriting history is not part of this list. If a scan ever finds a real secret i
 
 ## Known limitations
 
-- The installer is described in `INSTALL.md`, including what has and has not been verified; nothing has run on real hardware.
+- The installer is described in `INSTALL.md`, including what has and has not been verified. It has run on one Raspberry Pi Zero 2 W (single data point, see the hardware test results there); nothing else has run on real hardware.
 - `v0.1.0-alpha.1` was published before the installer existed. It has no `install.sh`, no `oarfish.service` and no `THIRD_PARTY_NOTICES.txt` in the bundle, so the current `verify-release.sh` and the installer reject it by design. Releases from `v0.1.0-alpha.2` on follow the layout described here.
 
 - Unverified until the first real release: the publish job, `gh release create`, prerelease flag, and the secret-based signing path. The dry run exercises everything except those and the committed public key.
-- The ARM64 smoke test runs under qemu-user on an x86-64 runner. It proves the binary starts and serves; it is not a test on real hardware (nothing has run on a Raspberry Pi yet).
+- The ARM64 smoke test runs under qemu-user on an x86-64 runner. It proves the binary starts and serves; it is not a test on real hardware (the one hardware test is recorded in `INSTALL.md`).
 - No SLSA provenance or artifact attestation, no signature on the SBOMs other than through `checksums.txt`.
 - Key rotation and revocation are not designed (ADR 0005).
