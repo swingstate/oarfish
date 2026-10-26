@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"go/build"
 	"go/parser"
 	"go/token"
 	"os"
@@ -182,5 +183,55 @@ func TestArchitectureNoHardcodedUserHomeOrPiTools(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Go reads a file name ending in _arm64, _linux, _darwin and so on as a build
+// constraint, so a file called generic_arm64.go is silently left out of builds
+// on other platforms (this happened once: CI on linux/amd64 failed while the
+// ARM64 Mac built fine). The detection code must build, and test, everywhere
+// the developers and CI run, so no detection file may be constrained.
+func TestArchitectureNoPlatformConstrainedFileNames(t *testing.T) {
+	var contexts []build.Context
+	for _, p := range [][2]string{{"linux", "arm64"}, {"linux", "amd64"}, {"darwin", "arm64"}, {"darwin", "amd64"}} {
+		c := build.Default
+		c.GOOS, c.GOARCH, c.CgoEnabled = p[0], p[1], false
+		contexts = append(contexts, c)
+	}
+	root := filepath.Join(backendDir(t), "internal", "platform")
+	checked := 0
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && d.Name() == "testdata" {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		checked++
+		for _, c := range contexts {
+			ok, err := c.MatchFile(filepath.Dir(path), d.Name())
+			if err != nil {
+				return err
+			}
+			if !ok {
+				t.Errorf("%s is excluded from %s/%s builds (file name or build tag constraint)", d.Name(), c.GOOS, c.GOARCH)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checked < 30 {
+		t.Fatalf("only %d files checked", checked)
+	}
+	// Positive control: the check does notice a constrained name.
+	c := build.Default
+	c.GOOS, c.GOARCH = "linux", "amd64"
+	if ok, _ := c.MatchFile(root, "generic_arm64.go"); ok {
+		t.Fatal("MatchFile does not apply the _arm64 constraint; this test would be blind")
 	}
 }

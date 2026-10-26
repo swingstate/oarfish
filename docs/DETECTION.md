@@ -17,7 +17,7 @@ Not in G4: dashboard, metrics and charts (G5); authentication, accounts, audit a
 ```text
 backend/internal/platform/
   source/            read-only, bounded file access; the only package that touches the host
-  hardware/          generic_arm64.go, raspberry_pi.go   (device tree, cpuinfo, meminfo, DMI)
+  hardware/          generic_board.go, raspberry_pi.go   (device tree, cpuinfo, meminfo, DMI)
   operating_system/  debian_family.go, raspberry_pi_os.go, ubuntu.go   (os-release, kernel)
   capabilities/      procfs, sysfs, systemd, journald, cgroup v2, CPU temperature, boot medium
   profiles/          registry, schema validation, embedded data/ (JSON)
@@ -39,6 +39,7 @@ Rules, each enforced by a test (`architecture_test.go`):
 - `hardware` and `operating_system` never import each other, directly or through another package, and neither imports the HTTP server (ORB-HW-002, ORB-HW-010). Only `detector` knows both.
 - No detection package imports `os/exec`, `net/http` or `syscall`. Detection reads files and nothing else (ORB-HW-006).
 - Only `source` imports `os`. Everything else reads through an `fs.FS`: `os.DirFS("/")` in production, a fixture directory in tests. File names are slash paths without leading slash (`proc/cpuinfo`). `source.Host()` works with `CGO_ENABLED=0`.
+- No detection file name ends in a platform suffix (`_arm64`, `_linux`, ...): Go would read it as a build constraint and leave the file out of builds on other platforms. That is why spec 8.3's example name `generic_arm64.go` is `generic_board.go` here (`TestArchitectureNoPlatformConstrainedFileNames`).
 - Detection code contains no `pi` user name, no `/home`, no `/boot/config.txt`, no `raspi-config`, no `vcgencmd`.
 
 An OS adapter (`operating_system.Adapter`) in G4 only *recognises* its system and reports a status. It carries no behaviour. `ubuntu.go` is that boundary for Ubuntu Server LTS ARM64: recognised, status `not-yet-qualified`. Qualification is Gate G12.
@@ -79,7 +80,7 @@ The API, logs, tests, fixtures and documentation must not contain or expose: CPU
 
 - Architecture comes from `runtime.GOARCH`/`GOOS` (injectable as `Env` for tests). Board knowledge is applied to ARM64 only.
 - **Raspberry Pi** (`raspberry_pi.go`): recognised by a `raspberrypi,*` compatible string, or a model starting with `Raspberry Pi `. Vendor is "Raspberry Pi", model is the device-tree model, SoC family comes from the `brcm,bcmNNNN` compatible string (`/proc/cpuinfo` `Hardware` says BCM2835 on most models and is not used), and the revision code is the `Revision` field of cpuinfo. All of this from files; no Raspberry Pi tool is run.
-- **Generic ARM64** (`generic_arm64.go`): model from the device tree, or from DMI on ACPI systems; no revision code, no SoC family.
+- **Generic ARM64** (`generic_board.go`): model from the device tree, or from DMI on ACPI systems; no revision code, no SoC family.
 - The same Raspberry Pi gives an identical `Info` under Raspberry Pi OS and under Ubuntu (`TestSameHardwareUnderRaspberryPiOSAndUbuntu`).
 
 ## Operating system detection
