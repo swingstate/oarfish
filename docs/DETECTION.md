@@ -301,6 +301,8 @@ Acceptance tests: AT-002 `TestDetectRaspberryPiOS`; AT-003 `TestDetectPiZero2W`,
 
 **Verified by tests (no hardware, no network, no root):** everything above, against synthetic fixtures; the fuzz targets for the `os-release` parser and the compatible parser run for a few seconds in CI (`make fuzz`).
 
+`TestDetectOnTheRealHost` additionally runs detection against the real `/proc` and `/sys` of the machine running the tests (skipped when it is not Linux), so real files are parsed in CI on a generic x86_64 runner. It asserts completeness and cleanliness only, nothing about what the machine is.
+
 **Not verified:**
 
 - **No comparison with a real Raspberry Pi Zero 2 W.** The fixture values (compatible strings, cpuinfo layout, revision code, `/etc/rpi-issue`, kernel release, boot device) are written from knowledge of the kernel sources and of the G3 test report. If the real `compatible` strings differ from `raspberrypi,model-zero-2-w` and `brcm,bcm2837`, or the image has no `/etc/rpi-issue`, the Pi would be reported as Generic or as `debian_family`.

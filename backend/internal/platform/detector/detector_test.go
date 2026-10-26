@@ -3,15 +3,19 @@ package detector
 import (
 	"io/fs"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"unicode"
 
+	"github.com/swingstate/oarfish/backend/internal/platform/capabilities"
 	"github.com/swingstate/oarfish/backend/internal/platform/hardware"
 	"github.com/swingstate/oarfish/backend/internal/platform/operating_system"
 	"github.com/swingstate/oarfish/backend/internal/platform/platformtest"
 	"github.com/swingstate/oarfish/backend/internal/platform/profiles"
+	"github.com/swingstate/oarfish/backend/internal/platform/source"
 )
 
 var linuxARM64 = hardware.Env{GOOS: "linux", GOARCH: "arm64"}
@@ -336,4 +340,35 @@ func TestEveryTierReasonHasAnExplanationKey(t *testing.T) {
 			t.Errorf("odd key %q", k)
 		}
 	}
+}
+
+// Robustness on a real system: run detection against the real /proc and /sys of
+// the machine running the tests (read-only, no root). It makes no claim about
+// what the machine is; it checks that real files parse without a crash and
+// give a complete, clean result. Skipped where there is no Linux to read.
+func TestDetectOnTheRealHost(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the real-host check needs Linux")
+	}
+	d := New(source.Host(), hardware.HostEnv(), registry(t))
+	r := d.Result()
+	d.CPUTemperature()
+
+	if len(r.Capabilities) != 7 || r.Support.Tier == "" || r.Support.ExplanationKey == "" || r.OS.Adapter == "" {
+		t.Fatalf("incomplete result: %+v", r)
+	}
+	if !slices.ContainsFunc(r.Capabilities, func(c capabilities.Capability) bool { return c.ID == capabilities.Procfs && c.Available }) {
+		t.Error("procfs must be available on Linux")
+	}
+	if r.OS.Kernel == "" {
+		t.Error("no kernel release read from /proc/sys/kernel/osrelease")
+	}
+	for _, s := range []string{r.Hardware.Model, r.Hardware.Vendor, r.OS.PrettyName, r.OS.Kernel} {
+		for _, c := range s {
+			if unicode.IsControl(c) {
+				t.Errorf("control character in %q", s)
+			}
+		}
+	}
+	t.Logf("real host: arch=%s adapter=%s tier=%s reason=%s boot=%s", r.Hardware.Arch, r.OS.Adapter, r.Support.Tier, r.Support.Reason, r.BootMedium.Type)
 }
