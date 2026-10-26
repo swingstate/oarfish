@@ -1,0 +1,5 @@
+MAJOR=179
+MINOR=2
+DEVNAME=mmcblk0p2
+DEVTYPE=partition
+PARTN=2
