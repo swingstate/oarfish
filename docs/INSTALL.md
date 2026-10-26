@@ -153,7 +153,10 @@ One test on one device. This is a single data point, not general proof: it does 
 
 | Item | Result |
 |---|---|
-| Device | Raspberry Pi Zero 2 W (the "test device") |
+| Device | Raspberry Pi Zero 2 W Rev 1.0, revision code 902120 (the "test device") |
+| Image | "Raspberry Pi reference 2026-10-06", pi-gen stage2, pi-gen commit `b2cd98a9ee08a31ef7d0110ed09f2492bbd972ec` |
+| Tested release | `v0.1.0-alpha.2`, commit `2d150d6e59b55edb18592b95b26d6fa1bfe7320b` |
+| Support status | Compatible, not Verified. |
 | System | Freshly flashed and updated Debian GNU/Linux 13 (trixie), `aarch64`, kernel `6.18.50+rpt-rpi-v8`. The tester reports that this is the Raspberry Pi OS Lite 64-bit image. |
 | OpenSSL | 3.5.7 |
 | systemd | 257 |
