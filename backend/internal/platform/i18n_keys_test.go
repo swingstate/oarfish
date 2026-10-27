@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/swingstate/oarfish/backend/internal/metrics"
 	"github.com/swingstate/oarfish/backend/internal/platform/capabilities"
 	"github.com/swingstate/oarfish/backend/internal/platform/detector"
 	"github.com/swingstate/oarfish/backend/internal/platform/operating_system"
@@ -38,6 +39,12 @@ func TestEveryAPIValueHasATranslation(t *testing.T) {
 	add("adapter.", operating_system.AdapterNames()...)
 	add("adapterStatus.", operating_system.Statuses...)
 	add("matchedBy.", profiles.MatchedByCompatible, profiles.MatchedByModel, profiles.MatchedByFallback)
+	// Gate G5: alerts, alert levels, link states, interface kinds and sensor sources.
+	want = append(want, metrics.AlertKeys()...)
+	add("level.", metrics.Levels...)
+	add("linkState.", metrics.OperStates...)
+	add("netKind.", metrics.KindEthernet, metrics.KindWiFi, metrics.KindOther)
+	add("tempSource.", "thermal_zone", "hwmon")
 
 	key := regexp.MustCompile(`(?m)^\s*'([^']+)':`)
 	for _, lang := range []string{"de", "en"} {

@@ -43,13 +43,16 @@ jobs:
       - name: go test
         working-directory: backend
         run: go test -race ./...
-      # Short fuzz runs of the two parsers that read untrusted system files.
+      # Short fuzz runs of the parsers that read untrusted system files.
       # The seed corpora also run as ordinary tests in the step above.
-      - name: Fuzz the detection parsers
+      - name: Fuzz the detection and metrics parsers
         working-directory: backend
         run: |
           go test -run '^$' -fuzz '^FuzzParseOSRelease$' -fuzztime 5s ./internal/platform/operating_system
           go test -run '^$' -fuzz '^FuzzParseCompatible$' -fuzztime 5s ./internal/platform/hardware
+          for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes; do
+            go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/metrics/parse
+          done
       # scripts/bundlegen is a separate stdlib-only module (release packaging).
       - name: Release tooling uses the same Go version
         run: diff <(grep '^go ' backend/go.mod) <(grep '^go ' scripts/bundlegen/go.mod)

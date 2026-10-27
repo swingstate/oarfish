@@ -119,6 +119,8 @@ curl http://127.0.0.1:8484/healthz   # {"status":"ok"}
 
 Oarfish listens on `127.0.0.1:8484` only. That means: only programs on the device itself can reach it. This is on purpose. There is no login yet, so it must not be reachable from the network, and the installer never opens it.
 
+Until the login exists (Gate G5.1), the program also enforces this: it refuses to start when `-listen` is anything but a loopback IP address with a port (`127.0.0.1:8484`, another `127.x.x.x` address or `[::1]:8484`). An empty host (`:8484`), the unspecified addresses, any other IP address and host names such as `localhost` are refused with a message and exit status 1; there is no option or environment variable to override it. In the log: `oarfish refuses to start`.
+
 **On the device itself** (with a browser, for example over a screen): open <http://127.0.0.1:8484>.
 
 **From another computer**: use an SSH tunnel. Replace `USER` and `DEVICE` with your login name and the device's name or address:
@@ -129,7 +131,9 @@ ssh -L 8484:127.0.0.1:8484 USER@DEVICE
 
 Leave that window open, then open <http://127.0.0.1:8484> in the browser on your own computer. If port 8484 is already in use there, take another local port: `ssh -L 9000:127.0.0.1:8484 USER@DEVICE` and open <http://127.0.0.1:9000>.
 
-Do not change the service to listen on another address. Reverse proxy, TLS and network access come in later gates, together with authentication.
+Do not change the service to listen on another address; since Gate G5 the program would not start. Reverse proxy, TLS and network access come in later gates, together with authentication.
+
+The first page is **Home**: live values of the device (CPU, memory, temperatures, storage, network) and alerts. The device is only read while a browser has Home open and visible (at most four windows at the same time). Opening Home shows the host name and the IP addresses of the device; do not share screenshots of it publicly.
 
 **The installer overwrites `/etc/systemd/system/oarfish.service`.** If the file exists and differs from the one in the release, it is replaced (the installer says so), also when you re-run it. Do not edit that file. Local changes belong in a drop-in directory, which the installer never touches:
 
@@ -213,6 +217,10 @@ The same rules as above apply: one device, one image, one moment. The memory fig
 - USB boot (the classification is tested with a synthetic sysfs link only).
 - Long-term memory use, and the service under load.
 
+### Gate G5: dashboard
+
+No hardware result yet. Gate G5 is implemented and tested against synthetic fixtures; the unit file is unchanged and the dashboard reads more of `/proc` and `/sys` than detection did. Whether the unchanged sandbox allows all of it, and what the dashboard costs at idle on the Pi, still has to be checked on the device. The steps and the numbers to record are in [`DASHBOARD.md`](DASHBOARD.md#checking-a-device-acceptance-by-hand). Until then, nothing in this document claims that G5 runs on a Raspberry Pi.
+
 ## Uninstall
 
 ```bash
@@ -272,6 +280,7 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 
 **Not verified:**
 
+- **Gate G5 (dashboard) on a Raspberry Pi**: values against the device's own tools (AT-008), idle CPU and memory with and without a browser (AT-021, ORB-NFR-001/-003), write load (AT-022), and whether the unchanged sandbox allows every file the dashboard reads. See [`DASHBOARD.md`](DASHBOARD.md#verification-status).
 - **Ubuntu Server and any other board or image** have not run on real hardware. Container results are no proof for them. That includes device detection on Ubuntu (fixtures and the architecture test only), other Raspberry Pi models, and USB boot.
 - Uninstall, and running the installer again for the same version, have not been tried on the device (only in the containers and the CI tests). An upgrade from one version to the next was done once on the device (G4 test); a rollback was not.
 - A tampered or damaged download has not been tried on the device (only in the CI tests).

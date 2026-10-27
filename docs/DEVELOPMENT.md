@@ -21,10 +21,10 @@ Node.js is a build-time tool only. The Oarfish binary and the target device do n
 | Target | What it does |
 |---|---|
 | `make deps` | `npm ci` in `frontend/` (installs exactly the lockfile) |
-| `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` and `/api` to the backend. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`). |
+| `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` and `/api` to the backend. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`); it must be a loopback IP address with a port, the binary refuses anything else until Gate G5.1 (D-C29). |
 | `make test` | `go test ./...` (backend and `scripts/bundlegen`) and `vitest run` |
 | `make lint` | gofmt check, `go vet` (backend and `scripts/bundlegen`), `svelte-check` (TypeScript and Svelte type check) |
-| `make fuzz` | native Go fuzzing of the os-release parser and the device-tree compatible parser, `FUZZTIME=10s` each (CI runs 5 s each; the seed corpora also run in `make test`) |
+| `make fuzz` | native Go fuzzing of the os-release parser, the device-tree compatible parser and the six metrics parsers (`/proc/stat`, `/proc/meminfo`, `fib_trie`, `if_inet6`, `mountinfo`, `route`), `FUZZTIME=10s` each (CI runs 5 s each; the seed corpora also run in `make test`) |
 | `make build` | frontend production build, then host binary `bin/oarfish` with the frontend embedded |
 | `make build-arm64` | same, cross-compiled with `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` to `bin/oarfish-linux-arm64` |
 | `make release-bundle` | frontend build, then `scripts/release-bundle.sh`: unsigned `dist/release/oarfish_<version>_linux_arm64.tar.gz` and `manifest.json`, the same script CI and the release workflow use |
@@ -58,6 +58,19 @@ cd ../backend && go run ./cmd/oarfish      # http://127.0.0.1:8484
 - UI texts for values coming from the API must be added to `frontend/src/lib/locales/de.ts` and `en.ts`; `TestEveryAPIValueHasATranslation` (backend) and `i18n.test.ts` (frontend) check that.
 - `TestTraceabilityTableIsComplete` checks the requirement-to-test table in `DETECTION.md`. When you rename a test, update the table.
 
+## Metrics code and its tests (Gate G5)
+
+`backend/internal/metrics/` is the live dashboard's backend ([`DASHBOARD.md`](DASHBOARD.md)). Working on it:
+
+- Like detection, it takes an `fs.FS`, never an absolute path. Tests use the synthetic trees in `backend/internal/metrics/testdata/` (see its README) through `metricstest.Fixture`, or `metricstest.NewLive` for a copy that a test can change while a sampler reads it. Hostile content that would be large (huge files, thousands of mounts, sensors and interfaces) is generated in memory, not committed.
+- The sampler takes a `Clock`. `metricstest.Clock` (and the equivalent in the package's own tests) fires timers only when the test advances it, so tests never wait. A test that expects *no* timer or goroutine checks `Pending()` and the goroutine count.
+- `TestMetricsOpenOnlyAllowListedFiles` (`internal/platform/privacy_test.go`) is the list of files the collector may open. Adding a file is a privacy decision and needs a line in that list and in `DASHBOARD.md`. The hardware address of an interface stays off it.
+- `TestFixturesContainNoPrivateData` allows exactly two things in the metrics fixtures: the host name `oarfish-test` and IP addresses from the documentation ranges (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32`). Link-local and loopback IPv6 lines are added in memory by the tests that need them.
+- New parsers go in `metrics/parse` (pure, bounded, fuzzed). Add a `Fuzz` target, add it to `make fuzz` and to the CI step. `architecture_test.go` checks that `parse` touches nothing, that only `statfs.go` makes a system call, and that no product code imports `os/exec`.
+- Alert thresholds are constants in `internal/metrics/alerts.go`; a new alert needs translation keys in `AlertKeys()`, both locale files, a row in `DASHBOARD.md`, and table-driven tests at every threshold edge.
+- `TestDashboardTraceabilityTableIsComplete` checks the requirement-to-test table in `DASHBOARD.md`. When you rename a test, update the table.
+- Frontend: `Home.svelte` is driven by `lib/stream.ts` (the `EventSource` lifecycle) and `lib/metrics.ts` (validation and derived values). Tests use `lib/eventsource.fake.ts` and `lib/metrics.fixtures.ts`. `BenchmarkCollect` gives the work of one sample (`go test -run '^$' -bench Collect ./internal/metrics`).
+
 ## Dependencies
 
 - Backend: standard library only. There are no third-party Go modules.
@@ -71,7 +84,7 @@ Adding a dependency should be justified in the change that adds it.
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`, and is also called by the release workflow (`workflow_call`):
 
-1. **backend**: gofmt, `go vet`, `go test -race`, a 5-second fuzz run of each detection parser, plus gofmt, vet and test for `scripts/bundlegen` and a check that both modules declare the same Go version
+1. **backend**: gofmt, `go vet`, `go test -race`, a 5-second fuzz run of each detection and metrics parser, plus gofmt, vet and test for `scripts/bundlegen` and a check that both modules declare the same Go version
 2. **frontend**: `npm ci`, `svelte-check`, `vitest`, `vite build`, upload of the built assets
 3. **build** (needs both): host build; the ARM64 release bundle via `scripts/release-bundle.sh`; aarch64 ELF check; size budgets (below); ARM64 smoke test under `qemu-user`
 4. **reproducibility**: `scripts/check-reproducible.sh --rebuild-frontend`

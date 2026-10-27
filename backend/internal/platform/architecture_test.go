@@ -88,6 +88,9 @@ const (
 	pkgSource   = "internal/platform/source"
 	pkgDetector = "internal/platform/detector"
 	pkgServer   = "internal/server"
+
+	pkgMetrics      = "internal/metrics"
+	pkgMetricsParse = "internal/metrics/parse"
 )
 
 func mod(rel string) string { return modulePath + "/" + rel }
@@ -233,5 +236,182 @@ func TestArchitectureNoPlatformConstrainedFileNames(t *testing.T) {
 	c.GOOS, c.GOARCH = "linux", "amd64"
 	if ok, _ := c.MatchFile(root, "generic_arm64.go"); ok {
 		t.Fatal("MatchFile does not apply the _arm64 constraint; this test would be blind")
+	}
+}
+
+// The metrics code (Gate G5) follows the same rules as detection: it reads
+// files through the source package, runs no program, and does not know the HTTP
+// layer. It does not use the hardware or operating-system packages either, so
+// those two stay separate and nothing combines them behind their back.
+func TestArchitectureMetricsDoesNotImportTheServerOrDetection(t *testing.T) {
+	for _, rel := range []string{pkgMetrics, pkgMetricsParse} {
+		c := closure(t, rel)
+		for _, bad := range []string{
+			mod(pkgServer), "net/http", "net", "os/exec", "plugin", "unsafe",
+			mod(pkgHardware), mod(pkgOS), mod(pkgDetector), mod(pkgCaps), mod(pkgProfiles),
+		} {
+			if c[bad] {
+				t.Errorf("%s imports %s", rel, bad)
+			}
+		}
+	}
+	// Positive control: the walk sees the metrics package's real dependencies.
+	if c := closure(t, pkgMetrics); !c[mod(pkgSource)] || !c[mod(pkgMetricsParse)] || !c["syscall"] {
+		t.Fatal("the import walk is broken: metrics must import source, parse and syscall")
+	}
+	// Hardware and operating-system detection do not depend on metrics.
+	for _, rel := range []string{pkgHardware, pkgOS, pkgCaps, pkgProfiles, pkgDetector} {
+		if closure(t, rel)[mod(pkgMetrics)] {
+			t.Errorf("%s imports the metrics package", rel)
+		}
+	}
+}
+
+// The parsers are pure functions of bytes: no file access, no system call.
+func TestArchitectureMetricsParsersTouchNothing(t *testing.T) {
+	c := closure(t, pkgMetricsParse)
+	for _, bad := range []string{"os", "io/fs", "syscall", "net", "net/http", "os/exec", "time", mod(pkgSource)} {
+		if c[bad] {
+			t.Errorf("the parse package imports %s", bad)
+		}
+	}
+}
+
+// Only the metrics package makes a system call (statfs), and only in statfs.go;
+// it reads files only through the source package's fs.FS.
+func TestArchitectureMetricsSystemCallIsConfinedToStatfs(t *testing.T) {
+	dir := filepath.Join(backendDir(t), pkgMetrics)
+	files, _ := filepath.Glob(filepath.Join(dir, "*.go"))
+	fset := token.NewFileSet()
+	checked := 0
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		checked++
+		parsed, err := parser.ParseFile(fset, f, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, imp := range parsed.Imports {
+			path, _ := strconv.Unquote(imp.Path.Value)
+			switch path {
+			case "syscall":
+				if filepath.Base(f) != "statfs.go" {
+					t.Errorf("%s imports syscall; only statfs.go may", filepath.Base(f))
+				}
+			case "os", "io/ioutil", "os/exec":
+				t.Errorf("%s imports %q; read files through the source package", filepath.Base(f), path)
+			}
+		}
+	}
+	if checked < 6 {
+		t.Fatalf("only %d metrics files checked", checked)
+	}
+}
+
+// No Go file of the product (tests excluded) runs an external program, ADR 0007
+// and D-C19. Test helpers that are only imported by tests are excluded too.
+func TestArchitectureNoProductCodeRunsAProgram(t *testing.T) {
+	root := backendDir(t)
+	checked := 0
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && (d.Name() == "testdata" || d.Name() == "platformtest" || d.Name() == "metricstest") {
+			return filepath.SkipDir
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		checked++
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range parsed.Imports {
+			if p, _ := strconv.Unquote(imp.Path.Value); p == "os/exec" {
+				rel, _ := filepath.Rel(root, path)
+				t.Errorf("%s imports os/exec", rel)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checked < 30 {
+		t.Fatalf("only %d files checked", checked)
+	}
+}
+
+// The test helper packages must not leak into the product binary.
+func TestArchitectureTestHelpersAreOnlyImportedByTests(t *testing.T) {
+	helpers := []string{mod("internal/platform/platformtest"), mod("internal/metrics/metricstest")}
+	root := backendDir(t)
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		if strings.Contains(path, "platformtest") || strings.Contains(path, "metricstest") {
+			return nil
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range parsed.Imports {
+			p, _ := strconv.Unquote(imp.Path.Value)
+			for _, h := range helpers {
+				if p == h {
+					rel, _ := filepath.Rel(root, path)
+					t.Errorf("%s imports the test helper %s", rel, h)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Privacy by construction: the metrics code names no file that identifies a
+// device or a person. The hardware address of an interface, the machine id, the
+// environment, process data, user databases and SSH data are never mentioned
+// in code (comments may say what is not read).
+func TestArchitectureMetricsNamesNoIdentifyingFile(t *testing.T) {
+	forbidden := []string{
+		"/address", "machine-id", "etc/hostname", "/environ", "/cmdline", "/proc/self/status", "proc/[", "/passwd", "/shadow",
+		".ssh", "known_hosts", "authorized_keys", "/home/pi", `"pi"`, "raspi-config", "vcgencmd", "boot/config.txt",
+		"serial", "/etc/os-release", "proc/cpuinfo", "/var/log", "/run/user",
+	}
+	dir := filepath.Join(backendDir(t), pkgMetrics)
+	files, _ := filepath.Glob(filepath.Join(dir, "*.go"))
+	parseFiles, _ := filepath.Glob(filepath.Join(dir, "parse", "*.go"))
+	checked := 0
+	for _, f := range append(files, parseFiles...) {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checked++
+		for n, line := range strings.Split(string(data), "\n") {
+			if trimmed := strings.TrimSpace(line); strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			for _, bad := range forbidden {
+				if strings.Contains(line, bad) {
+					t.Errorf("%s:%d contains %q", filepath.Base(f), n+1, bad)
+				}
+			}
+		}
+	}
+	if checked < 8 {
+		t.Fatalf("only %d files checked", checked)
 	}
 }
