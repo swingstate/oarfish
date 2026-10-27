@@ -22,11 +22,12 @@ import (
 	"github.com/swingstate/oarfish/backend/internal/web"
 )
 
-// defaultListen is loopback only; a public bind needs an explicit -listen value.
+// defaultListen is loopback only. Until Gate G5.1 (authentication) is PASS the
+// binary accepts no other address (D-C29, server.ValidateListen).
 const defaultListen = "127.0.0.1:8484"
 
 func main() {
-	listen := flag.String("listen", defaultListen, "address to listen on")
+	listen := flag.String("listen", defaultListen, "loopback IP address and port to listen on (127.0.0.0/8 or [::1])")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -36,7 +37,12 @@ func main() {
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := run(*listen, log); err != nil {
+	addr, err := server.ValidateListen(*listen)
+	if err != nil {
+		log.Error("oarfish refuses to start", "error", err)
+		os.Exit(1)
+	}
+	if err := run(addr, log); err != nil {
 		log.Error("oarfish stopped", "error", err)
 		os.Exit(1)
 	}
