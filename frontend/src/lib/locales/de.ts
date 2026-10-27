@@ -2,17 +2,160 @@
 // exactly the same keys; a test checks that. Keys with a dot are looked up by
 // value that comes from the API (limitations, capabilities, support reasons).
 export const de = {
-  tagline: 'Verwaltung für ARM-Einzelplatinencomputer und Embedded Linux',
-  statusLabel: 'Oarfish-Dienst',
-  checking: 'Wird geprüft …',
-  ok: 'Läuft',
-  unreachable: 'Nicht erreichbar',
-  recheck: 'Erneut prüfen',
-  foundation:
-    'Frühe Entwicklungsversion. Es sind nur Status und Geräteinformationen enthalten, noch keine Verwaltungsfunktionen.',
+  navHome: 'Home',
+
+  homeTitle: 'Home',
+  homeLoading: 'Werte werden geladen …',
+  homeLoadError: 'Die Messwerte konnten nicht geladen werden.',
+  homeRetry: 'Erneut versuchen',
+  technicalDetails: 'Technische Einzelheiten',
+
+  connConnecting: 'Verbindung wird aufgebaut …',
+  connLost:
+    'Verbindung unterbrochen. Die angezeigten Werte sind veraltet. Oarfish verbindet sich automatisch neu.',
+  connStale:
+    'Seit einigen Sekunden sind keine neuen Werte eingetroffen. Die angezeigten Werte sind möglicherweise veraltet.',
+  connLastUpdate: 'Letzte Aktualisierung: {time}',
+  staleBadge: 'Veraltet',
+
+  summaryHeading: 'Gerät',
+  sumHost: 'Hostname',
+  sumBoard: 'Board',
+  sumSoc: 'SoC',
+  sumOs: 'Betriebssystem',
+  sumUptime: 'Laufzeit',
+  sumSupport: 'Supportstatus',
+  sumDeviceLink: 'Details auf der Seite Gerät',
+
+  uptimeDaysHours: '{days} T {hours} Std.',
+  uptimeHoursMinutes: '{hours} Std. {minutes} Min.',
+  uptimeMinutes: '{minutes} Min.',
+
+  alertsHeading: 'Hinweise',
+  alertsNone: 'Keine Hinweise. Alles im grünen Bereich.',
+  alertCause: 'Ursache',
+  alertImpact: 'Auswirkung',
+  alertNext: 'Nächster Schritt',
+  'level.critical': 'Kritisch',
+  'level.relevant': 'Relevant',
+  'level.informational': 'Information',
+
+  cpuHeading: 'CPU',
+  cpuUsage: 'Auslastung',
+  cpuLoad: 'Last (1 Min.)',
+  cpuFreq: 'Takt',
+  cpuFreqOfMax: '{current} von {max}',
+  cpuGovernor: 'Governor',
+  cpuCores: 'Kerne',
+  cpuLoadLong: 'Last (5 / 15 Min.)',
+  cpuNoFreq: 'Der Kernel meldet keine Taktfrequenz.',
+
+  memHeading: 'Arbeitsspeicher',
+  memUsed: 'Belegt',
+  memAvailable: 'Verfügbar',
+  memTotal: 'Gesamt',
+  memSwap: 'Auslagerungsspeicher (Swap)',
+  memSwapNone: 'Kein Swap eingerichtet',
+  memUsedOf: '{used} von {total}',
+
+  tempHeading: 'Temperatur',
+  tempNone: 'Keine Temperatursensoren gefunden.',
+  tempSoc: 'SoC / CPU',
+  tempSource: 'Quelle',
+  tempSensorId: 'Sensor',
+  'tempSource.thermal_zone': 'Thermal Zone',
+  'tempSource.hwmon': 'Hardware-Monitor',
+
+  storageHeading: 'Speicher',
+  storageNone: 'Keine Datenträger gefunden.',
+  storageUsedOf: '{used} von {total} belegt',
+  storageFree: 'Frei',
+  storageFsType: 'Dateisystem',
+
+  netHeading: 'Netzwerk',
+  netNone: 'Keine Netzwerkschnittstellen gefunden.',
+  netAddresses: 'Adressen',
+  netNoAddress: 'Keine Adresse',
+  netRx: 'Empfang',
+  netTx: 'Senden',
+  netSpeed: 'Verbindungsgeschwindigkeit',
+  netTotals: 'Übertragen seit dem Start',
+  netRateWaiting: 'wird ermittelt …',
+  netKind: 'Art',
+  'linkState.up': 'Verbunden',
+  'linkState.down': 'Getrennt',
+  'linkState.unknown': 'Unbekannt',
+  'linkState.dormant': 'Wartend',
+  'linkState.lowerlayerdown': 'Untere Schicht getrennt',
+  'linkState.notpresent': 'Nicht vorhanden',
+  'linkState.testing': 'Wird getestet',
+  'netKind.ethernet': 'Ethernet',
+  'netKind.wifi': 'WLAN',
+  'netKind.other': 'Sonstige',
+
+  sparkCpu: 'CPU-Auslastung der letzten Minuten, zuletzt {value}',
+  sparkMemory: 'Speicherbelegung der letzten Minuten, zuletzt {value}',
+  sparkTemperature: 'Temperatur der letzten Minuten, zuletzt {value}',
+  sparkNoData: 'Noch kein Verlauf',
+
+  'alert.cpu_temperature.relevant.cause':
+    'Die CPU-Temperatur beträgt {celsius} °C. Ab {threshold} °C wird sie als erhöht gemeldet.',
+  'alert.cpu_temperature.relevant.impact':
+    'Steigt die Temperatur weiter, drosselt der Prozessor seinen Takt und das Gerät wird langsamer.',
+  'alert.cpu_temperature.relevant.next':
+    'Für bessere Belüftung sorgen oder einen Kühlkörper verwenden und die Last prüfen.',
+  'alert.cpu_temperature.critical.cause':
+    'Die CPU-Temperatur beträgt {celsius} °C. Ab {threshold} °C ist sie kritisch.',
+  'alert.cpu_temperature.critical.impact':
+    'Der Prozessor drosselt stark, das Gerät kann sich abschalten oder Fehler zeigen.',
+  'alert.cpu_temperature.critical.next':
+    'Last verringern und Kühlung verbessern. Sinkt die Temperatur nicht, das Gerät ausschalten.',
+  'alert.memory_available.relevant.cause':
+    'Nur noch {percent} % des Arbeitsspeichers sind verfügbar. Unter {threshold} % wird es gemeldet.',
+  'alert.memory_available.relevant.impact':
+    'Das System beginnt, Daten auszulagern, und Anwendungen werden langsamer.',
+  'alert.memory_available.relevant.next':
+    'Nicht benötigte Anwendungen beenden oder weniger Anwendungen gleichzeitig laufen lassen.',
+  'alert.memory_available.critical.cause':
+    'Nur noch {percent} % des Arbeitsspeichers sind verfügbar. Unter {threshold} % ist es kritisch.',
+  'alert.memory_available.critical.impact':
+    'Der Kernel kann Programme zwangsweise beenden, wenn der Speicher ausgeht.',
+  'alert.memory_available.critical.next':
+    'Sofort Anwendungen beenden. Auf Dauer weniger Dienste einplanen oder ein Gerät mit mehr Speicher nutzen.',
+  'alert.swap_in_use.cause': 'Der Auslagerungsspeicher (Swap) wird mit {used_mib} MiB genutzt.',
+  'alert.swap_in_use.impact':
+    'Auslagern bremst das System und belastet die SD-Karte, die dadurch schneller verschleißt.',
+  'alert.swap_in_use.next': 'Arbeitsspeicher entlasten: Anwendungen beenden, die nicht gebraucht werden.',
+  'alert.storage_usage.relevant.cause':
+    'Das Dateisystem {mount} ist zu {percent} % belegt. Über {threshold} % wird es gemeldet.',
+  'alert.storage_usage.relevant.impact':
+    'Wird der Platz knapp, können Dienste und Updates fehlschlagen.',
+  'alert.storage_usage.relevant.next':
+    'Nicht benötigte Daten löschen oder einen größeren Datenträger verwenden.',
+  'alert.storage_usage.critical.cause':
+    'Das Dateisystem {mount} ist zu {percent} % belegt. Über {threshold} % ist es kritisch.',
+  'alert.storage_usage.critical.impact':
+    'Das Dateisystem ist fast voll. Schreibvorgänge, Updates und Dienste können jetzt fehlschlagen.',
+  'alert.storage_usage.critical.next': 'Sofort Platz schaffen, indem nicht benötigte Daten gelöscht werden.',
+  'alert.network_no_link.cause': 'Keine Netzwerkschnittstelle hat eine aktive Verbindung.',
+  'alert.network_no_link.impact':
+    'Das Gerät ist über das Netzwerk nicht erreichbar. Fernzugriff und Updates sind nicht möglich.',
+  'alert.network_no_link.next': 'Kabel, WLAN-Zugangsdaten und Router prüfen.',
+  'alert.cpu_load.cause':
+    'Die Last der letzten Minute ({load}) liegt über der Zahl der CPU-Kerne ({cores}).',
+  'alert.cpu_load.impact': 'Das Gerät ist überlastet und Anwendungen reagieren langsamer.',
+  'alert.cpu_load.next': 'Laufende Anwendungen prüfen und rechenintensive Aufgaben beenden.',
+  'alert.support_generic.cause': 'Dieses Gerät läuft im Generischen Modus.',
+  'alert.support_generic.impact':
+    'Oarfish zeigt allgemeine Linux-Informationen. Board-spezifische Funktionen gibt es nicht.',
+  'alert.support_generic.next':
+    'Auf der Seite Gerät steht der Grund. Ein passendes Boardprofil würde mehr Funktionen freischalten.',
+  'alert.support_compatible.cause': 'Dieses Gerät ist als kompatibel eingestuft, aber noch nicht verifiziert.',
+  'alert.support_compatible.impact':
+    'Nicht jede Funktion wurde auf echter Hardware vollständig geprüft.',
+  'alert.support_compatible.next': 'Die bekannten Einschränkungen stehen auf der Seite Gerät.',
 
   navLabel: 'Hauptnavigation',
-  navStatus: 'Status',
   navDevice: 'Gerät',
 
   deviceTitle: 'Gerät',

@@ -15,3 +15,21 @@ export const t: Messages = de;
 export function msg(key: string, dict: Readonly<Record<string, string>> = de): string {
   return dict[key] ?? key;
 }
+
+/** Values a message can interpolate: numbers are formatted for the language. */
+export type MessageParams = Readonly<Record<string, string | number>>;
+
+const numberFormat = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
+
+/**
+ * Looks up a message and fills in `{name}` placeholders from params. Numbers are
+ * formatted with the German number format (decimal comma). A placeholder
+ * without a parameter stays visible as `{name}`, so a gap in the data shows.
+ */
+export function fmt(key: string, params: MessageParams = {}, dict: Readonly<Record<string, string>> = de): string {
+  return msg(key, dict).replace(/\{(\w+)\}/g, (whole, name: string) => {
+    const v = params[name];
+    if (v === undefined) return whole;
+    return typeof v === 'number' ? numberFormat.format(v) : v;
+  });
+}
