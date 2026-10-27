@@ -1,0 +1,17 @@
+Main:
+  +-- 192.0.2.0/24 2 0 2
+     |-- 192.0.2.0
+        /24 link UNICAST
+     |-- 192.0.2.15
+        /32 host LOCAL
+     |-- 192.0.2.255
+        /32 link BROADCAST
+Local:
+  +-- 192.0.2.0/24 2 0 2
+     |-- 192.0.2.0
+        /32 link BROADCAST
+        /24 link UNICAST
+     |-- 192.0.2.15
+        /32 host LOCAL
+     |-- 192.0.2.255
+        /32 link BROADCAST

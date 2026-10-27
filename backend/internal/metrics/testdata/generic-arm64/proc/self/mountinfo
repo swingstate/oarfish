@@ -1,0 +1,7 @@
+30 1 259:2 / / rw,relatime shared:1 - btrfs /dev/nvme0n1p2 rw,subvolid=256,subvol=/@
+31 30 259:2 /@home /home rw,relatime shared:2 - btrfs /dev/nvme0n1p2 rw,subvolid=257,subvol=/@home
+32 30 259:1 / /boot/efi rw,relatime shared:3 - vfat /dev/nvme0n1p1 rw
+33 30 259:2 /@var/log /var/log rw,relatime shared:4 - btrfs /dev/nvme0n1p2 rw
+34 30 8:17 / /run/media/someone/DATA\040DISK rw,relatime shared:5 - exfat /dev/sdb1 rw
+35 30 8:33 / /mnt/gone rw,relatime shared:6 - ext4 /dev/sdc1 rw
+36 30 0:50 / /var/lib/containers/overlay rw - overlay overlay rw
