@@ -1,0 +1,7 @@
+22 1 179:2 / / rw,noatime shared:1 - ext4 /dev/mmcblk0p2 rw,errors=remount-ro
+23 22 0:21 / /proc rw,nosuid,nodev,noexec,relatime shared:12 - proc proc rw
+24 22 0:22 / /sys rw,nosuid,nodev,noexec,relatime shared:2 - sysfs sysfs rw
+25 22 0:6 / /dev rw,nosuid,relatime shared:8 - devtmpfs devtmpfs rw,size=147012k
+26 22 0:23 / /run rw,nosuid,nodev shared:5 - tmpfs tmpfs rw,size=41540k,mode=755
+27 22 179:1 / /boot/firmware rw,relatime shared:36 - vfat /dev/mmcblk0p1 rw,fmask=0022,dmask=0022
+28 22 0:24 / /tmp rw,nosuid,nodev shared:6 - tmpfs tmpfs rw

@@ -8,7 +8,7 @@ Every directory here is a **synthetic** file tree that stands for the root file 
 - `run/systemd/journal/socket` is an empty regular file standing in for a Unix socket (git cannot store sockets). Detection only checks that the name exists.
 - `.gitkeep` files exist only so git keeps otherwise empty directories.
 
-The fixtures contain **no** serial numbers, MAC addresses, machine ids, host names, user names or IP addresses. `TestFixturesContainNoPrivateData` (`backend/internal/platform/privacy_test.go`) enforces that. Tests that need such values (to prove they never leak) create them in memory, not as files here.
+The fixtures contain **no** serial numbers, MAC addresses, machine ids, host names, user names or IP addresses. (The fixtures for the live dashboard, Gate G5, are a separate set in `backend/internal/metrics/testdata/`; they may hold the host name `oarfish-test` and documentation-range IP addresses, nothing else.) `TestFixturesContainNoPrivateData` (`backend/internal/platform/privacy_test.go`) enforces that. Tests that need such values (to prove they never leak) create them in memory, not as files here.
 
 | Fixture | Stands for |
 |---|---|

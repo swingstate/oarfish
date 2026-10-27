@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
 	"net/http"
@@ -13,7 +14,11 @@ import (
 type Option func(*config)
 
 type config struct {
-	device DeviceSource
+	device  DeviceSource
+	metrics *metricsConfig
+	// streamsDone is closed when the server shuts down, so that open event
+	// streams end and Shutdown does not wait for them.
+	streamsDone <-chan struct{}
 }
 
 // WithDevice enables GET /api/v1/device, backed by src.
@@ -28,11 +33,13 @@ func NewHandler(assets fs.FS, opts ...Option) http.Handler {
 	for _, o := range opts {
 		o(&cfg)
 	}
+	streamsCtx, closeStreams := context.WithCancel(context.Background())
+	cfg.streamsDone = streamsCtx.Done()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /", staticHandler(assets))
 	api := apiHandler(cfg)
-	return securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return &handler{closeStreams: closeStreams, Handler: securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// /api/ is routed by prefix, not by the mux, so that every method and
 		// every unknown path under it gets the same typed JSON error.
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
@@ -40,20 +47,50 @@ func NewHandler(assets fs.FS, opts ...Option) http.Handler {
 			return
 		}
 		mux.ServeHTTP(w, r)
-	}))
+	}))}
 }
+
+// handler is the http.Handler NewHandler returns. New registers CloseStreams
+// as the server's shutdown hook.
+type handler struct {
+	http.Handler
+	closeStreams context.CancelFunc
+}
+
+// CloseStreams ends all open event streams. Without it a graceful Shutdown
+// would wait for browsers that keep their stream open until its timeout.
+func (h *handler) CloseStreams() { h.closeStreams() }
+
+// Timeouts are the http.Server timeouts. WriteTimeout bounds a whole response,
+// which suits every endpoint except the event stream; that handler sets its
+// own write deadline before each write (see handleEvents).
+type Timeouts struct {
+	ReadHeader, Read, Write, Idle time.Duration
+}
+
+// DefaultTimeouts are the conservative production values.
+var DefaultTimeouts = Timeouts{ReadHeader: 5 * time.Second, Read: 15 * time.Second, Write: 30 * time.Second, Idle: 60 * time.Second}
 
 // New returns an http.Server for addr with conservative timeouts.
 func New(addr string, handler http.Handler) *http.Server {
-	return &http.Server{
+	return NewWithTimeouts(addr, handler, DefaultTimeouts)
+}
+
+// NewWithTimeouts is New with explicit timeouts; tests use short ones.
+func NewWithTimeouts(addr string, handler http.Handler, t Timeouts) *http.Server {
+	srv := &http.Server{
 		Addr:              addr,
 		Handler:           handler,
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: t.ReadHeader,
+		ReadTimeout:       t.Read,
+		WriteTimeout:      t.Write,
+		IdleTimeout:       t.Idle,
 		MaxHeaderBytes:    16 << 10,
 	}
+	if c, ok := handler.(interface{ CloseStreams() }); ok {
+		srv.RegisterOnShutdown(c.CloseStreams)
+	}
+	return srv
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {

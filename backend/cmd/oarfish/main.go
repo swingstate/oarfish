@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/swingstate/oarfish/backend/internal/metrics"
 	"github.com/swingstate/oarfish/backend/internal/platform/detector"
 	"github.com/swingstate/oarfish/backend/internal/platform/hardware"
 	"github.com/swingstate/oarfish/backend/internal/platform/profiles"
@@ -22,11 +23,12 @@ import (
 	"github.com/swingstate/oarfish/backend/internal/web"
 )
 
-// defaultListen is loopback only; a public bind needs an explicit -listen value.
+// defaultListen is loopback only. Until Gate G5.1 (authentication) is PASS the
+// binary accepts no other address (D-C29, server.ValidateListen).
 const defaultListen = "127.0.0.1:8484"
 
 func main() {
-	listen := flag.String("listen", defaultListen, "address to listen on")
+	listen := flag.String("listen", defaultListen, "loopback IP address and port to listen on (127.0.0.0/8 or [::1])")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -36,7 +38,12 @@ func main() {
 	}
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := run(*listen, log); err != nil {
+	addr, err := server.ValidateListen(*listen)
+	if err != nil {
+		log.Error("oarfish refuses to start", "error", err)
+		os.Exit(1)
+	}
+	if err := run(addr, log); err != nil {
 		log.Error("oarfish stopped", "error", err)
 		os.Exit(1)
 	}
@@ -58,7 +65,15 @@ func run(addr string, log *slog.Logger) error {
 		"arch", res.Hardware.Arch, "os_adapter", res.OS.Adapter, "profile", res.Profile.ID,
 		"tier", res.Support.Tier, "reason", res.Support.Reason)
 
-	srv := server.New(addr, server.NewHandler(web.Assets(), server.WithDevice(dev)))
+	// Metrics are read only while a browser watches (ORB-DASH-006): the sampler
+	// has no goroutine, timer or file read until the first client connects.
+	tier := res.Support.Tier
+	sampler := metrics.NewSampler(metrics.Config{
+		Collector:    metrics.NewCollector(source.Host(), metrics.HostStatfs),
+		AlertContext: func() metrics.AlertContext { return metrics.AlertContext{SupportTier: tier} },
+	})
+
+	srv := server.New(addr, server.NewHandler(web.Assets(), server.WithDevice(dev), server.WithMetrics(sampler)))
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()

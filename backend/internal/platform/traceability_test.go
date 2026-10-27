@@ -72,16 +72,18 @@ func frontendTestHas(t testing.TB, file, titlePrefix string) bool {
 	return found
 }
 
-// Pflichtenheft 12.4: the requirement-to-test table in docs/DETECTION.md lists
-// every in-scope requirement, and every test it names exists.
-func TestTraceabilityTableIsComplete(t *testing.T) {
-	data, err := os.ReadFile(repoFile(t, "docs", "DETECTION.md"))
+// checkTraceability verifies the "Requirement to test" table of a document:
+// every in-scope requirement is listed with at least one test, and every test
+// the table names exists (Pflichtenheft 12.4).
+func checkTraceability(t *testing.T, doc string, scope []string) {
+	t.Helper()
+	data, err := os.ReadFile(repoFile(t, "docs", doc))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, table, found := strings.Cut(string(data), "## Requirement to test")
 	if !found {
-		t.Fatal("docs/DETECTION.md has no \"Requirement to test\" section")
+		t.Fatalf("docs/%s has no \"Requirement to test\" section", doc)
 	}
 	table, _, _ = strings.Cut(table, "\n## ")
 
@@ -124,11 +126,28 @@ func TestTraceabilityTableIsComplete(t *testing.T) {
 		mapped[id] = resolved
 	}
 
-	for _, id := range inScope {
+	for _, id := range scope {
 		if mapped[id] == 0 {
-			t.Errorf("requirement %s has no test in the table of docs/DETECTION.md", id)
+			t.Errorf("requirement %s has no test in the table of docs/%s", id, doc)
 		}
 	}
+}
+
+// Pflichtenheft 12.4: the requirement-to-test table in docs/DETECTION.md lists
+// every in-scope requirement, and every test it names exists.
+func TestTraceabilityTableIsComplete(t *testing.T) {
+	checkTraceability(t, "DETECTION.md", inScope)
+}
+
+// dashboardInScope are the MUST requirements of Gate G5 and decision D-C29.
+var dashboardInScope = []string{
+	"ORB-DASH-001", "ORB-DASH-002", "ORB-DASH-005", "ORB-DASH-006",
+	"ORB-NFR-009", "ORB-NFR-014", "ORB-NFR-010", "ORB-NFR-015", "ORB-GEN-003", "ORB-GEN-006", "ORB-ONB-003", "D-C29",
+}
+
+// Pflichtenheft 12.4 for Gate G5: the table in docs/DASHBOARD.md.
+func TestDashboardTraceabilityTableIsComplete(t *testing.T) {
+	checkTraceability(t, "DASHBOARD.md", dashboardInScope)
 }
 
 // Documentation carries no identifying values either (privacy rule).
@@ -148,6 +167,27 @@ func TestDetectionDocsContainNoPrivateValues(t *testing.T) {
 			if m := re.FindString(text); m != "" {
 				t.Errorf("%s: %s: %q", filepath.Join(rel...), name, m)
 			}
+		}
+	}
+}
+
+// Documentation of Gate G5 carries no identifying values: IP addresses only from
+// the documentation ranges or the loopback listen address, no MAC address, no
+// serial number, no machine id, no real host name.
+func TestDashboardDocsContainNoPrivateValues(t *testing.T) {
+	for _, rel := range [][]string{{"docs", "DASHBOARD.md"}, {"docs", "adr", "0008-dashboard-metrics.md"}, {"backend", "internal", "metrics", "testdata", "README.md"}, {"README.md"}} {
+		data, err := os.ReadFile(repoFile(t, rel...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.NewReplacer("127.0.0.1", "", "127.0.0.0/8", "").Replace(string(data)) // the loopback listen address and range
+		for _, m := range scanPrivate(text) {
+			name, _, _ := strings.Cut(m, ":")
+			switch name {
+			case "serial number", "host name", "home directory", "user name entry", "environment", "SSH data":
+				continue // these words appear in the rules that forbid them
+			}
+			t.Errorf("%s: %s", filepath.Join(rel...), m)
 		}
 	}
 }

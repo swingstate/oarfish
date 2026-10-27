@@ -1,18 +1,19 @@
-# Architecture (Gate G4 state)
+# Architecture (Gate G5 state)
 
-This document describes what exists after Gate G4 and the boundaries later gates build on. The normative target architecture is section 8 of [`PFLICHTENHEFT.md`](PFLICHTENHEFT.md); where this document and the specification differ, the specification wins.
+This document describes what exists after Gate G5 and the boundaries later gates build on. The normative target architecture is section 8 of [`PFLICHTENHEFT.md`](PFLICHTENHEFT.md); where this document and the specification differ, the specification wins.
 
 ## Repository layout
 
 ```text
 backend/                     Go module github.com/swingstate/oarfish/backend
-  cmd/oarfish/                 process entry point: flags, signal handling, graceful shutdown, runs detection once
-  internal/server/           HTTP handler: /healthz, GET /api/v1/device, static frontend, security headers
+  cmd/oarfish/                 process entry point: flags, listen guard, signal handling, graceful shutdown, runs detection once
+  internal/server/           HTTP handler: /healthz, GET /api/v1/device, /api/v1/metrics, /api/v1/events (SSE), listen guard, static frontend, security headers
+  internal/metrics/          read-only live metrics: collector, sampler (only while watched), history ring, alert rules (docs/DASHBOARD.md)
   internal/platform/         read-only detection: source, hardware, operating_system, capabilities, profiles, detector (docs/DETECTION.md)
   internal/web/              go:embed of the built frontend (dist/)
   internal/version/          Version and Commit, injected with -ldflags
 frontend/                    Svelte 5 + TypeScript + Vite
-  src/                       App.svelte (navigation), Device.svelte (Gerät page), lib/ (health and device clients, locales/de.ts + en.ts)
+  src/                       App.svelte (navigation), Home.svelte (live dashboard), Device.svelte (Gerät page), lib/ (metrics, stream and device clients, locales/de.ts + en.ts)
 docs/                        specification, ADRs, roadmap, prompts, this file
 install/                     install.sh (POSIX sh installer) and oarfish.service (unit, shipped in the bundle)
 scripts/                     release packaging, signing, verification, installer tests, budget and smoke tests
@@ -41,19 +42,22 @@ frontend/src ──vite build──▶ backend/internal/web/dist ──go:embed�
 |---|---|
 | `GET /healthz` | `200 {"status":"ok"}`, `Cache-Control: no-store` |
 | `GET /api/v1/device` | detection result (G4): hardware, OS, kernel, profile, support tier, capabilities, CPU temperature, boot medium. Read-only: other methods `405`, a request body `400`, unknown `/api/` paths typed `404`; `Cache-Control: no-store`. See [`DETECTION.md`](DETECTION.md) |
+| `GET /api/v1/metrics` | one snapshot (schema version 1): host name, uptime, CPU, memory and swap, temperatures, storage, network, the device summary for Home, the alerts and the history ring. Same method, body and header rules as the device endpoint. See [`DASHBOARD.md`](DASHBOARD.md) |
+| `GET /api/v1/events` | Server-Sent Events: `history` once, `alerts` when they change, `metrics` about every 2 s, a heartbeat comment every 15 s. At most 4 clients (then a typed `503`). Sampling runs only while a client is connected |
 | `GET /` and below | embedded frontend; unknown paths `404`; `503` if no frontend is embedded |
 
-All responses carry `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`. The server sets read-header, read, write and idle timeouts and a header size limit.
+All responses carry `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`. The server sets read-header, read, write and idle timeouts and a header size limit. The write timeout bounds a whole response and would cut every event stream, so the stream handler sets its own write deadline before each write and ends its streams when the server shuts down (ADR 0008).
 
-The process listens on `127.0.0.1:8484` by default (loopback only, ORB-ONB-003). Another address requires an explicit `-listen` flag. The port is a G1 default, not a specification value.
+The process listens on `127.0.0.1:8484` by default (loopback only, ORB-ONB-003). The port is a G1 default, not a specification value. `-listen` must be a literal loopback IP address with a port (`127.0.0.0/8` or `[::1]`); anything else, including an empty host, the unspecified addresses and host names such as `localhost`, stops the process before it listens, with a message and exit status 1. There is no override (D-C29, `server.ValidateListen`). This stays until Gate G5.1.
 
-`/readyz`, further `/api/v1/*` endpoints, Server-Sent Events and authentication are specified (sections 8.7, 13.1) but do not exist yet. The device endpoint has no authentication; the service therefore stays on loopback (D-C11). Authentication and audit belong to Gate G5.1 (D-C27); until it is PASS the service refuses a non-loopback listen address (D-C29, a guard added in Gate G5).
+`/readyz` and authentication are specified (sections 8.7, 13.1) but do not exist yet. The API has no authentication; the service therefore stays on loopback (D-C11). Authentication and audit belong to Gate G5.1 (D-C27).
 
 ## Frontend
 
 - Svelte 5 (runes), TypeScript strict mode, no router, no UI framework.
 - UI strings come from `src/lib/i18n.ts` (German default, ORB-GEN-006); an English dictionary can be added with the same keys.
-- Two views, switched by a `#/device` hash (no router): the health indicator backed by `/healthz`, and the "Gerät" page backed by `/api/v1/device`. Nothing else is shown, in line with the "no fake functions" rule (section 7.1). All UI text is in `src/lib/locales/de.ts` (default) and `en.ts` (prepared).
+- Two views, switched by a `#/device` hash (no router): "Home" (default), the live dashboard backed by `/api/v1/metrics` and `/api/v1/events`, and the "Gerät" page backed by `/api/v1/device`. Nothing else is shown, in line with the "no fake functions" rule (section 7.1). All UI text is in `src/lib/locales/de.ts` (default) and `en.ts` (prepared). The old status view and its `/healthz` check were replaced by Home, whose connection state says the same and more.
+- Home keeps an `EventSource` open only while the tab is visible, shows lost connections and stale values, computes transfer rates from counters in the browser, and draws sparklines as inline SVG (no chart library, no new dependency). Details: [`DASHBOARD.md`](DASHBOARD.md).
 
 ## Boundaries prepared for later gates
 
@@ -99,6 +103,22 @@ internal/platform/
 - **Run once, cache, read the temperature per request.** Detection runs at startup. Only the CPU temperature is read again per request.
 - The unit file is unchanged. Reading `/proc` and `/sys` works under the current sandbox; this was confirmed under a real systemd on one Raspberry Pi Zero 2 W (see "Verification status" in [`DETECTION.md`](DETECTION.md)).
 
+## Metrics (Gate G5)
+
+```text
+internal/metrics/
+  parse/    pure parsers of /proc and /sys text (fuzzed); no file access, no clock
+  collector reads files through platform/source; statfs is the only system call
+  sampler   runs only while a stream client is connected; ring of 60 points; client cap
+  alerts    rule engine with named thresholds; alerts are translation keys with parameters
+  metricstest   fixtures, a changeable file source, a fake clock (tests only)
+```
+
+- **Files only, no program, no netlink.** The same rule as detection (ADR 0007, D-C19), extended to the live values. Which files may be opened is fixed and tested (`TestMetricsOpenOnlyAllowListedFiles`); the hardware address of an interface, the machine id, the environment and process data are not on the list.
+- **Detection and metrics are separate.** `internal/metrics` imports only `platform/source`; it does not import the hardware, operating-system, capability, profile or detector packages, the HTTP server or `net`. The server composes the device summary from the detection result. An architecture test enforces this, and that no product code imports `os/exec`.
+- **Sampling follows the watchers.** No client, no goroutine, no timer, no read. The first client starts a loop (baseline, then a sample every 2 s; slow data every 30 s); the last client stops it and clears the ring. A client holds one frame at most and is dropped when it stops reading. See [`DASHBOARD.md`](DASHBOARD.md) for the bounds.
+- **Proposed in [ADR 0008](adr/0008-dashboard-metrics.md)** (status PROPOSED): files only, Server-Sent Events, sampling only while watched, the ring, the thresholds, the client cap.
+
 ## Installer and the device layout (Gate G3)
 
 ```text
@@ -111,7 +131,7 @@ manifest.json, bundle      embedded key; then SHA-256 against the        current
 - **Trust model (ADR 0006).** The root of trust on the device is `install.sh`, which the user downloads over HTTPS from GitHub and can read before running it. The release public key is a constant in it (CI checks that it equals `release/oarfish-release.pub`). Everything else is authenticated against that key: `checksums.txt` by its Ed25519 signature, the manifest and the bundle by the SHA-256 values in it. The installer proves first that its `openssl` rejects a modified file (negative control), refuses OpenSSL older than 3.0 and LibreSSL, and accepts only legacy (`Ed`) minisign signatures with the expected key id. It does not protect against someone who controls the repository and replaces `install.sh` together with the key; the documentation says so and prints the key id for an independent comparison.
 - **No execution before verification.** Nothing downloaded is run before the signature and hashes are verified. The first execution of the new binary is the health check after installation. The tools the installer runs are those of the distribution.
 - **Layout (spec 8.2).** `/opt/oarfish/releases/<version>/` (immutable, root-owned), `/opt/oarfish/current` (relative symlink, switched with `mv -T`, an atomic rename), `/etc/oarfish` (`root:oarfish` 0750, `secrets/` 0700), `/var/lib/oarfish`, `/var/cache/oarfish`, `/run/oarfish` (created by systemd), unit in `/etc/systemd/system/oarfish.service`, user and group `oarfish`. `/usr/libexec/oarfish-update-helper` is not created; the update helper belongs to Gate G6.
-- **Unit.** `install/oarfish.service` travels in the bundle, so it always matches its binary. It runs as `oarfish`, binds `127.0.0.1:8484` (D-C11), uses `StateDirectory`, `CacheDirectory` and `RuntimeDirectory`, and sandboxes the process (`NoNewPrivileges`, empty capability set, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, kernel and cgroup protections, namespace and realtime restrictions, `@system-service` system call filter). It has never been started by a real systemd yet. Hardening that later gates need relaxed (journal access, network management, a privilege broker) is added by those gates.
+- **Unit.** `install/oarfish.service` travels in the bundle, so it always matches its binary. It runs as `oarfish`, binds `127.0.0.1:8484` (D-C11), uses `StateDirectory`, `CacheDirectory` and `RuntimeDirectory`, and sandboxes the process (`NoNewPrivileges`, empty capability set, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, kernel and cgroup protections, namespace and realtime restrictions, `@system-service` system call filter). It has never been started by a real systemd yet. Hardening that later gates need relaxed (journal access, network management, a privilege broker) is added by those gates. Gate G5 reads more of `/proc` and `/sys` under the unchanged unit; that is expected to work and has not yet been seen on the device (`DASHBOARD.md`, "Verification status").
 - **Idempotence and failure.** A re-run with the same version compares files byte for byte and changes nothing (no restart). A release directory that exists but differs is an error. All downloads and checks happen in a temporary directory; the first change to the system happens after everything verified. If a newly activated version fails its health check, the previous version and its unit are restored (a minimal safety net for the installer, not the update logic of Gate G6).
 - **Privilege.** The installer runs once as root. It is not a general executor: its commands are fixed. The service is unprivileged. No privileged component is created.
 - **No network exposure.** The installer never opens a port or changes a firewall.
