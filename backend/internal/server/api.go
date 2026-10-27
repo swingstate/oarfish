@@ -27,12 +27,28 @@ func writeError(w http.ResponseWriter, status int, e apiError) {
 // apiHandler serves /api/v1. Everything on it is read-only: only GET is
 // accepted and a request body is refused.
 func apiHandler(cfg config) http.Handler {
+	routes := map[string]http.HandlerFunc{
+		"/api/v1/device": func(w http.ResponseWriter, _ *http.Request) {
+			if cfg.device == nil {
+				writeError(w, http.StatusServiceUnavailable, apiError{
+					Code:     "device_info_unavailable",
+					Message:  "Device detection is not available in this build.",
+					Recovery: "Restart Oarfish.",
+				})
+				return
+			}
+			handleDevice(w, cfg.device)
+		},
+		"/api/v1/metrics": func(w http.ResponseWriter, r *http.Request) { handleMetrics(w, r, cfg) },
+		"/api/v1/events":  func(w http.ResponseWriter, r *http.Request) { handleEvents(w, r, cfg) },
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/device" {
+		route, ok := routes[r.URL.Path]
+		if !ok {
 			writeError(w, http.StatusNotFound, apiError{
 				Code:     "not_found",
 				Message:  "This API endpoint does not exist.",
-				Recovery: "Use GET /api/v1/device.",
+				Recovery: "Use GET /api/v1/device, GET /api/v1/metrics or GET /api/v1/events.",
 			})
 			return
 		}
@@ -53,14 +69,6 @@ func apiHandler(cfg config) http.Handler {
 			})
 			return
 		}
-		if cfg.device == nil {
-			writeError(w, http.StatusServiceUnavailable, apiError{
-				Code:     "device_info_unavailable",
-				Message:  "Device detection is not available in this build.",
-				Recovery: "Restart Oarfish.",
-			})
-			return
-		}
-		handleDevice(w, cfg.device)
+		route(w, r)
 	})
 }

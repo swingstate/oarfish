@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/swingstate/oarfish/backend/internal/metrics"
 	"github.com/swingstate/oarfish/backend/internal/platform/detector"
 	"github.com/swingstate/oarfish/backend/internal/platform/hardware"
 	"github.com/swingstate/oarfish/backend/internal/platform/profiles"
@@ -64,7 +65,15 @@ func run(addr string, log *slog.Logger) error {
 		"arch", res.Hardware.Arch, "os_adapter", res.OS.Adapter, "profile", res.Profile.ID,
 		"tier", res.Support.Tier, "reason", res.Support.Reason)
 
-	srv := server.New(addr, server.NewHandler(web.Assets(), server.WithDevice(dev)))
+	// Metrics are read only while a browser watches (ORB-DASH-006): the sampler
+	// has no goroutine, timer or file read until the first client connects.
+	tier := res.Support.Tier
+	sampler := metrics.NewSampler(metrics.Config{
+		Collector:    metrics.NewCollector(source.Host(), metrics.HostStatfs),
+		AlertContext: func() metrics.AlertContext { return metrics.AlertContext{SupportTier: tier} },
+	})
+
+	srv := server.New(addr, server.NewHandler(web.Assets(), server.WithDevice(dev), server.WithMetrics(sampler)))
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
