@@ -2,7 +2,7 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.3.1
+- Dokumentversion: 0.3.2
 - Status: Baseline-Kandidat für Gate G0
 - Stand: 22. Oktober 2026
 - Zielrelease: Oarfish MVP 0.1
@@ -206,7 +206,7 @@ Es gibt keinen Self-hosted GitHub Runner auf MacBook oder Pi. GitHub Actions ver
 | Familie | MVP-Rolle | Supportaussage |
 |---|---|---|
 | Raspberry Pi / Broadcom BCM27xx | Primär | Zero 2 W ist das einzige physisch verifizierte Referenzgerät. |
-| Andere Raspberry-Pi-Modelle ARM64 | Compatible | Generische und erkannte Pi-Fähigkeiten, solange nicht physisch verifiziert. |
+| Andere Raspberry-Pi-Modelle ARM64 | Generic, mit Profil Compatible | Compatible, sobald ein Board- oder Familienprofil existiert (Datenänderung). Bis dahin Generic mit den erkannten Pi-Fähigkeiten und ohne board-spezifische Aktionen (3.6). Verified erst nach physischer Verifikation. |
 | Rockchip RK35xx und Derivate | Post-MVP | Generic ARM64 oder spätere Boardprofile, keine MVP-Voraussetzung. |
 | Allwinner und Amlogic | Post-MVP | Generic ARM64, spätere Community- oder First-Party-Profile. |
 | Generic ARM64 | MUSS | Sichere Basisansicht ohne board-spezifische Schreibaktionen. |
@@ -1196,3 +1196,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.2 | 21. Oktober 2026 | Fokus auf ARM-SBCs, Board Profiles und First-Party-Plugins. |
 | 0.3 | 22. Oktober 2026 | Pi Zero 2 W als einziges MVP-Referenzgerät, Raspberry Pi OS zuerst, Ubuntu Server LTS ARM64 als verbindliches Folgeziel, pull-basierte GitHub-Releases, Installationsskript und GUI-Self-Update; Self-hosted Runner und Push-Deployment entfernt. |
 | 0.3.1 | 23. Oktober 2026 | Produkt von Orbit in Oarfish umbenannt (Name, Binary, Pfade, Repository). Anforderungs-IDs `ORB-*` bleiben unverändert. |
+| 0.3.2 | 27. Oktober 2026 | Abschnitt 3.2: Andere Raspberry-Pi-Modelle sind Compatible, sobald ein Board- oder Familienprofil existiert; bis dahin Generic mit den erkannten Pi-Fähigkeiten (Entscheidung D-C26, ADR 0007). |

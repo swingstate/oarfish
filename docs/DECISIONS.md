@@ -22,6 +22,14 @@
 | D-C16 | Product, repository and binary are renamed from Orbit to Oarfish before the first release tag. Requirement IDs ORB-* remain unchanged for traceability. |
 | D-C17 | The repository swingstate/oarfish becomes public after Gate G2 and a successful publication review, before Gate G3. The review covers a full history scan for secrets and machine-specific values, license check, fork-workflow approval, branch and tag protection. D-C15 is superseded by this decision. |
 | D-C18 | Installer verifies the release signature with system openssl 3.x, see ADR 0006. `install.sh` defaults to the tag of the release it is attached to (stamped at build time), `--version` overrides; OpenSSL older than 3.0 and LibreSSL are refused. |
+| D-C19 | Detection reads files only and executes no program in G4 (no `vcgencmd`, `raspi-config`, `lsblk`, `systemctl` or `uname`). All reads go through a read-only, size-limited file source; tests enforce that no detection package imports `os/exec` and that only allow-listed files are opened. See ADR 0007. |
+| D-C20 | Profiles are JSON, decoded with `encoding/json` using `DisallowUnknownFields` and checked by an explicit validator. No YAML dependency. |
+| D-C21 | Profiles are embedded in the core binary (`go:embed`) and ship inside the signed release. A profile update is a core release; no signed profile packages yet. |
+| D-C22 | Tier rules: no shipped profile claims Verified without evidence for all core functions. Raspberry Pi Zero 2 W + Raspberry Pi OS = Compatible; the same board + Ubuntu = Compatible with the limitation "OS adapter not qualified". Board known but OS not covered by the profile, or kernel too old = Generic. No matching board profile = Generic. Not Linux, not ARM64, or `procfs`/`sysfs`/`systemd` missing = Unsupported. `board_actions_allowed` is true only for a matched board profile at Compatible or above. |
+| D-C23 | Raspberry Pi OS is told from Debian by `/etc/rpi-issue` (or `ID=raspbian`), because the 64-bit images report `ID=debian` in `/etc/os-release`. This is an OS-side fact; hardware detection does not use it. |
+| D-C24 | The minimum capabilities are `procfs`, `sysfs` and `systemd`. Without them the tier is Unsupported. |
+| D-C25 | The device API (`GET /api/v1/device`, schema version 1) is served on loopback only (D-C11) and has no authentication until the topic is assigned to a gate (see D-D07). |
+| D-C26 | Raspberry Pi models without a shipped board profile are Generic in the MVP, with the detected Pi capabilities, until a board or family profile exists (a data change). Specification 3.2 was aligned in version 0.3.2. |
 
 ## Deferred, not blocking Gate G1
 
@@ -33,3 +41,5 @@
 | D-D04 | Local admin authentication details | Gate G4/G7 |
 | D-D05 | First container engine physically verified on Pi | Gate G10 |
 | D-D06 | First Ubuntu hardware combination for Verified status | Gate G12 |
+| D-D07 | **Open item, not a decision:** no gate owns local authentication, audit and the privilege broker. D-D04 names G4/G7, but G4 did not deliver it and G7 is not assigned it. | Decided before G6 |
+| D-D08 | **Open item, not a decision:** the requirement IDs ORB-UPD-001 to ORB-UPD-003 exist twice in the specification (section 6.4 and section 6.12). | Corrected by change request before G6 |

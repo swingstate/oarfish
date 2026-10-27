@@ -2,7 +2,7 @@
 
 Oarfish runs on a 64-bit ARM Linux device with systemd. You download one script, read it, and run it. The script downloads the release from GitHub, checks the signature, and installs Oarfish as a service. No GitHub account, no token, no Docker, no Node.js, no Python.
 
-**Status (Gate G3):** this installer has run on **one** real Raspberry Pi Zero 2 W (see [Hardware test results](#hardware-test-results)); it has **not** been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today shows a health page and a read-only device page (what it detected about the board and the system); there is no login and no device management yet (later gates).
+**Status (Gates G3 and G4):** this installer, and the device detection built into the service, have run on **one** real Raspberry Pi Zero 2 W (see [Hardware test results](#hardware-test-results)); neither has been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today shows a health page and a read-only device page (what it detected about the board and the system); there is no login and no device management yet (later gates).
 
 **Kurzfassung (Deutsch):** `install.sh` von der Release-Seite laden, lesen, mit `sudo sh install.sh --dry-run` prüfen, dann mit `sudo sh install.sh` installieren. Die Oberfläche läuft nur auf `127.0.0.1:8484` (nur lokal). Von einem anderen Rechner erreichst du sie über einen SSH-Tunnel: `ssh -L 8484:127.0.0.1:8484 BENUTZER@GERAET`, dann im Browser <http://127.0.0.1:8484> öffnen. Deinstallieren: `sudo sh install.sh --uninstall` (Daten bleiben), mit `--purge` werden auch Daten und Benutzer gelöscht.
 
@@ -149,7 +149,9 @@ This is the installer's job for the first installation. Updating from the GUI co
 
 ## Hardware test results
 
-One test on one device. This is a single data point, not general proof: it does not show that the installer works on other boards, other images or other versions of the same image.
+Two tests on the same device, one per gate. Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
+
+### Gate G3: installer
 
 | Item | Result |
 |---|---|
@@ -176,9 +178,40 @@ The test setup is deliberately not identified here: no host or user names, no ad
 **Not verified on hardware:**
 
 - Ubuntu Server (any version) and any other board or image.
-- Uninstall, and running the installer again, on the device.
+- Uninstall on the device, and running the installer again for the *same* version. (The G4 test below upgraded in place from `v0.1.0-alpha.2` to `v0.1.0-alpha.3`; rollback after a failed health check has not been tried on the device.)
 - A tampered or damaged download on the device.
 - Key rotation and revocation (not designed, ADR 0005).
+
+### Gate G4: detection
+
+Measured on 2026-10-27. Same device and same image as in the G3 block, so only the differences are repeated.
+
+| Item | Result |
+|---|---|
+| Device | Raspberry Pi Zero 2 W Rev 1.0, revision code 902120 (the same device as in the G3 block) |
+| Image | Same as in the G3 block |
+| OS | Debian GNU/Linux 13 (trixie); detected as OS adapter `raspberry_pi_os` (status `initial-target`) |
+| Kernel | `6.18.50+rpt-rpi-v8` |
+| Tested release | `v0.1.0-alpha.3`, commit `b793b1069659f9ed85412b01523cc1f87e61df4f` |
+| Method | In-place upgrade from `v0.1.0-alpha.2` with the `install.sh` of the alpha.3 release (the stamped installer); the SHA-256 of `install.sh` matched the signed `checksums.txt`. Then `GET /api/v1/device` on the device, the journal line `platform detected`, the "Gerät" page viewed in a browser through an SSH tunnel, and `VmRSS` of the `oarfish` process read from `/proc/<pid>/status`. |
+| Profile | `raspberry-pi-zero-2-w` 1.0.0, matched by the device-tree compatible string (`matched_by` is `compatible`); SoC family `BCM2837` |
+| Support status | Tier `compatible`, reason `profile_not_verified`. Limitations `memory_512mb` and `evidence_install_only`. `board_actions_allowed` is true. Not Verified. |
+| Capabilities | All seven available: `procfs`, `sysfs`, `systemd`, `journald`, `cgroup_v2`, `cpu_temperature`, `boot_medium`. Boot medium `mmc`. CPU temperature was read and plausible. |
+| Memory | `memory_total_bytes` 435318784 (415 MiB) |
+| Log | The journal line `platform detected` showed `arch=arm64`, `os_adapter=raspberry_pi_os`, `profile=raspberry-pi-zero-2-w`, `tier=compatible`, `reason=profile_not_verified`. |
+| GUI | The "Gerät" page showed support status, explanation, limitations, hardware, OS, kernel, sensor, boot medium and capabilities; the technical details were collapsed. |
+| Idle memory | Process `VmRSS` 9212 kB, read about 6 minutes after the service restart, after the pages had been opened a few times. `v0.1.0-alpha.2` measured 7020 kB (G3). The target of ORB-NFR-001 is 35 MB, tolerated 45 MB. |
+
+What this confirms: the device-tree compatible string `raspberrypi,model-zero-2-w` and a `/etc/rpi-issue` starting with `Raspberry Pi ` (the Raspberry Pi OS adapter matched), and that the unchanged service unit, with its sandboxing, lets the service read everything detection needs.
+
+The same rules as above apply: one device, one image, one moment. The memory figure is the resident size of the process while idle, a single reading and not a measurement under load. No host or user names, addresses, serial numbers or MAC addresses are recorded here.
+
+**Not verified on hardware (G4):**
+
+- Ubuntu Server: detection is tested with fixtures and the architecture test only.
+- Other boards and other Raspberry Pi models, and other images or versions of Raspberry Pi OS.
+- USB boot (the classification is tested with a synthetic sysfs link only).
+- Long-term memory use, and the service under load.
 
 ## Uninstall
 
@@ -232,17 +265,18 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 - End to end in plain `debian:12` and `ubuntu:24.04` **arm64** container images under qemu-user: signature verification with the image's OpenSSL, real `useradd`/`chown`, the real ARM64 binary started as the `oarfish` user, `/healthz` and the GUI answer, only `127.0.0.1:8484` listens, a second run changes nothing, uninstall and purge. Result of the first CI run: both passed. The minimal images contained **neither `curl` nor `openssl`** (the test installed both with `apt-get`, giving OpenSSL 3.0.22 on Debian 12 and 3.0.13 on Ubuntu 24.04); `tar`, `gzip`, `sha256sum`, `od`, `base64`, `awk`, `useradd` and `getent` were present. On a minimal system run `sudo apt install curl openssl` first. The per-job tool report is in the job summary of the "Installer in arm64 container" jobs.
 - The unit file passes `systemd-analyze verify` on the CI runner.
 
+**Verified on hardware (one device, see [Hardware test results](#hardware-test-results)):**
+
+- Gate G3: dry run and install on a Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit), the unit file started by a real systemd (257), service active and enabled, start after a reboot, `/healthz`, the GUI through an SSH tunnel, and one process memory reading.
+- Gate G4 (`v0.1.0-alpha.3`): in-place upgrade from `v0.1.0-alpha.2` with the stamped installer; detection of the board, SoC family, OS adapter, kernel, memory, all seven capabilities, CPU temperature and boot medium (`mmc`); support status Compatible with the profile `raspberry-pi-zero-2-w`; the "Gerät" page in a browser through an SSH tunnel; and a second idle `VmRSS` reading (9212 kB). The unchanged unit file's sandbox did not block detection.
+
 **Not verified:**
 
-**Verified on hardware (one device, see [Hardware test results](#hardware-test-results)):** dry run and install on a Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit), the unit file started by a real systemd (257), service active and enabled, start after a reboot, `/healthz`, the GUI through an SSH tunnel, and one process memory reading.
-
-**Not verified:**
-
-- **Ubuntu Server and any other board or image** have not run on real hardware. Container results are no proof for them.
-- Uninstall and running the installer again have not been tried on the device (only in the containers and the CI tests).
+- **Ubuntu Server and any other board or image** have not run on real hardware. Container results are no proof for them. That includes device detection on Ubuntu (fixtures and the architecture test only), other Raspberry Pi models, and USB boot.
+- Uninstall, and running the installer again for the same version, have not been tried on the device (only in the containers and the CI tests). An upgrade from one version to the next was done once on the device (G4 test); a rollback was not.
 - A tampered or damaged download has not been tried on the device (only in the CI tests).
 - The containers have **no systemd**: a small stand-in starts the binary. Only the one device above has run the unit file under a real systemd; other kernels and images may differ.
-- The 512 MB memory budget under load, and write load on a microSD card, are not tested. The single `VmRSS` reading is not a budget test.
+- The 512 MB memory budget under load, long-term memory use, and write load on a microSD card are not tested. The two idle `VmRSS` readings (7020 kB and 9212 kB, different releases) are not a budget test.
 - The presence of OpenSSL 3 and the other tools on Ubuntu Server images, and on other versions of Raspberry Pi OS, is assumed from package information. One device had OpenSSL 3.5.7.
 - `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified on 2026-10-26 for `v0.1.0-alpha.2` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.

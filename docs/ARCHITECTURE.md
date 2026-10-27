@@ -94,10 +94,10 @@ internal/platform/
 - **Read-only, files only.** Detection reads `/proc`, `/sys`, `/run/systemd` and os-release files through an injectable `fs.FS` (`os.DirFS("/")` in production, a fixture directory in tests) with bounded reads. It runs no program and uses no cgo. Which files may be read is fixed and tested (privacy, [`DETECTION.md`](DETECTION.md)).
 - **Three separate concepts.** `hardware` (board, SoC, architecture), `operating_system` (os-release, kernel, OS adapter) and `capabilities` (what probes found). Hardware and OS packages do not import each other or the server; only `detector` combines them. An architecture test enforces this.
 - **Ubuntu boundary.** `operating_system/ubuntu.go` recognises Ubuntu and reports `not-yet-qualified`. It has no Ubuntu-specific behaviour; the same detector runs on Ubuntu fixtures unchanged.
-- **Profiles** are embedded JSON (`go:embed`), strictly decoded and validated: no commands, only allow-listed named handlers, no Verified tier without evidence for all core functions. Proposed in [ADR 0007](adr/0007-detection-and-profiles.md).
+- **Profiles** are embedded JSON (`go:embed`), strictly decoded and validated: no commands, only allow-listed named handlers, no Verified tier without evidence for all core functions. Decided in [ADR 0007](adr/0007-detection-and-profiles.md).
 - **Support tier** (Verified, Compatible, Community, Experimental, Generic, Unsupported) is computed from hardware, OS adapter, capabilities and profile. Unknown ARM64 starts in Generic Mode with no board-specific actions.
 - **Run once, cache, read the temperature per request.** Detection runs at startup. Only the CPU temperature is read again per request.
-- The unit file is unchanged. Reading `/proc` and `/sys` is expected to work under the current sandbox, but that is not yet confirmed under a real systemd; see "Verification status" in [`DETECTION.md`](DETECTION.md).
+- The unit file is unchanged. Reading `/proc` and `/sys` works under the current sandbox; this was confirmed under a real systemd on one Raspberry Pi Zero 2 W (see "Verification status" in [`DETECTION.md`](DETECTION.md)).
 
 ## Installer and the device layout (Gate G3)
 
