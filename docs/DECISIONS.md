@@ -30,6 +30,10 @@
 | D-C24 | The minimum capabilities are `procfs`, `sysfs` and `systemd`. Without them the tier is Unsupported. |
 | D-C25 | The device API (`GET /api/v1/device`, schema version 1) is served on loopback only (D-C11) and has no authentication until the topic is assigned to a gate (see D-D07). |
 | D-C26 | Raspberry Pi models without a shipped board profile are Generic in the MVP, with the detected Pi capabilities, until a board or family profile exists (a data change). Specification 3.2 was aligned in version 0.3.2. |
+| D-C27 | A new gate G5.1 "Lokaler Zugriffsschutz und Audit-Grundlage" is inserted after G5 and before G6. No other gate is renumbered. Scope: ORB-ONB-002, ORB-AUTH-001..003, ORB-SEC-004, ORB-SEC-005, ORB-SEC-006, ORB-SEC-007, ORB-SEC-010. Exit: state-changing endpoints reject requests without a valid session and without CSRF protection; audit entries contain no secrets; login verified on the Raspberry Pi. G5.1 has a design stop with an ADR (password hashing, session storage, audit storage with respect to microSD write load, first-start account setup). G6 depends on G5.1 PASS. The first state-changing API endpoint may only be built after G5.1 PASS. Specification 14.2 and 17 (D-07) were aligned in version 0.3.3. |
+| D-C28 | The Update Helper (specification 8.6) is delivered in G6 as a separate privileged process, with a design stop and ADR. The Privilege Broker with a fixed allowlist (ORB-SEC-002) is delivered in G7. The broker capability check (ORB-SEC-003) is delivered in G8. |
+| D-C29 | Until G5.1 is PASS the Oarfish binary refuses a non-loopback listen address (implemented as a small guard in Gate G5). After G5.1, a non-loopback address needs explicit configuration, a warning and enabled authentication (ORB-SEC-010). D-C11 stays valid. |
+| D-C30 | The requirement IDs ORB-UPD-001..003 in specification section 6.4 (OS updates) are renamed ORB-OSU-001..003. Section 6.12 keeps ORB-UPD-001..008. A check found no other duplicate requirement IDs. Specification version 0.3.3. |
 
 ## Deferred, not blocking Gate G1
 
@@ -38,8 +42,9 @@
 | D-D01 | Public release channel and repository visibility | Resolved by D-C13, D-C14 and D-C17 |
 | D-D02 | Final open-source license | Resolved by D-C13, D-C14 and D-C17 |
 | D-D03 | Exact Ed25519 signing implementation | Resolved by ADR 0005 (minisign 0.12) |
-| D-D04 | Local admin authentication details | Gate G4/G7 |
+| D-D04 | Local admin authentication details | Gate G5.1 (design stop, ADR) |
 | D-D05 | First container engine physically verified on Pi | Gate G10 |
 | D-D06 | First Ubuntu hardware combination for Verified status | Gate G12 |
-| D-D07 | **Open item, not a decision:** no gate owns local authentication, audit and the privilege broker. D-D04 names G4/G7, but G4 did not deliver it and G7 is not assigned it. | Decided before G6 |
-| D-D08 | **Open item, not a decision:** the requirement IDs ORB-UPD-001 to ORB-UPD-003 exist twice in the specification (section 6.4 and section 6.12). | Corrected by change request before G6 |
+| D-D07 | **Open item, not a decision:** no gate owns local authentication, audit and the privilege broker. D-D04 names G4/G7, but G4 did not deliver it and G7 is not assigned it. | Resolved by D-C27 and D-C28 |
+| D-D08 | **Open item, not a decision:** the requirement IDs ORB-UPD-001 to ORB-UPD-003 exist twice in the specification (section 6.4 and section 6.12). | Resolved by D-C30 |
+| D-D09 | Password hashing method, session storage, audit storage and first-start account setup are decided in the G5.1 design stop with an ADR. | Gate G5.1 |

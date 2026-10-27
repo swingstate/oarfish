@@ -63,7 +63,7 @@ Every file detection may open, and why. A test (`TestDetectionOpensOnlyAllowList
 
 ### Raspberry Pi OS and `/etc/rpi-issue`
 
-`/etc/os-release` alone cannot tell Raspberry Pi OS from Debian: the 64-bit images report `ID=debian` (older 32-bit images `ID=raspbian`). The Raspberry Pi OS adapter therefore matches `ID=raspbian`, or `ID=debian` together with an `/etc/rpi-issue` file that starts with `Raspberry Pi `. This is an OS fact, not hardware knowledge: a Raspberry Pi running Ubuntu or plain Debian has no such file and is still recognised as a Raspberry Pi by the hardware detector. Confirmed on one real Raspberry Pi OS Lite 64-bit image (2026-10-27); other images and versions are not confirmed, see [Verification status](#verification-status).
+`/etc/os-release` alone cannot tell Raspberry Pi OS from Debian: the 64-bit images report `ID=debian` (older 32-bit images `ID=raspbian`). The Raspberry Pi OS adapter therefore matches `ID=raspbian`, or `ID=debian` together with an `/etc/rpi-issue` file that starts with `Raspberry Pi `. This is an OS fact, not hardware knowledge: a Raspberry Pi running Ubuntu or plain Debian has no such file and is still recognised as a Raspberry Pi by the hardware detector. Confirmed on one real image reported as Raspberry Pi OS Lite 64-bit (2026-10-27); other images and versions are not confirmed, see [Verification status](#verification-status).
 
 ## Privacy
 
@@ -304,7 +304,7 @@ Acceptance tests: AT-002 `TestDetectRaspberryPiOS`; AT-003 `TestDetectPiZero2W`,
 
 `TestDetectOnTheRealHost` additionally runs detection against the real `/proc` and `/sys` of the machine running the tests (skipped when it is not Linux), so real files are parsed in CI on a generic x86_64 runner. It asserts completeness and cleanliness only, nothing about what the machine is.
 
-**Confirmed on a real device (2026-10-27):** one Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120), Raspberry Pi OS Lite 64-bit (Debian GNU/Linux 13, kernel `6.18.50+rpt-rpi-v8`), release `v0.1.0-alpha.3`, commit `b793b1069659f9ed85412b01523cc1f87e61df4f`, upgraded in place from `v0.1.0-alpha.2` with the stamped `install.sh` (its SHA-256 matched the signed `checksums.txt`). The full record is in [INSTALL.md](INSTALL.md#gate-g4-detection). Method: `GET /api/v1/device` on the device, the journal line `platform detected`, the "Gerät" page in a browser through an SSH tunnel, `VmRSS` from `/proc/<pid>/status`.
+**Confirmed on a real device (2026-10-27):** one Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120), an image reported as Raspberry Pi OS Lite 64-bit (Debian GNU/Linux 13, kernel `6.18.50+rpt-rpi-v8`), release `v0.1.0-alpha.3`, commit `b793b1069659f9ed85412b01523cc1f87e61df4f`, upgraded in place from `v0.1.0-alpha.2` with the stamped `install.sh` (its SHA-256 matched the signed `checksums.txt`). The full record is in [INSTALL.md](INSTALL.md#gate-g4-detection). Method: `GET /api/v1/device` on the device, the journal line `platform detected`, the "Gerät" page in a browser through an SSH tunnel, `VmRSS` from `/proc/<pid>/status`.
 
 - Profile `raspberry-pi-zero-2-w` 1.0.0, `matched_by` `compatible`; SoC family `BCM2837`; OS adapter `raspberry_pi_os`, status `initial-target`.
 - Tier `compatible`, reason `profile_not_verified`, limitations `memory_512mb` and `evidence_install_only`, `board_actions_allowed` true.

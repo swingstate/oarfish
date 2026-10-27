@@ -47,7 +47,7 @@ All responses carry `Content-Security-Policy: default-src 'self'; frame-ancestor
 
 The process listens on `127.0.0.1:8484` by default (loopback only, ORB-ONB-003). Another address requires an explicit `-listen` flag. The port is a G1 default, not a specification value.
 
-`/readyz`, further `/api/v1/*` endpoints, Server-Sent Events and authentication are specified (sections 8.7, 13.1) but do not exist yet. The device endpoint has no authentication; the service therefore stays on loopback (D-C11). Authentication is not assigned to a gate yet.
+`/readyz`, further `/api/v1/*` endpoints, Server-Sent Events and authentication are specified (sections 8.7, 13.1) but do not exist yet. The device endpoint has no authentication; the service therefore stays on loopback (D-C11). Authentication and audit belong to Gate G5.1 (D-C27); until it is PASS the service refuses a non-loopback listen address (D-C29, a guard added in Gate G5).
 
 ## Frontend
 
@@ -60,7 +60,7 @@ The process listens on `127.0.0.1:8484` by default (loopback only, ORB-ONB-003).
 Not implemented, only reserved by the layout and by CLAUDE.md rules:
 
 - Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3) and implemented in G4 (below). Package, network and service adapters (`packages/`, `network/`, `services/` in spec 8.3) do not exist yet.
-- No privileged code exists. Privilege Broker and Update Helper are separate future components (spec 8.6).
+- No privileged code exists. Privilege Broker and Update Helper are separate future components (spec 8.6): the Update Helper arrives in Gate G6, the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
 - Plugins and self-update are out of scope until their gates (ADR 0003, ADR 0004). Release signing exists (below); the installer verifies signatures with the system `openssl`, but nothing in the Oarfish binary verifies signatures yet.
 
 ## Build and CI
