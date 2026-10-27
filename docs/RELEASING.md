@@ -166,6 +166,6 @@ Rewriting history is not part of this list. If a scan ever finds a real secret i
 - `v0.1.0-alpha.1` was published before the installer existed. It has no `install.sh`, no `oarfish.service` and no `THIRD_PARTY_NOTICES.txt` in the bundle, so the current `verify-release.sh` and the installer reject it by design. Releases from `v0.1.0-alpha.2` on follow the layout described here.
 
 - Unverified until the first real release: the publish job, `gh release create`, prerelease flag, and the secret-based signing path. The dry run exercises everything except those and the committed public key.
-- The ARM64 smoke test runs under qemu-user on an x86-64 runner. It proves the binary starts and serves; it is not a test on real hardware (the one hardware test is recorded in `INSTALL.md`).
+- The ARM64 smoke test runs under qemu-user on an x86-64 runner. It proves the binary starts and serves; it is not a test on real hardware (the hardware tests, G3 and G4 on one device, are recorded in `INSTALL.md`).
 - No SLSA provenance or artifact attestation, no signature on the SBOMs other than through `checksums.txt`.
 - Key rotation and revocation are not designed (ADR 0005).

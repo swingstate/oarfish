@@ -2,9 +2,9 @@
 
 Oarfish finds out, read-only, what it runs on: the **hardware** (board, SoC family, architecture, memory), the **operating system** (from `/etc/os-release`, plus the kernel) and the **capabilities** of the running system. The three are separate. The result is cached at startup, served at `GET /api/v1/device` and shown on the "Gerät" (Device) page.
 
-Normative sources: Pflichtenheft 3.4 to 3.7, 6.2, 7.2, 8.3, 8.4, 12.4. Decisions: [ADR 0002](adr/0002-hardware-and-os-separation.md) (accepted) and [ADR 0007](adr/0007-detection-and-profiles.md) (**proposed**, not yet accepted).
+Normative sources: Pflichtenheft 3.4 to 3.7, 6.2, 7.2, 8.3, 8.4, 12.4. Decisions: [ADR 0002](adr/0002-hardware-and-os-separation.md) (accepted) and [ADR 0007](adr/0007-detection-and-profiles.md) (accepted).
 
-**Status.** Everything here is tested against synthetic fixtures. **Nothing has been compared with a real Raspberry Pi yet** (see [Verification status](#verification-status)).
+**Status.** Tested against synthetic fixtures, and confirmed on **one** real Raspberry Pi Zero 2 W with Raspberry Pi OS on 2026-10-27 (release `v0.1.0-alpha.3`). Nothing else has run on real hardware: not Ubuntu, not other boards (see [Verification status](#verification-status)).
 
 ## Scope
 
@@ -63,7 +63,7 @@ Every file detection may open, and why. A test (`TestDetectionOpensOnlyAllowList
 
 ### Raspberry Pi OS and `/etc/rpi-issue`
 
-`/etc/os-release` alone cannot tell Raspberry Pi OS from Debian: the 64-bit images report `ID=debian` (older 32-bit images `ID=raspbian`). The Raspberry Pi OS adapter therefore matches `ID=raspbian`, or `ID=debian` together with an `/etc/rpi-issue` file that starts with `Raspberry Pi `. This is an OS fact, not hardware knowledge: a Raspberry Pi running Ubuntu or plain Debian has no such file and is still recognised as a Raspberry Pi by the hardware detector. *Not yet confirmed on a real image*; see [Verification status](#verification-status).
+`/etc/os-release` alone cannot tell Raspberry Pi OS from Debian: the 64-bit images report `ID=debian` (older 32-bit images `ID=raspbian`). The Raspberry Pi OS adapter therefore matches `ID=raspbian`, or `ID=debian` together with an `/etc/rpi-issue` file that starts with `Raspberry Pi `. This is an OS fact, not hardware knowledge: a Raspberry Pi running Ubuntu or plain Debian has no such file and is still recognised as a Raspberry Pi by the hardware detector. Confirmed on one real Raspberry Pi OS Lite 64-bit image (2026-10-27); other images and versions are not confirmed, see [Verification status](#verification-status).
 
 ## Privacy
 
@@ -91,7 +91,7 @@ The `os-release` parser is strict about quoting and tolerant about everything el
 
 | Adapter | Matches | Status |
 |---|---|---|
-| `raspberry_pi_os` | `ID=raspbian`, or `ID=debian` plus `/etc/rpi-issue` | `initial-target` (the first target, **not** verified) |
+| `raspberry_pi_os` | `ID=raspbian`, or `ID=debian` plus `/etc/rpi-issue` | `initial-target` (the first target; matched on one real device, support status still Compatible, not Verified) |
 | `ubuntu` | `ID=ubuntu` or `ID_LIKE` contains `ubuntu` | `not-yet-qualified` |
 | `debian_family` | `ID=debian` or `ID_LIKE` contains `debian` | `generic` |
 | `generic_linux` | anything else, including no usable os-release | `unrecognised` |
@@ -176,7 +176,7 @@ The user-facing explanation key is `support.<tier>.<reason>`; the translation fi
 
 `support.board_actions_allowed` is true only when a board profile matched and the tier is not Generic or Unsupported. **Every future board-specific action must check it** (ORB-HW-007, ORB-NFR-015). G4 has no such action.
 
-Results for the fixtures: Pi Zero 2 W + Raspberry Pi OS → Compatible; the same hardware + Ubuntu → Compatible with the limitation `os_adapter_not_qualified`; Pi Zero 2 W + plain Debian → Generic; Pi 4 + Raspberry Pi OS → Generic (hardware recognised as a Raspberry Pi, no board profile ships for it); unknown ARM64 → Generic; x86_64 → Unsupported.
+Results for the fixtures: Pi Zero 2 W + Raspberry Pi OS → Compatible; the same hardware + Ubuntu → Compatible with the limitation `os_adapter_not_qualified`; Pi Zero 2 W + plain Debian → Generic; Pi 4 + Raspberry Pi OS → Generic (hardware recognised as a Raspberry Pi, no board profile ships for it; a Raspberry Pi model without a shipped board profile is Generic in the MVP until a board or family profile exists, decision D-C26, and then becomes Compatible by a data change); unknown ARM64 → Generic; x86_64 → Unsupported.
 
 ## API: `GET /api/v1/device`
 
@@ -194,7 +194,7 @@ Read-only: only `GET`; any other method (including `HEAD`) is `405` with `Allow:
 | `sensors.cpu_temperature_celsius` | number (0.1 °C) or `null`; read on every request |
 | `boot_medium.type` | `mmc`, `nvme`, `usb`, `unknown` |
 
-Example for the synthetic fixture `pi-zero-2w-raspios` (not a real device):
+Example for the synthetic fixture `pi-zero-2w-raspios` (not a real device; the response of the real Raspberry Pi Zero 2 W agreed with it in profile, tier, reason, limitations and in which capabilities are available; memory size and temperature are the device's own):
 
 ```json
 {
@@ -272,7 +272,7 @@ The only control on the page is "reload". There is nothing to change on the devi
 
 ## Resource use
 
-Detection reads about a dozen small files once at startup; the profile data is three small JSON files in the binary. The only per-request work is one sysfs read. ORB-NFR-001 asks for at most 35 MB idle RSS on the Zero 2 W: **no RSS measurement exists for G4**; measuring it on the device is a manual step. The binary-size change is reported in the pull request.
+Detection reads about a dozen small files once at startup; the profile data is three small JSON files in the binary. The only per-request work is one sysfs read. ORB-NFR-001 asks for at most 35 MB idle RSS on the Zero 2 W: one idle reading on the device (`v0.1.0-alpha.3`) was `VmRSS` 9212 kB, see [Verification status](#verification-status). It is a single reading, not a measurement under load or over time. The binary-size change was reported in the G4 pull request.
 
 ## Requirement to test
 
@@ -296,7 +296,7 @@ Each MUST requirement in scope maps to at least one test (spec 12.4). `TestTrace
 | Privacy rules | `TestFixturesContainNoPrivateData`, `TestDetectionOpensOnlyAllowListedFiles`, `TestDeviceEndpointNeverExposesIdentifyingData`, `TestDeviceResponsesContainNoPrivatePatterns`, `TestCPUInfoSerialIsNeverKept` |
 | API is read-only | `TestDeviceEndpointAcceptsOnlyGet`, `TestDeviceEndpointRejectsARequestBody`, `TestUnknownAPIPathsGetATypedNotFound` |
 
-Acceptance tests: AT-002 `TestDetectRaspberryPiOS`; AT-003 `TestDetectPiZero2W`, `TestPiZero2WCapabilities`; AT-004 `TestSameHardwareUnderRaspberryPiOSAndUbuntu`; AT-005 `TestUnknownARM64IsGenericMode`; AT-027 `TestArchitectureHardwareAndOperatingSystemAreSeparate`, `TestSameHardwareUnderUbuntu`. These are fixture tests; AT-002 and AT-003 on the real device are still to be run (below).
+Acceptance tests: AT-002 `TestDetectRaspberryPiOS`; AT-003 `TestDetectPiZero2W`, `TestPiZero2WCapabilities`; AT-004 `TestSameHardwareUnderRaspberryPiOSAndUbuntu`; AT-005 `TestUnknownARM64IsGenericMode`; AT-027 `TestArchitectureHardwareAndOperatingSystemAreSeparate`, `TestSameHardwareUnderUbuntu`. These are fixture tests; AT-002 and AT-003 were also run on one real device (see [Verification status](#verification-status)).
 
 ## Verification status
 
@@ -304,13 +304,24 @@ Acceptance tests: AT-002 `TestDetectRaspberryPiOS`; AT-003 `TestDetectPiZero2W`,
 
 `TestDetectOnTheRealHost` additionally runs detection against the real `/proc` and `/sys` of the machine running the tests (skipped when it is not Linux), so real files are parsed in CI on a generic x86_64 runner. It asserts completeness and cleanliness only, nothing about what the machine is.
 
+**Confirmed on a real device (2026-10-27):** one Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120), Raspberry Pi OS Lite 64-bit (Debian GNU/Linux 13, kernel `6.18.50+rpt-rpi-v8`), release `v0.1.0-alpha.3`, commit `b793b1069659f9ed85412b01523cc1f87e61df4f`, upgraded in place from `v0.1.0-alpha.2` with the stamped `install.sh` (its SHA-256 matched the signed `checksums.txt`). The full record is in [INSTALL.md](INSTALL.md#gate-g4-detection). Method: `GET /api/v1/device` on the device, the journal line `platform detected`, the "Gerät" page in a browser through an SSH tunnel, `VmRSS` from `/proc/<pid>/status`.
+
+- Profile `raspberry-pi-zero-2-w` 1.0.0, `matched_by` `compatible`; SoC family `BCM2837`; OS adapter `raspberry_pi_os`, status `initial-target`.
+- Tier `compatible`, reason `profile_not_verified`, limitations `memory_512mb` and `evidence_install_only`, `board_actions_allowed` true.
+- All seven capabilities available (`procfs`, `sysfs`, `systemd`, `journald`, `cgroup_v2`, `cpu_temperature`, `boot_medium`); boot medium `mmc`; CPU temperature read, plausible value; `memory_total_bytes` 435318784 (415 MiB).
+- The journal line `platform detected` showed `arch=arm64`, `os_adapter=raspberry_pi_os`, `profile=raspberry-pi-zero-2-w`, `tier=compatible`, `reason=profile_not_verified`.
+- The Gerät page showed support status, explanation, limitations, hardware, OS, kernel, sensor, boot medium and capabilities; the technical details were collapsed.
+- This confirms the device-tree compatible string `raspberrypi,model-zero-2-w` and a `/etc/rpi-issue` starting with `Raspberry Pi ` for that image. It also confirms that the service sandbox of the unchanged unit file leaves `/proc`, `/sys` and `/run/systemd` readable for detection (the unit needed no change).
+- Idle memory: `VmRSS` 9212 kB about 6 minutes after the service restart, after the pages had been opened a few times (`v0.1.0-alpha.2` measured 7020 kB). ORB-NFR-001 asks for at most 35 MB, tolerated 45 MB. One reading, not a measurement under load.
+
+AT-002 and AT-003 have therefore been run on this one device. They have not been run on any other device or image.
+
 **Not verified:**
 
-- **No comparison with a real Raspberry Pi Zero 2 W.** The fixture values (compatible strings, cpuinfo layout, revision code, `/etc/rpi-issue`, kernel release, boot device) are written from knowledge of the kernel sources and of the G3 test report. If the real `compatible` strings differ from `raspberrypi,model-zero-2-w` and `brcm,bcm2837`, or the image has no `/etc/rpi-issue`, the Pi would be reported as Generic or as `debian_family`.
-- **The service sandbox.** The unit file was not changed. `ProtectSystem=strict`, `ProtectKernelTunables`, `ProtectControlGroups`, `PrivateDevices` and `ProtectHome` should leave `/proc`, `/sys` and `/run/systemd` readable, but this was not run under a real systemd. If the Pi shows `unsupported` / `missing_minimum_capabilities`, or capabilities that are unavailable although they exist, the sandbox is the first suspect, and the fix is a narrow, documented relaxation of the unit as described in [ARCHITECTURE.md](ARCHITECTURE.md), not removing hardening.
-- **Idle memory.** Not measured (ORB-NFR-001).
-- **Ubuntu** on any hardware: only fixtures.
-- **USB boot** classification has only been tested with a synthetic sysfs link.
+- **Ubuntu** on any hardware: only fixtures and the architecture test. The Ubuntu adapter, and the rule Raspberry Pi + Ubuntu = Compatible with the limitation `os_adapter_not_qualified`, have never seen a real Ubuntu system.
+- **Other boards and other Raspberry Pi models**, and other images or versions of Raspberry Pi OS. A different image might lack `/etc/rpi-issue` or use other compatible strings; the effect would then be a lower tier (`debian_family` or Generic), not an unsafe one.
+- **USB boot** classification has only been tested with a synthetic sysfs link; the real device boots from `mmc`.
+- **Long-term memory use** and the service **under load**. The idle reading above is a single data point.
 
 ### Checking a device after the release
 

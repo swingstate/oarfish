@@ -1,14 +1,14 @@
 # ADR 0007: Detection reads files only; JSON profiles embedded in the core
 
-- Status: **Proposed** (not accepted; for the maintainer's decision)
-- Date: 2026-10-26
+- Status: **Accepted**
+- Date: 2026-10-27
 - Gate: G4
 
 ## Context
 
-Gate G4 adds detection of hardware, operating system and capabilities (spec 3.4, 3.5, 6.2, 8.3), a board and SoC profile registry (3.7, 8.4) and the support tiers (3.6). ADR 0002 already fixes the principle that hardware and OS detection are separate and that standard Linux interfaces come first. Four questions were left open by the specification and are settled here for the implementation. None of this is accepted until the maintainer says so.
+Gate G4 adds detection of hardware, operating system and capabilities (spec 3.4, 3.5, 6.2, 8.3), a board and SoC profile registry (3.7, 8.4) and the support tiers (3.6). ADR 0002 already fixes the principle that hardware and OS detection are separate and that standard Linux interfaces come first. Four questions were left open by the specification and are settled here for the implementation.
 
-## Proposal
+## Decision
 
 ### 1. Detection reads files only; it executes nothing (in G4)
 
@@ -47,6 +47,10 @@ The 64-bit Raspberry Pi OS reports `ID=debian` in `/etc/os-release`, identical t
 
 - Detection and API tests need no hardware, network or root.
 - Adding a board is a data change plus a fixture and two translation entries, not a code change. A new handler is a code change.
-- `/etc/rpi-issue` and the device-tree strings in the fixtures have not been confirmed on a real device (see `docs/DETECTION.md`); if they differ, the effect is a lower tier, not an unsafe one.
-- Spec 3.2 lists "other Raspberry Pi models" as Compatible; this proposal gives them Generic until a board profile exists (rule 4). The maintainer may prefer a Raspberry Pi family profile instead; that is a data change.
+- `/etc/rpi-issue` and the device-tree strings were confirmed on one real device (see Hardware confirmation). On other images they may differ; the effect is then a lower tier, not an unsafe one.
+- Spec 3.2 listed "other Raspberry Pi models" as Compatible; this decision gives them Generic until a board or family profile exists (rule 4). Spec 3.2 was aligned in version 0.3.2. A Raspberry Pi family profile would make them Compatible; that is a data change.
 - Not decided here: authentication of the API (it stays on loopback, D-C11), signed profile packages, optional Raspberry Pi enhancement providers, Ubuntu qualification (G12).
+
+## Hardware confirmation
+
+Confirmed on 2026-10-27 on one Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120) with Raspberry Pi OS Lite 64-bit (Debian GNU/Linux 13, kernel `6.18.50+rpt-rpi-v8`), release `v0.1.0-alpha.3`, commit `b793b1069659f9ed85412b01523cc1f87e61df4f`. The board profile matched by its compatible string; the Raspberry Pi OS adapter matched through `/etc/rpi-issue`; the tier was Compatible with the reason `profile_not_verified`; all seven capabilities were available under the unchanged service unit. Record and limits: [INSTALL.md](../INSTALL.md#gate-g4-detection) and [DETECTION.md](../DETECTION.md#verification-status). This is one device and one image. Ubuntu, other boards and other Raspberry Pi models are not confirmed.

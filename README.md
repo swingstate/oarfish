@@ -6,7 +6,7 @@ The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.
 
 ## Status
 
-**Gates G1 (repository foundation and CI), G2 (signed Linux ARM64 release pipeline) and G3 (installer) are done; Gate G4 (hardware, OS and capability detection, "Gerät" page) is in review.** The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, GitHub Actions CI, a release workflow that turns a version tag into a signed GitHub Release ([`docs/RELEASING.md`](docs/RELEASING.md)), and `install/install.sh`, an installer that pulls a release anonymously, verifies it and installs Oarfish as a systemd service ([`docs/INSTALL.md`](docs/INSTALL.md)).
+**Gates G1 (repository foundation and CI), G2 (signed Linux ARM64 release pipeline), G3 (installer) and G4 (hardware, OS and capability detection, "Gerät" page) are done.** G4 is verified on one Raspberry Pi Zero 2 W; Ubuntu has not been tested on hardware. The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, GitHub Actions CI, a release workflow that turns a version tag into a signed GitHub Release ([`docs/RELEASING.md`](docs/RELEASING.md)), and `install/install.sh`, an installer that pulls a release anonymously, verifies it and installs Oarfish as a systemd service ([`docs/INSTALL.md`](docs/INSTALL.md)).
 
 What the binary does today:
 
@@ -14,7 +14,7 @@ What the binary does today:
 - detects, read-only and without running any program, the board, the operating system, the kernel and what the system can do, and serves the result at `GET /api/v1/device` ([`docs/DETECTION.md`](docs/DETECTION.md))
 - serves the embedded frontend: a status view and the "Gerät" page, which shows the detected device and its support status
 
-What it does **not** do yet: metrics, authentication, plugins, self-update. Those belong to later gates. The installer ran on one Raspberry Pi Zero 2 W (Gate G3, see [`docs/INSTALL.md`](docs/INSTALL.md)); the detection of Gate G4 has so far only been tested against synthetic fixtures and **not yet compared with a real device**. Nothing has run on Ubuntu Server. `docs/INSTALL.md` and `docs/DETECTION.md` list what is and is not verified.
+What it does **not** do yet: metrics, authentication, plugins, self-update. Those belong to later gates. The installer (Gate G3) and the detection (Gate G4, release `v0.1.0-alpha.3`) have run on one Raspberry Pi Zero 2 W, which Oarfish reports as Compatible, not Verified (see [`docs/INSTALL.md`](docs/INSTALL.md)). Nothing has run on Ubuntu Server (fixtures and the architecture test only), on other boards or on other Raspberry Pi models. `docs/INSTALL.md` and `docs/DETECTION.md` list what is and is not verified.
 
 ## Install (Linux ARM64 with systemd and OpenSSL 3)
 

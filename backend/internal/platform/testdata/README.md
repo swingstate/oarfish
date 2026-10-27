@@ -4,7 +4,7 @@ Every directory here is a **synthetic** file tree that stands for the root file 
 
 **These are not captures of real devices.** They were written by hand to look like what the Linux kernel and the distributions provide. In particular:
 
-- Device-tree `compatible` strings, `Model` lines, revision codes and the `/proc/sys/kernel/osrelease` values are written from knowledge of the kernel sources and of the G3 test report, not copied from a Raspberry Pi. They have **not been compared with a real Raspberry Pi Zero 2 W** yet (that comparison is a hardware step, see `docs/DETECTION.md`).
+- Device-tree `compatible` strings, `Model` lines, revision codes and the `/proc/sys/kernel/osrelease` values are written from knowledge of the kernel sources and of the G3 test report, not copied from a Raspberry Pi. The compatible string `raspberrypi,model-zero-2-w` and the `/etc/rpi-issue` marker were later confirmed on one real Raspberry Pi Zero 2 W (2026-10-27, see `docs/DETECTION.md`); the fixtures themselves remain hand-written and were not replaced by captures.
 - `run/systemd/journal/socket` is an empty regular file standing in for a Unix socket (git cannot store sockets). Detection only checks that the name exists.
 - `.gitkeep` files exist only so git keeps otherwise empty directories.
 
