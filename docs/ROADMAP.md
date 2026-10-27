@@ -8,9 +8,10 @@
 | G3 | Pull-based installation script for Raspberry Pi OS |
 | G4 | Oarfish Core, hardware, OS, and capability detection |
 | G5 | Embedded dashboard with real metrics |
-| G6 | GUI self-update, verification, health check, and rollback |
-| G7 | systemd, journal, processes, reboot, and shutdown |
-| G8 | Plugin runtime and permission model |
+| G5.1 | Local access control and audit foundation |
+| G6 | GUI self-update, verification, health check, and rollback; Update Helper as a separate privileged process |
+| G7 | systemd, journal, processes, reboot, and shutdown; Privilege Broker with a fixed allowlist |
+| G8 | Plugin runtime and permission model; broker capability check |
 | G9 | Tailscale plugin |
 | G10 | Docker and Podman plugin |
 | G11 | Oarfish Assist, read-only MVP |

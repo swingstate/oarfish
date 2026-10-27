@@ -2,9 +2,9 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.3.2
-- Status: Baseline-Kandidat für Gate G0
-- Stand: 22. Oktober 2026
+- Dokumentversion: 0.3.3
+- Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G4 abgenommen)
+- Stand: 27. Oktober 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
@@ -445,9 +445,9 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-LOG-001 | Das Journal muss nach Zeit, Priorität, Unit und Freitext filterbar sein. | MUSS | Filter sind kombinierbar und Ergebnisse werden begrenzt nachgeladen. |
 | ORB-LOG-002 | Loganzeige muss Secrets und definierte sensible Muster maskieren. | MUSS | Testfälle decken Tokens, Keys und Passwörter ab. |
 | ORB-PRC-001 | Oarfish muss Prozesse nach CPU und RAM anzeigen. | SOLL | PID, Benutzer, Prozessname, CPU und RAM werden dargestellt. |
-| ORB-UPD-001 | APT-Updates müssen klassifiziert angezeigt werden. | SOLL | Sicherheits- und reguläre Updates sind getrennt. |
-| ORB-UPD-002 | OS-Updates benötigen Plan, Bestätigung und Ergebnisprüfung. | KANN | Pakete, Downloadgröße und Neustartbedarf erscheinen vor Ausführung. |
-| ORB-UPD-003 | Kernel-, Bootloader- und Firmware-Updates dürfen nicht als generische Paketaktion behandelt werden. | MUSS | Board- oder OS-spezifische Risiken werden erkannt; unsichere Aktualisierung bleibt read-only. |
+| ORB-OSU-001 | APT-Updates müssen klassifiziert angezeigt werden. | SOLL | Sicherheits- und reguläre Updates sind getrennt. |
+| ORB-OSU-002 | OS-Updates benötigen Plan, Bestätigung und Ergebnisprüfung. | KANN | Pakete, Downloadgröße und Neustartbedarf erscheinen vor Ausführung. |
+| ORB-OSU-003 | Kernel-, Bootloader- und Firmware-Updates dürfen nicht als generische Paketaktion behandelt werden. | MUSS | Board- oder OS-spezifische Risiken werden erkannt; unsichere Aktualisierung bleibt read-only. |
 
 ### 6.5 Storage, Bootmedium und Schreiblast
 
@@ -1062,15 +1062,18 @@ Claude Code muss vor jeder Arbeit:
 | G3 | Installer | `install.sh`, OS- und Architekturprüfung, systemd-Installation und Healthcheck. | Frisches Pi OS erfolgreich installiert. |
 | G4 | Oarfish Core und Board Detection | OS-, Hardware- und Capability-Erkennung, Generic Mode und Geräteseite. | Pi korrekt erkannt, Ubuntu-Adaptergrenze vorhanden. |
 | G5 | Embedded Dashboard | CPU, RAM, Temperatur, Frequenz, Storage, Netzwerk und Alerts. | Reale Daten innerhalb Budgets. |
-| G6 | Self-Update | GUI, Update Manager, Signaturprüfung, atomare Aktivierung und Rollback. | Erfolgs- und Fehlerupdate auf Pi verifiziert. |
-| G7 | System Core | Dienste, Journal, Prozesse, Reboot und Shutdown. | Sicherer Dienstneustart End-to-End. |
-| G8 | Plugin Runtime | Manifest, Lifecycle, Capability-Modell und Beispielplugin. | Fehlerhaftes Plugin blockiert Core nicht. |
+| G5.1 | Lokaler Zugriffsschutz und Audit-Grundlage | Erstkonto-Einrichtung (ORB-ONB-002), lokales Administratorkonto mit Anmeldung, Abmeldung und Passwortänderung (ORB-AUTH-001), serverseitig invalidierbare Sitzungen mit sicheren Cookies (ORB-AUTH-002), Rate-Limit für Anmeldeversuche (ORB-AUTH-003), CSRF- und Herkunftsschutz (ORB-SEC-004), restriktive Datei-Rechte (ORB-SEC-005), Audit-Log (ORB-SEC-006) ohne Secrets (ORB-SEC-007), explizite Konfiguration für nicht-lokale Bindung (ORB-SEC-010). Design-Stopp mit ADR zu Passwort-Hashing, Sitzungsspeicher, Audit-Speicher unter Berücksichtigung der microSD-Schreiblast und Erstkonto-Einrichtung. | Zustandsändernde Endpunkte lehnen Anfragen ohne gültige Sitzung und ohne CSRF-Schutz ab; Audit-Einträge enthalten keine Secrets; Anmeldung auf dem Raspberry Pi verifiziert. |
+| G6 | Self-Update | GUI, Update Manager, Signaturprüfung, atomare Aktivierung und Rollback. Update Helper als separater privilegierter Prozess. | Erfolgs- und Fehlerupdate auf Pi verifiziert. |
+| G7 | System Core | Dienste, Journal, Prozesse, Reboot und Shutdown. Privilege Broker mit fester Allowlist (ORB-SEC-002). | Sicherer Dienstneustart End-to-End. |
+| G8 | Plugin Runtime | Manifest, Lifecycle, Capability-Modell und Beispielplugin. Capability-Prüfung im Broker (ORB-SEC-003). | Fehlerhaftes Plugin blockiert Core nicht. |
 | G9 | Tailscale Plugin | Setup, Login, Status, Enable/Disable und Audit. | Realer Workflow auf Pi. |
 | G10 | Containers Plugin | Engine Detection, Liste, Details, Logs und Lifecycle. | Mindestens eine reale Engine verifiziert. |
 | G11 | Oarfish Assist | Provider-Setup, Read-only Tools, Redaction und UI. | Reale read-only Diagnose. |
 | G12 | Ubuntu Qualification | Ubuntu Server LTS ARM64 Adapter und physische oder gleichwertige Qualifikation. | Definierte Kombination erhält Verified oder Compatible. |
 | G13 | Hardening und MVP | Security Review, UX, Performance, Dokumentation und Release. | Alle MVP-MUSS-Abnahmen bestanden. |
 | Post-MVP | Weitere SBCs | Armbian, Rockchip und weitere Boardfamilien. | Je Board dokumentierter Supportstatus. |
+
+G6 beginnt erst, wenn G5.1 PASS ist.
 
 ### 14.3 Prompt-Struktur für Claude Code
 
@@ -1142,7 +1145,7 @@ Keine der folgenden Entscheidungen blockiert Gate G1. Sie werden spätestens vor
 | D-04 | Release-Signierung | Ed25519-basiert, bevorzugt Minisign-kompatibel | G2 |
 | D-05 | Dev-OS | Raspberry Pi OS Lite 64-bit auf Zero 2 W | bestätigt |
 | D-06 | Ubuntu-Ziel | Ubuntu Server LTS ARM64, nicht Ubuntu Core | bestätigt |
-| D-07 | MVP-Authentifizierung | Lokales Single-Admin-Konto mit sicherer Session | G4/G7 |
+| D-07 | MVP-Authentifizierung | Lokales Single-Admin-Konto mit sicherer Session | G5.1 |
 | D-08 | Erste Containerengine | Nach Ressourcen- und Supporttest auf dem Pi entscheiden | G10 |
 | D-09 | AI-Provider | OpenAI-kompatibler Remote-Endpoint plus Ollama-kompatibler lokaler Endpoint | G11 |
 | D-10 | ARMv7 | Kein erster Release, später optional | Post-MVP |
@@ -1197,3 +1200,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.3 | 22. Oktober 2026 | Pi Zero 2 W als einziges MVP-Referenzgerät, Raspberry Pi OS zuerst, Ubuntu Server LTS ARM64 als verbindliches Folgeziel, pull-basierte GitHub-Releases, Installationsskript und GUI-Self-Update; Self-hosted Runner und Push-Deployment entfernt. |
 | 0.3.1 | 23. Oktober 2026 | Produkt von Orbit in Oarfish umbenannt (Name, Binary, Pfade, Repository). Anforderungs-IDs `ORB-*` bleiben unverändert. |
 | 0.3.2 | 27. Oktober 2026 | Abschnitt 3.2: Andere Raspberry-Pi-Modelle sind Compatible, sobald ein Board- oder Familienprofil existiert; bis dahin Generic mit den erkannten Pi-Fähigkeiten (Entscheidung D-C26, ADR 0007). |
+| 0.3.3 | 27. Oktober 2026 | Abschnitt 14.2: neues Gate G5.1 "Lokaler Zugriffsschutz und Audit-Grundlage" zwischen G5 und G6, G6 setzt G5.1 PASS voraus (D-C27); Update Helper in G6, Privilege Broker in G7, Capability-Prüfung im Broker in G8 (D-C28); bis G5.1 PASS keine nicht-lokale Listen-Adresse (D-C29); Abschnitt 17: D-07 fällig in G5.1; Abschnitt 6.4: Anforderungs-IDs ORB-UPD-001 bis 003 in ORB-OSU-001 bis 003 umbenannt, Abschnitt 6.12 unverändert (D-C30); Kopfzeile: Status und Stand aktualisiert. |
