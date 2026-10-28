@@ -6,7 +6,7 @@ How a version tag becomes a signed GitHub Release (Gate G2) that includes the in
 
 | File | Purpose |
 |---|---|
-| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded), `oarfish.service`, `LICENSE` and `THIRD_PARTY_NOTICES.txt` (licence texts of the Svelte runtime, the Vite helper snippet and the Go runtime, which are compiled into the binary and whose licences require the notice to travel with it) |
+| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded), `oarfish.service`, `LICENSE` and `THIRD_PARTY_NOTICES.txt` (licence texts of the Svelte runtime, the Vite helper snippet, the Go runtime and, since G5.1, `golang.org/x/crypto`, which are compiled into the binary and whose licences require the notice to travel with it) |
 | `install.sh` | The installer ([`INSTALL.md`](INSTALL.md)): `install/install.sh` with the release version written into one line (below). Listed in `checksums.txt`, so the signature covers it |
 | `manifest.json` | Machine-readable metadata (see below) |
 | `checksums.txt` | SHA-256 of the bundle, `install.sh`, `manifest.json` and the SBOMs, in `sha256sum` format |
@@ -61,6 +61,7 @@ It runs CI, builds the bundle, checks reproducibility, size budgets and the ARM6
    The workflow rejects tags that are not `vMAJOR.MINOR.PATCH[-prerelease]` and tags whose commit is not on `main`.
 3. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` references the secret and it only starts for a tag push; only `publish` has `contents: write`.
 4. Verify the published assets (below).
+5. **Release notes of the G5.1 release (and any release a device may reach from `v0.1.0-alpha.5` or earlier)** must say: "After this update the device has no administrator account and starts in setup mode. The GUI shows the setup page; read the setup token on the device with `sudo cat /var/lib/oarfish/setup-token`. The dashboard and the device page show data only after setup and login. Every `/api/v1` route except the session status, login and setup now needs a session; `/healthz` stays public." (ADR 0009, Consequences; D-C46)
 
 Publishing happens only from a tag push; there is no manual publish path. If a release fails halfway, delete the draft/partial release and the tag, fix the cause and tag again. Never reuse a published version.
 

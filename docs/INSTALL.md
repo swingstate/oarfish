@@ -117,7 +117,7 @@ journalctl -u oarfish -e          # the log
 curl http://127.0.0.1:8484/healthz   # {"status":"ok"}
 ```
 
-Oarfish listens on `127.0.0.1:8484` only. That means: only programs on the device itself can reach it. This is on purpose. There is no login yet (it arrives with Gate G5.1, ADR 0009), so it must not be reachable from the network, and the installer never opens it.
+Oarfish listens on `127.0.0.1:8484` only. That means: only programs on the device itself can reach it. This is on purpose: the login of Gate G5.1 protects the GUI, but LAN access and HTTPS are not designed yet (D-D10), so it must not be reachable from the network, and the installer never opens it.
 
 The program also enforces this, and Gate G5.1 does not lift it (D-C48): it refuses to start when `-listen` is anything but a loopback IP address with a port (`127.0.0.1:8484`, another `127.x.x.x` address or `[::1]:8484`). An empty host (`:8484`), the unspecified addresses, any other IP address and host names such as `localhost` are refused with a message and exit status 1; there is no option or environment variable to override it. In the log: `oarfish refuses to start`.
 
@@ -131,7 +131,29 @@ ssh -L 8484:127.0.0.1:8484 USER@DEVICE
 
 Leave that window open, then open <http://127.0.0.1:8484> in the browser on your own computer. If port 8484 is already in use there, take another local port: `ssh -L 9000:127.0.0.1:8484 USER@DEVICE` and open <http://127.0.0.1:9000>.
 
-Do not change the service to listen on another address; since Gate G5 the program would not start. Reverse proxy, TLS and network access need their own design before the MVP release (open item D-D10); the SSH tunnel is the way until then. After Gate G5.1 a device that is updated from an earlier release has no account yet and asks for one on first start (D-C46, ADR 0009).
+Do not change the service to listen on another address; since Gate G5 the program would not start. Reverse proxy, TLS and network access need their own design before the MVP release (open item D-D10); the SSH tunnel is the way until then.
+
+**The first account (since Gate G5.1).** A fresh installation, and a device updated from `v0.1.0-alpha.5` or earlier, has no administrator account. The GUI then shows the setup page and asks for the setup token; nothing else is shown until the account exists (D-C46, ADR 0009). The installer's final message says so. Read the token on the device:
+
+```bash
+sudo cat /var/lib/oarfish/setup-token
+```
+
+Enter it in the GUI with a user name (1 to 32 characters: `a-z`, `0-9`, `.`, `_`, `-`) and a password (12 to 128 characters). The token is a new one after every service start while no account exists, and the file is deleted after the setup. Afterwards the GUI asks for the user name and password; a session ends after one hour without use, after twelve hours at the latest, and at every service restart. Details, the API and the audit file: [`AUTH.md`](AUTH.md).
+
+**Lost password.** Stop the service, delete the account file as root, start the service; it is in setup mode again (the audit file stays):
+
+```bash
+sudo systemctl stop oarfish
+```
+
+```bash
+sudo rm /var/lib/oarfish/auth/account.json
+```
+
+```bash
+sudo systemctl start oarfish
+```
 
 The first page is **Home**: live values of the device (CPU, memory, temperatures, storage, network) and alerts. The device is only read while a browser has Home open and visible (at most four windows at the same time). Opening Home shows the host name and the IP addresses of the device; do not share screenshots of it publicly.
 
@@ -292,7 +314,7 @@ sudo sh install.sh --uninstall --purge   # also remove /etc/oarfish, /var/lib/oa
 sudo sh install.sh --uninstall --dry-run # show what would be removed
 ```
 
-The first form removes the service, the unit file, `/opt/oarfish` and `/var/cache/oarfish`. It keeps `/etc/oarfish`, `/var/lib/oarfish` and the user, so a later installation finds your configuration and data. `--purge` is the explicit flag that removes them. Any copy of `install.sh` can do this; the uninstall downloads nothing.
+The first form removes the service, the unit file, `/opt/oarfish` and `/var/cache/oarfish`. It keeps `/etc/oarfish`, `/var/lib/oarfish` and the user, so a later installation finds your configuration and data, including the administrator account and the audit file (`/var/lib/oarfish/auth/`, `/var/lib/oarfish/audit/`): after a reinstall you sign in with the old password. `--purge` is the explicit flag that removes them. Any copy of `install.sh` can do this; the uninstall downloads nothing.
 
 ## Where things go
 
@@ -302,7 +324,7 @@ The first form removes the service, the unit file, `/opt/oarfish` and `/var/cach
 | `/opt/oarfish/current` | Symlink to the active release, switched atomically. |
 | `/etc/systemd/system/oarfish.service` | The service unit (copied from the release). |
 | `/etc/oarfish/` | Configuration (`root:oarfish`, 0750); `secrets/` inside is `oarfish`, 0700. Empty for now. |
-| `/var/lib/oarfish/` | State, owned by `oarfish`. Empty for now. |
+| `/var/lib/oarfish/` | State, owned by `oarfish`, mode 0700 (the installer creates it as 0750; the unit's `StateDirectoryMode=0700` applies when the service starts). Holds `auth/account.json` (the administrator account, 0600), `setup-token` (0600, only while there is no account) and `audit/audit.jsonl` with up to three rotated files (0600, at most 4 MiB in all). See [`AUTH.md`](AUTH.md#files-and-modes). |
 | `/var/cache/oarfish/` | Cache, owned by `oarfish`. |
 | `/run/oarfish/` | Created by systemd when the service starts. |
 | user and group `oarfish` | System user without login shell and without home directory. |

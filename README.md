@@ -6,17 +6,18 @@ The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.
 
 ## Status
 
-**Gates G1 (repository foundation and CI), G2 (signed Linux ARM64 release pipeline), G3 (installer) and G4 (hardware, OS and capability detection, "Gerät" page) are done.** G4 is verified on one Raspberry Pi Zero 2 W; Ubuntu has not been tested on hardware. **Gate G5 (embedded dashboard with real metrics, "Home" page) is implemented and tested against synthetic fixtures; it has not been measured or confirmed on a Raspberry Pi yet** ([`docs/DASHBOARD.md`](docs/DASHBOARD.md)). The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, GitHub Actions CI, a release workflow that turns a version tag into a signed GitHub Release ([`docs/RELEASING.md`](docs/RELEASING.md)), and `install/install.sh`, an installer that pulls a release anonymously, verifies it and installs Oarfish as a systemd service ([`docs/INSTALL.md`](docs/INSTALL.md)).
+**Gates G1 (repository foundation and CI), G2 (signed Linux ARM64 release pipeline), G3 (installer) and G4 (hardware, OS and capability detection, "Gerät" page) are done.** G4 is verified on one Raspberry Pi Zero 2 W; Ubuntu has not been tested on hardware. **Gate G5 (embedded dashboard with real metrics, "Home" page) is implemented and tested against synthetic fixtures; it has not been measured or confirmed on a Raspberry Pi yet** ([`docs/DASHBOARD.md`](docs/DASHBOARD.md)). **Gate G5.1 (local administrator account, sessions, CSRF protection, rate-limited login, setup token, audit file) is implemented and tested; it is not verified on a Raspberry Pi yet** ([`docs/AUTH.md`](docs/AUTH.md)). The repository contains a Go backend skeleton, a Svelte 5 + TypeScript frontend skeleton, an embedded production build, GitHub Actions CI, a release workflow that turns a version tag into a signed GitHub Release ([`docs/RELEASING.md`](docs/RELEASING.md)), and `install/install.sh`, an installer that pulls a release anonymously, verifies it and installs Oarfish as a systemd service ([`docs/INSTALL.md`](docs/INSTALL.md)).
 
 What the binary does today:
 
-- serves `GET /healthz` (`{"status":"ok"}`)
+- serves `GET /healthz` (`{"status":"ok"}`, public, no device data)
+- protects everything else under `/api/v1` with one local administrator account: a first-start setup with a one-time token from `sudo cat /var/lib/oarfish/setup-token`, login, logout and password change, in-memory sessions, CSRF, origin and Host checks, a rate-limited login and an own audit file ([`docs/AUTH.md`](docs/AUTH.md)). A device updated from `v0.1.0-alpha.5` starts in setup mode
 - detects, read-only and without running any program, the board, the operating system, the kernel and what the system can do, and serves the result at `GET /api/v1/device` ([`docs/DETECTION.md`](docs/DETECTION.md))
 - reads live metrics, read-only from `/proc` and `/sys` and only while a browser watches (host name, uptime, CPU, memory and swap, temperatures, storage, network), evaluates alerts, and serves them at `GET /api/v1/metrics` and as a Server-Sent Events stream at `GET /api/v1/events` ([`docs/DASHBOARD.md`](docs/DASHBOARD.md))
 - serves the embedded frontend: the "Home" page with live values, sparklines and alerts, and the "Gerät" page, which shows the detected device and its support status
 - refuses to start when `-listen` is not a literal loopback IP address with a port (decision D-C29; Gate G5.1 does not lift it, see D-C48)
 
-What it does **not** do yet: authentication (Gate G5.1), throttling and undervoltage warnings, plugins, self-update. Those belong to later gates. The installer (Gate G3) and the detection (Gate G4, release `v0.1.0-alpha.3`) have run on one Raspberry Pi Zero 2 W, which Oarfish reports as Compatible, not Verified (see [`docs/INSTALL.md`](docs/INSTALL.md)). Nothing has run on Ubuntu Server (fixtures and the architecture test only), on other boards or on other Raspberry Pi models. `docs/INSTALL.md` and `docs/DETECTION.md` list what is and is not verified.
+What it does **not** do yet: LAN access and HTTPS (open item D-D10), several users or roles, throttling and undervoltage warnings, plugins, self-update. Those belong to later gates. The installer (Gate G3) and the detection (Gate G4, release `v0.1.0-alpha.3`) have run on one Raspberry Pi Zero 2 W, which Oarfish reports as Compatible, not Verified (see [`docs/INSTALL.md`](docs/INSTALL.md)). Nothing has run on Ubuntu Server (fixtures and the architecture test only), on other boards or on other Raspberry Pi models. `docs/INSTALL.md` and `docs/DETECTION.md` list what is and is not verified.
 
 ## Install (Linux ARM64 with systemd and OpenSSL 3)
 
@@ -27,7 +28,7 @@ sudo sh install.sh --dry-run
 sudo sh install.sh
 ```
 
-The GUI listens on `127.0.0.1:8484` only; reach it from another machine with an SSH tunnel. The binary refuses any other listen address; this stays after the login of Gate G5.1 until LAN access and HTTPS are designed (D-C48). Release signing key id: `11F1C52777090BFC`. Full instructions, uninstall and troubleshooting: [`docs/INSTALL.md`](docs/INSTALL.md).
+The GUI listens on `127.0.0.1:8484` only; reach it from another machine with an SSH tunnel. The binary refuses any other listen address; this stays after the login of Gate G5.1 until LAN access and HTTPS are designed (D-C48). On first start the GUI asks for the setup token: `sudo cat /var/lib/oarfish/setup-token` on the device. Release signing key id: `11F1C52777090BFC`. Full instructions, uninstall and troubleshooting: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Platform baseline
 
@@ -46,10 +47,11 @@ Requirements on the development machine: Go (version in [`backend/go.mod`](backe
 ```bash
 make deps    # npm ci
 make build   # frontend build + host binary -> bin/oarfish
-bin/oarfish    # listens on 127.0.0.1:8484 (a loopback address is the only one it accepts; this stays after Gate G5.1, D-C48)
+mkdir -m 0700 -p .dev-state
+bin/oarfish -state-dir .dev-state   # listens on 127.0.0.1:8484 (a loopback address is the only one it accepts; this stays after Gate G5.1, D-C48)
 ```
 
-Open <http://127.0.0.1:8484/> or `curl http://127.0.0.1:8484/healthz`.
+Open <http://127.0.0.1:8484/> (the setup page asks for the token in `.dev-state/setup-token`) or `curl http://127.0.0.1:8484/healthz`.
 
 Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`, `make release-bundle`. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 

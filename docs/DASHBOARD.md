@@ -2,7 +2,7 @@
 
 The Home page shows live values of the device without a page reload: host name, board, SoC, operating system, uptime, CPU (usage, load, frequency, governor), memory and swap, temperatures, storage per file system, network interfaces, and prioritised alerts that name cause, impact and next step. The normative sources are specification 6.3 (ORB-DASH-001..007), 7.2, 8.7 and 11. The design decisions are recorded in [ADR 0008](adr/0008-dashboard-metrics.md) (Accepted, D-C31 to D-C41).
 
-Scope: read-only collection from files, the two API endpoints, the alert rules, the Home page, and the listen guard of decision D-C29. Not in G5: authentication, accounts and audit (G5.1, D-C27, ADR 0009; from G5.1 on the dashboard API requires a session, D-C46), any state-changing endpoint, throttling and undervoltage warnings (ORB-DASH-004, needs a safe board adapter), the plugin and application summary (ORB-DASH-007), processes, journal and services (G7), the resource view of external daemons (ORB-NFR-017), persisted history, configurable thresholds, `/readyz`.
+Scope: read-only collection from files, the two API endpoints, the alert rules, the Home page, and the listen guard of decision D-C29. Since Gate G5.1 both endpoints need a session ([`AUTH.md`](AUTH.md)). Not in G5: authentication, accounts and audit (G5.1, D-C27, ADR 0009; from G5.1 on the dashboard API requires a session, D-C46), any state-changing endpoint, throttling and undervoltage warnings (ORB-DASH-004, needs a safe board adapter), the plugin and application summary (ORB-DASH-007), processes, journal and services (G7), the resource view of external daemons (ORB-NFR-017), persisted history, configurable thresholds, `/readyz`.
 
 **Status: implemented and tested against synthetic fixtures. Measured and checked once on one Raspberry Pi Zero 2 W with `v0.1.0-alpha.4`** ([hardware result](INSTALL.md#gate-g5-dashboard)), and the redesigned Home viewed once with `v0.1.0-alpha.5` ([result](INSTALL.md#ui-foundation-v010-alpha5)); support status stays Compatible, not Verified. What is still open is listed under [Verification status](#verification-status).
 
@@ -73,10 +73,12 @@ no file read              publish first sample        (slow tier every 30 s)
 
 ## API
 
-All endpoints are under `/api/v1`, `GET` only, read-only, without request body, with `Cache-Control: no-store` and the security headers of every response. `GET /api/v1/device` is unchanged ([`DETECTION.md`](DETECTION.md)). Errors are typed: `{"error":{"code","message","recovery"}}` (spec 8.7).
+All endpoints are under `/api/v1`, `GET` only, read-only, without request body, with `Cache-Control: no-store` and the security headers of every response. `GET /api/v1/device` is unchanged ([`DETECTION.md`](DETECTION.md)). Since Gate G5.1 every one of them needs a valid session (`401 unauthenticated`, or `401 setup_required` while no account exists); the event stream does not extend the session and ends with it, sending a last `session` event ([`AUTH.md`](AUTH.md)). `GET /healthz` stays public and exposes no device data. Errors are typed: `{"error":{"code","message","recovery","correlation_id"}}` (spec 8.7).
 
 | Status | `code` | When |
 |---|---|---|
+| 401 | `unauthenticated`, `setup_required` | no valid session, or no account yet (G5.1) |
+| 403 | `host_rejected` | the Host header is not a loopback name or address (G5.1) |
 | 404 | `not_found` | unknown path under `/api/` |
 | 405 | `method_not_allowed` | any method except `GET` (`Allow: GET`) |
 | 400 | `request_body_not_allowed` | a `GET` with a body |
@@ -213,15 +215,18 @@ Acceptance tests: AT-008 (real metrics), AT-021 (resource budget), AT-022 (micro
 - **Real kernels and real files.** The `fib_trie` and `route` formats were written from the kernel sources. One kernel (`6.18.50+rpt-rpi-v8`) was read under the unchanged unit with live values in all cards; other kernels or drivers that print something else give `null` or a missing address, not a crash.
 - **Ubuntu, other boards, other Raspberry Pi models.** Fixtures only.
 - **Long running.** No test or measurement runs for hours; the leak tests run many connect/disconnect cycles. The device readings above span minutes.
-- **Deferred by specification or scope:** ORB-DASH-004 (throttling and undervoltage; needs a safe board adapter), ORB-DASH-007, ORB-NFR-017, authentication (G5.1).
+- **Deferred by specification or scope:** ORB-DASH-004 (throttling and undervoltage; needs a safe board adapter), ORB-DASH-007, ORB-NFR-017. Authentication is Gate G5.1 ([`AUTH.md`](AUTH.md)).
 
 ### Checking a device (acceptance, by hand)
 
-On the device, with the service running. The output of the first two commands contains the host name and IP addresses by design; look through it before sharing it, and do not paste it into a public issue.
+On the device, with the service running. Since Gate G5.1 the API needs a session: sign in once with `curl` (replace `ADMIN` with your Oarfish user name) and keep the cookie in a file that only you can read (the password is read without echo and passed through a shell built-in, so it is not in the process list or the history; a password with `"` or `\` needs JSON escaping). The output of the metrics commands contains the host name and IP addresses by design; look through it before sharing it, and do not paste it into a public issue.
 
 ```bash
-curl -s http://127.0.0.1:8484/api/v1/metrics
-curl -s -N -m 10 http://127.0.0.1:8484/api/v1/events | head -c 3000
+umask 077; read -rs -p 'Oarfish password: ' OARFISH_PW; echo
+printf '{"username":"%s","password":"%s"}' "ADMIN" "$OARFISH_PW" | curl -s -o /dev/null -w '%{http_code}\n' -c ~/.oarfish-cookie -H 'Origin: http://127.0.0.1:8484' -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:8484/api/v1/session; unset OARFISH_PW
+curl -s -b ~/.oarfish-cookie http://127.0.0.1:8484/api/v1/metrics
+curl -s -N -m 10 -b ~/.oarfish-cookie http://127.0.0.1:8484/api/v1/events | head -c 3000
+rm ~/.oarfish-cookie
 
 # AT-008: compare with the device's own tools
 free -b; uptime; df -B1 /; cat /sys/class/thermal/thermal_zone0/temp; cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq

@@ -21,16 +21,17 @@ Node.js is a build-time tool only. The Oarfish binary and the target device do n
 | Target | What it does |
 |---|---|
 | `make deps` | `npm ci` in `frontend/` (installs exactly the lockfile) |
-| `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` and `/api` to the backend. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`); it must be a loopback IP address with a port, the binary refuses anything else (D-C29, D-C48). |
+| `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` and `/api` to the backend. The backend keeps its account, setup token and audit in `.dev-state/` (`DEV_STATE=<dir>` changes it; git-ignored); the setup page asks for the token in `.dev-state/setup-token`, and deleting `.dev-state/auth/account.json` returns to setup mode. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`); it must be a loopback IP address with a port, the binary refuses anything else (D-C29, D-C48). |
 | `make test` | `go test ./...` (backend and `scripts/bundlegen`) and `vitest run` |
 | `make lint` | gofmt check, `go vet` (backend and `scripts/bundlegen`), `svelte-check` (TypeScript and Svelte type check) |
-| `make fuzz` | native Go fuzzing of the os-release parser, the device-tree compatible parser and the six metrics parsers (`/proc/stat`, `/proc/meminfo`, `fib_trie`, `if_inet6`, `mountinfo`, `route`), `FUZZTIME=10s` each (CI runs 5 s each; the seed corpora also run in `make test`) |
+| `make fuzz` | native Go fuzzing of the os-release parser, the device-tree compatible parser, the six metrics parsers (`/proc/stat`, `/proc/meminfo`, `fib_trie`, `if_inet6`, `mountinfo`, `route`) and the password-hash (PHC) parser, `FUZZTIME=10s` each (CI runs 5 s each; the seed corpora also run in `make test`) |
+| `make bench-arm64` | cross-builds the Argon2id benchmark test binary for linux/arm64 to `build/bench/oarfish-auth-bench.test` (git-ignored, never part of a release); the commands for the device are in [`AUTH.md`](AUTH.md#measurements-and-checks-on-the-device) |
 | `make build` | frontend production build, then host binary `bin/oarfish` with the frontend embedded |
 | `make build-arm64` | same, cross-compiled with `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` to `bin/oarfish-linux-arm64` |
 | `make release-bundle` | frontend build, then `scripts/release-bundle.sh`: unsigned `dist/release/oarfish_<version>_linux_arm64.tar.gz` and `manifest.json`, the same script CI and the release workflow use |
 | `make check-reproducible` | builds the bundle twice from scratch (frontend rebuilt, empty Go cache) and compares SHA-256 |
 | `make test-signing` | sign, verify and tamper-rejection tests with throwaway keys (needs `minisign`) |
-| `make test-installer` | `scripts/test-installer.sh`: the installer against a fake root with a throwaway key, 123 checks on Linux (124 on macOS) including every refusal and tamper case (needs `minisign` and OpenSSL 3). `OARFISH_TEST_OPENSSL=<path>` selects the OpenSSL, `OARFISH_TEST_SH=<shell>` the shell that runs the installer (default `dash`) |
+| `make test-installer` | `scripts/test-installer.sh`: the installer against a fake root with a throwaway key, 126 checks on Linux (127 on macOS) including every refusal and tamper case (needs `minisign` and OpenSSL 3). `OARFISH_TEST_OPENSSL=<path>` selects the OpenSSL, `OARFISH_TEST_SH=<shell>` the shell that runs the installer (default `dash`) |
 | `make lint-shell` | shellcheck: `install/install.sh` and the container scripts as POSIX sh at every severity, `scripts/*.sh` at warning level |
 | `make clean` | removes `bin/`, `dist/` and the generated frontend build (keeps `dist/.gitkeep`) |
 
@@ -73,12 +74,12 @@ cd ../backend && go run ./cmd/oarfish      # http://127.0.0.1:8484
 
 ## Dependencies
 
-- Backend: standard library only. There are no third-party Go modules.
+- Backend: the standard library and one module, `golang.org/x/crypto` (`v0.58.0`, a released tag), of which only the package `argon2` is imported, for the Argon2id password hash (ADR 0009, E1). It brings `golang.org/x/sys` (`v0.49.0`) as a module; the linux/arm64 binary links `argon2` and its `blake2b` and not `x/sys/cpu` (amd64 only). Justification: PBKDF2 from the standard library needs almost no memory and is therefore weaker against GPU attacks, and would need an estimated 1 to 2 s per login on the Pi for comparable cost (ADR 0009, alternatives). `TestArchitectureOnlyArgon2FromXCrypto` fails on any other third-party import, and a CI step lists the non-standard packages of the linux/arm64 build and runs `go mod verify`. No vendoring: `go.sum` pins the hashes, release builds use `GOFLAGS=-mod=readonly`, and `govulncheck` and the SBOM job see the module.
 - Frontend (all dev dependencies, pinned exactly in `package.json`, locked in `package-lock.json`): `svelte`, `vite`, `@sveltejs/vite-plugin-svelte`, `typescript`, `svelte-check`, `@tsconfig/svelte`, `vitest`, `jsdom`, `@testing-library/svelte`, `@types/node`. They are build and test tooling and do not ship to the device.
 
 Adding a dependency should be justified in the change that adds it.
 
-`THIRD_PARTY_NOTICES.txt` (repository root, shipped in the release bundle) holds the verbatim licence texts of the third-party code that ends up inside the binary: the Svelte runtime and a small Vite helper in the frontend bundle, and the Go standard library. The production build strips source comments, so the licence notices do not survive in the minified JavaScript. When `svelte` or `vite` is upgraded or a new dependency ships code into the bundle, update the file from the packages' licence files; do not type holder names by hand.
+`THIRD_PARTY_NOTICES.txt` (repository root, shipped in the release bundle) holds the verbatim licence texts of the third-party code that ends up inside the binary: the Svelte runtime and a small Vite helper in the frontend bundle, the Go standard library, and `golang.org/x/crypto` (argon2, blake2b; copied from the module's `LICENSE`, which is identical to that of `golang.org/x/sys`). The production build strips source comments, so the licence notices do not survive in the minified JavaScript. When `svelte` or `vite` is upgraded or a new dependency ships code into the bundle, update the file from the packages' licence files; do not type holder names by hand.
 
 ## CI
 
@@ -149,6 +150,18 @@ Device hostnames, usernames, endpoints and credentials belong in `CLAUDE.local.m
 The tests need to run the installer without root, without systemd and without the network. That works through one switch: when the environment variable `OARFISH_TEST_ROOT` is set, every path lives below that directory, root and a running systemd are not required, and these variables are honoured: `OARFISH_RELEASE_BASE_URL` (a `file://` URL), `OARFISH_OPENSSL`, `OARFISH_SYSTEMCTL`, `OARFISH_HEALTH_URL`, `OARFISH_HEALTH_TIMEOUT`, `OARFISH_HEALTHCHECK=skip`, and `OARFISH_TEST_USERS=1` (do the user and ownership steps as if root, which the tests combine with stub `useradd`, `userdel`, `getent`, `id` and `chown` on `PATH`). Without `OARFISH_TEST_ROOT` all of them are ignored, so a production run cannot be redirected by the environment, and it cannot swap its signing key at all (tests use a copy with another key). Only run the test hooks against a scratch directory.
 
 Rules when changing the installer: keep it dependency-light (only tools Raspberry Pi OS Lite and Ubuntu Server carry), keep every check before the first change to the system, keep the negative control, add a test for every new refusal, and keep the file under the size budget.
+
+## Access-control code and its tests (Gate G5.1)
+
+`backend/internal/auth/` and `backend/internal/audit/` ([`AUTH.md`](AUTH.md)). Working on them:
+
+- Time comes from `internal/clock`. Tests use `clocktest.Fake`, whose timers run inside `Advance`; a test that expects no background work checks `Pending() == 0` (no session, no unwritten audit entry, no timer).
+- Tests use cheap Argon2 parameters (`auth.NewHasherWithParams`); `TestProductionParametersAreTheADRValues` checks the real ones and runs one real hash (skipped with `-short`).
+- Credentials in tests are synthetic sentinels (`Sentinel-Pw-…`); `TestRedactionOfSecrets` searches the audit file, the journal messages and every response body for them and for the tokens. Add any new secret-carrying field to that test.
+- Server tests use `newRequest` (Host `127.0.0.1:8484`); `httptest.NewRequest`'s default host `example.com` is refused by the Host guard. The read-only API tests run through `signedIn`, a wrapper that adds a session cookie; the access-control matrix (`access_test.go`) talks to the bare handler.
+- A new audit action, target or result goes into the closed sets in `audit.go` and the table in `AUTH.md`. A new state-changing route needs an entry in `TestStateChangingRequestsMatrix`.
+- `TestAuthTraceabilityTableIsComplete` checks the requirement-to-test table in `AUTH.md`.
+- The benchmark: `go test -run '^$' -bench LoginVerify ./internal/auth` on the development machine; `make bench-arm64` for the device.
 
 ## Known limitations at Gate G3
 

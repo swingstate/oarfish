@@ -265,8 +265,8 @@ The app shows nothing of the dashboard until `GET /api/v1/session` has answered 
 | Setup token wrong | "Der Einrichtungscode stimmt nicht. …", focus on the setup code. | "shows the server answer for a wrong token, then sets up and opens the app" |
 | Login | Anmelden: user name (`autocomplete="username"`), password (`current-password`); focus on the user name. | "has labelled fields with the right autocomplete and the focus on the user name" |
 | Login failed | One sentence for a wrong user name and a wrong password; the password is cleared, the user name kept, focus on the password. | "gives the same sentence for a wrong user name and a wrong password, and clears the password" |
-| Rate limited | "Zu viele Versuche. Warten Sie 8 Sekunden …" (minutes from two minutes on). | "shows the wait time when rate limited" |
-| Session ended | Back on Anmelden with "Die Sitzung ist beendet. Melden Sie sich erneut an." after any 401, after the stream's last `session` event, or when a refused stream finds the session gone. The stream is closed and not reopened. | "returns to the login page with \"session ended\" on a 401, without a reconnect loop", "returns to the login page when the server ends the stream with the session event", "asks for the session before reconnecting a refused stream, and stops when it is gone" |
+| Rate limited | "Zu viele Versuche. Warten Sie 8 Sekunden …" ("eine Sekunde" for one, minutes from two minutes on). | "shows the wait time when rate limited" |
+| Session ended | Back on Anmelden with "Die Sitzung ist beendet. Melden Sie sich erneut an." after any 401, after the stream's last `session` event, or when a refused stream finds the session gone. The stream is closed and not reopened. | "returns to the login page with "session ended" on a 401, without a reconnect loop", "returns to the login page when the server ends the stream with the session event", "asks for the session before reconnecting a refused stream, and stops when it is gone" |
 | Signed out | Back on Anmelden with "Sie sind abgemeldet."; the stream is closed. | "has a user menu with the account page and Abmelden, and logs out" |
 | Account | Konto: "Angemeldet als …", the session lifetimes, the form current / new / repeat. Errors as above; success: "Das Passwort ist geändert. Alle anderen Sitzungen sind beendet." | "changes the password on the account page" |
 | No secret in the browser | The CSRF token is in a module variable; neither it nor a password is in `localStorage`, `sessionStorage`, `document.cookie`, the address, the title or the page. | "signs in, keeps the token out of browser storage and the address, and sends no CSRF-free change", `session.test.ts` "reads the session state and keeps the CSRF token in memory only" |
@@ -461,6 +461,7 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `accountWorking` | Passwort wird geändert … | Changing the password … |
 | `accountChanged` | Das Passwort ist geändert. Alle anderen Sitzungen sind beendet. | The password is changed. All other sessions have ended. |
 | `errorCredentials` | Benutzername oder Passwort ist falsch. | The user name or the password is wrong. |
+| `errorRateLimitedOneSecond` | Zu viele Versuche. Warten Sie eine Sekunde und versuchen Sie es dann erneut. | Too many attempts. Wait one second, then try again. |
 | `errorRateLimitedSeconds` | Zu viele Versuche. Warten Sie {seconds} Sekunden und versuchen Sie es dann erneut. | Too many attempts. Wait {seconds} seconds, then try again. |
 | `errorRateLimitedMinutes` | Zu viele Versuche. Warten Sie {minutes} Minuten und versuchen Sie es dann erneut. | Too many attempts. Wait {minutes} minutes, then try again. |
 | `errorSetupToken` | Der Einrichtungscode stimmt nicht. Lesen Sie ihn auf dem Gerät erneut aus. | The setup code is wrong. Read it again on the device. |
@@ -610,12 +611,12 @@ Initial frontend, `gzip -9` per file (the budget in ORB-NFR-006 is 750,000 bytes
 
 | | Before the UI foundation | After the UI foundation | After Gate G5.1 |
 |---|---|---|---|
-| `index.html` | 263 | 265 | 278 |
-| CSS | 1,806 | 4,522 | 5,022 |
-| JavaScript | 27,122 | 36,258 | 43,177 |
-| **Total** | **29,191** | **41,045** | **48,477** |
+| `index.html` | 263 | 265 | 266 |
+| CSS | 1,806 | 4,522 | 5,003 |
+| JavaScript | 27,122 | 36,258 | 43,195 |
+| **Total** | **29,191** | **41,045** | **48,464** |
 
-The G5.1 column was measured with `gzip -9` on a developer Mac (the same commit rebuilt before the change gave 41,156, a slightly different toolchain state than the 41,045 measured for the UI foundation). No dependency was added.
+The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added.
 
 Updating a sample changes text and attributes in place: no element is added or removed and the cards stay the same nodes (`Home.update.test.ts`). The sparkline path is derived from its values and changes only when a sample arrives. No CSS animation exists.
 
