@@ -379,7 +379,7 @@ func TestLateClientGetsTheLatestFrame(t *testing.T) {
 // when the list changes.
 func TestAlertsVersionChangesOnlyWhenAlertsChange(t *testing.T) {
 	clock := newFakeClock()
-	s, fsys := newTestSampler(t, clock, Config{AlertContext: func() AlertContext { return AlertContext{SupportTier: "compatible"} }})
+	s, fsys := newTestSampler(t, clock, Config{AlertContext: func() AlertContext { return AlertContext{SupportTier: "generic"} }})
 	sub, _ := s.Subscribe()
 	defer sub.Close()
 
@@ -396,7 +396,7 @@ func TestAlertsVersionChangesOnlyWhenAlertsChange(t *testing.T) {
 		}
 		return false
 	}
-	if !hasID(f2, "support_compatible") || hasID(f2, "cpu_temperature") {
+	if !hasID(f2, "support_generic") || hasID(f2, "cpu_temperature") {
 		t.Fatalf("alerts = %s", mustJSON(t, f2.Alerts))
 	}
 

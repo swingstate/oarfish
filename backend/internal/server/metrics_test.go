@@ -127,9 +127,9 @@ func TestMetricsEndpointPiZero2W(t *testing.T) {
 		str(d.SupportTier) != "compatible" || d.GenericMode || str(d.KernelRelease) == "<null>" || str(d.OSPrettyName) == "<null>" {
 		t.Errorf("device summary = %+v", d)
 	}
-	// Compatible tier raises the informational alert; the healthy fixture raises nothing else.
-	if len(resp.Alerts) != 1 || resp.Alerts[0].ID != "support_compatible" || resp.Alerts[0].Level != "informational" {
-		t.Errorf("alerts = %+v", resp.Alerts)
+	// The Compatible tier is not an alert (D-C44) and the healthy fixture raises nothing else.
+	if resp.Alerts == nil || len(resp.Alerts) != 0 {
+		t.Errorf("alerts = %+v (nil: %v), want an empty list", resp.Alerts, resp.Alerts == nil)
 	}
 
 	// The device endpoint is unchanged and still works next to it.
@@ -345,7 +345,7 @@ func TestEventStreamProtocol(t *testing.T) {
 		t.Fatalf("history event: %+v, %v", hist, err)
 	}
 	var al alertsEvent
-	if err := json.Unmarshal([]byte(c.expect("alerts")), &al); err != nil || al.SchemaVersion != 1 || len(al.Alerts) != 1 || al.Alerts[0].ID != "support_compatible" {
+	if err := json.Unmarshal([]byte(c.expect("alerts")), &al); err != nil || al.SchemaVersion != 1 || al.Alerts == nil || len(al.Alerts) != 0 {
 		t.Fatalf("alerts event: %+v, %v", al, err)
 	}
 	var first metrics.Snapshot
@@ -390,7 +390,7 @@ func TestEventStreamSendsAlertsWhenTheyChange(t *testing.T) {
 	if err := json.Unmarshal([]byte(c.expect("alerts")), &al); err != nil {
 		t.Fatal(err)
 	}
-	if len(al.Alerts) != 2 || al.Alerts[0].ID != "cpu_temperature" || al.Alerts[0].Level != "critical" {
+	if len(al.Alerts) != 1 || al.Alerts[0].ID != "cpu_temperature" || al.Alerts[0].Level != "critical" {
 		t.Errorf("alerts = %+v", al.Alerts)
 	}
 }

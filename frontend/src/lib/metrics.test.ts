@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { formatBytes, formatCelsius, formatClock, formatLoad, formatMHz, formatPercent, formatRate, formatSpeed, formatUptime } from './format';
-import { complianceAlert, genericMetrics, piHistory, piMetrics, piSnapshot } from './metrics.fixtures';
+import { genericModeAlert, genericMetrics, piHistory, piMetrics, piSnapshot } from './metrics.fixtures';
 import {
   computeRates,
   cpuTemperature,
@@ -64,8 +64,8 @@ describe('parseAlerts and parseHistory', () => {
   it('reads an alerts event and drops single invalid alerts', () => {
     const bad = { id: 'x', level: 'urgent', cause: { key: 'a' }, impact: { key: 'b' }, next_step: { key: 'c' } };
     const noKey = { id: 'y', level: 'critical', cause: {}, impact: { key: 'b' }, next_step: { key: 'c' } };
-    const badParam = { ...complianceAlert, id: 'z', cause: { key: 'k', params: { a: { nested: 1 } } } };
-    expect(parseAlerts(json({ schema_version: 1, alerts: [complianceAlert, bad, noKey, badParam, 5, null] }))).toEqual([complianceAlert]);
+    const badParam = { ...genericModeAlert, id: 'z', cause: { key: 'k', params: { a: { nested: 1 } } } };
+    expect(parseAlerts(json({ schema_version: 1, alerts: [genericModeAlert, bad, noKey, badParam, 5, null] }))).toEqual([genericModeAlert]);
     expect(parseAlerts(json({ schema_version: 1, alerts: [] }))).toEqual([]);
   });
 
@@ -93,8 +93,8 @@ describe('fetchMetrics', () => {
   });
 
   it('keeps only the valid alerts', async () => {
-    const r = await fetchMetrics(answer({ ...piMetrics, alerts: [complianceAlert, { id: 'broken' }] }));
-    expect(r.ok && r.metrics.alerts).toEqual([complianceAlert]);
+    const r = await fetchMetrics(answer({ ...piMetrics, alerts: [genericModeAlert, { id: 'broken' }] }));
+    expect(r.ok && r.metrics.alerts).toEqual([genericModeAlert]);
   });
 
   it('fails without throwing on an error status, a wrong shape or a network error', async () => {

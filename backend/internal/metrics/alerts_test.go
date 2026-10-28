@@ -48,7 +48,10 @@ func TestAlertThresholds(t *testing.T) {
 			s.Memory.AvailableBytes = &a
 		}
 	}
-	setSwap := func(b uint64) func(*Snapshot) { return func(s *Snapshot) { s.Memory.SwapUsedBytes = &b } }
+	setSwap := func(used, total uint64) func(*Snapshot) {
+		return func(s *Snapshot) { s.Memory.SwapUsedBytes, s.Memory.SwapTotalBytes = &used, &total }
+	}
+	const mib = uint64(1 << 20)
 	setStorage := func(p float64) func(*Snapshot) { return func(s *Snapshot) { s.Storage[0].UsedPercent = p } }
 	setLoad := func(l float64) func(*Snapshot) { return func(s *Snapshot) { s.CPU.Load.One = l } }
 
@@ -74,10 +77,16 @@ func TestAlertThresholds(t *testing.T) {
 		{"memory unknown", func(s *Snapshot) { s.Memory = Memory{} }, ""},
 		{"memory total zero", func(s *Snapshot) { z := uint64(0); s.Memory.TotalBytes = &z }, ""},
 
-		{"swap unused", setSwap(0), ""},
-		{"swap just under 1 MiB", setSwap(SwapUsedMinBytes - 1), ""},
-		{"swap 1 MiB is in use", setSwap(SwapUsedMinBytes), "swap_in_use@relevant"},
-		{"swap unknown", func(s *Snapshot) { s.Memory.SwapUsedBytes = nil }, ""},
+		{"swap unused", setSwap(0, 400*mib), ""},
+		{"swap just below 25%", setSwap(100*mib-1, 400*mib), ""},
+		{"swap exactly 25% is relevant", setSwap(100*mib, 400*mib), "swap_in_use@relevant"},
+		{"swap above 25%", setSwap(100*mib+1, 400*mib), "swap_in_use@relevant"},
+		{"swap full", setSwap(400*mib, 400*mib), "swap_in_use@relevant"},
+		{"swap total zero", setSwap(0, 0), ""},
+		{"swap total zero with a used value", setSwap(5*mib, 0), ""},
+		{"swap total unknown", func(s *Snapshot) { s.Memory.SwapTotalBytes = nil; u := 400 * mib; s.Memory.SwapUsedBytes = &u }, ""},
+		{"swap used unknown", func(s *Snapshot) { s.Memory.SwapUsedBytes = nil }, ""},
+		{"swap 1.5 MiB of 415 MiB, as parked on the real device", setSwap(mib+mib/2, 415*mib), ""},
 
 		{"storage 85%", setStorage(85), ""},
 		{"storage 85.1% is relevant", setStorage(85.1), "storage_usage:/@relevant"},
@@ -107,10 +116,12 @@ func TestAlertThresholds(t *testing.T) {
 	}
 }
 
+// Only Generic Mode raises an informational alert; the tier itself is shown in
+// the header and on the Device page (D-C44).
 func TestInformationalAlertsFollowTheSupportTier(t *testing.T) {
 	for tier, want := range map[string]string{
-		"generic": "support_generic@informational", "compatible": "support_compatible@informational",
-		"verified": "", "community": "", "experimental": "", "unsupported": "", "": "",
+		"generic":    "support_generic@informational",
+		"compatible": "", "verified": "", "community": "", "experimental": "", "unsupported": "", "": "",
 	} {
 		if got := ids(Evaluate(healthy(), AlertContext{SupportTier: tier})); got != want {
 			t.Errorf("tier %q: alerts = %q, want %q", tier, got, want)
@@ -140,8 +151,8 @@ func TestCPUTemperatureRuleUsesTheCPUSensors(t *testing.T) {
 // per file system with an ID that names the mount.
 func TestAlertOrderIsByLevelThenRule(t *testing.T) {
 	s := healthy()
-	t90, load, swap := 90.0, 9.0, uint64(5<<20)
-	avail := uint64(10 << 20) // 1%
+	t90, load, swap := 90.0, 9.0, uint64(30<<20) // 30% of the 100 MiB swap
+	avail := uint64(10 << 20)                    // 1%
 	s.Temperatures[0].Celsius = &t90
 	s.CPU.Load.One = load
 	s.Memory.SwapUsedBytes = &swap
@@ -165,7 +176,7 @@ func TestAlertOrderIsByLevelThenRule(t *testing.T) {
 // translation keys with parameters; Go builds no free text.
 func TestEveryAlertHasCauseImpactAndNextStepAsKeys(t *testing.T) {
 	s := healthy()
-	hot, swap := 90.0, uint64(5<<20)
+	hot, swap := 90.0, uint64(30<<20)
 	avail := uint64(10 << 20)
 	s.Temperatures[0].Celsius = &hot
 	s.Memory.SwapUsedBytes = &swap
@@ -214,8 +225,8 @@ func TestAlertKeysAreUniqueAndComplete(t *testing.T) {
 		}
 		seen[k] = true
 	}
-	// 3 leveled rules x 2 levels x 3 parts + 5 simple rules x 3 parts.
-	if want := 3*2*3 + 5*3; len(keys) != want {
+	// 3 leveled rules x 2 levels x 3 parts + 4 simple rules x 3 parts.
+	if want := 3*2*3 + 4*3; len(keys) != want {
 		t.Errorf("%d keys, want %d", len(keys), want)
 	}
 }
@@ -240,8 +251,8 @@ func withTemp(c float64) Snapshot {
 
 // Thresholds are the documented values (docs/DASHBOARD.md).
 func TestThresholdConstants(t *testing.T) {
-	got := fmt.Sprint(CPUTemperatureRelevantC, CPUTemperatureCriticalC, MemoryAvailableRelevantPercent, MemoryAvailableCriticalPercent, StorageRelevantPercent, StorageCriticalPercent, SwapUsedMinBytes)
-	if got != "70 80 15 8 85 95 1048576" {
+	got := fmt.Sprint(CPUTemperatureRelevantC, CPUTemperatureCriticalC, MemoryAvailableRelevantPercent, MemoryAvailableCriticalPercent, StorageRelevantPercent, StorageCriticalPercent, SwapUsedRelevantPercent)
+	if got != "70 80 15 8 85 95 25" {
 		t.Errorf("thresholds changed: %s", got)
 	}
 }

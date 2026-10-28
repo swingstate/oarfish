@@ -118,9 +118,11 @@ export const en: { [K in keyof Messages]: string } = {
   'alert.memory_available.critical.impact': 'The kernel may kill programs when the memory runs out.',
   'alert.memory_available.critical.next':
     'Stop applications now. In the long run, plan fewer services or use a device with more memory.',
-  'alert.swap_in_use.cause': 'Swap is in use with {used_mib} MiB.',
-  'alert.swap_in_use.impact': 'Swapping slows the system down and wears out the SD card faster.',
-  'alert.swap_in_use.next': 'Relieve the memory: stop applications you do not need.',
+  'alert.swap_in_use.cause': 'Swap is {percent} % occupied ({used_mib} MiB).',
+  'alert.swap_in_use.impact':
+    'Occupied swap does not mean that the system is swapping right now. If the occupation keeps growing, the system can get slower and the SD card can wear out faster.',
+  'alert.swap_in_use.next':
+    'Watch the memory. If the available memory also runs short, stop applications you do not need.',
   'alert.storage_usage.relevant.cause':
     'The file system {mount} is {percent} % full. It is reported above {threshold} %.',
   'alert.storage_usage.relevant.impact': 'When space runs short, services and updates can fail.',
@@ -143,9 +145,6 @@ export const en: { [K in keyof Messages]: string } = {
     'Oarfish shows general Linux information. There are no board-specific functions.',
   'alert.support_generic.next':
     'The Device page gives the reason. A matching board profile would unlock more functions.',
-  'alert.support_compatible.cause': 'This device is rated compatible but not yet verified.',
-  'alert.support_compatible.impact': 'Not every function has been fully tested on real hardware.',
-  'alert.support_compatible.next': 'The known limitations are listed on the Device page.',
 
   navLabel: 'Main navigation',
   navDevice: 'Device',

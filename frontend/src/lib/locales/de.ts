@@ -122,10 +122,11 @@ export const de = {
     'Der Kernel kann Programme zwangsweise beenden, wenn der Speicher ausgeht.',
   'alert.memory_available.critical.next':
     'Sofort Anwendungen beenden. Auf Dauer weniger Dienste einplanen oder ein Gerät mit mehr Speicher nutzen.',
-  'alert.swap_in_use.cause': 'Der Auslagerungsspeicher (Swap) wird mit {used_mib} MiB genutzt.',
+  'alert.swap_in_use.cause': 'Der Auslagerungsspeicher (Swap) ist zu {percent} % belegt ({used_mib} MiB).',
   'alert.swap_in_use.impact':
-    'Auslagern bremst das System und belastet die SD-Karte, die dadurch schneller verschleißt.',
-  'alert.swap_in_use.next': 'Arbeitsspeicher entlasten: Anwendungen beenden, die nicht gebraucht werden.',
+    'Belegter Swap heißt nicht, dass gerade ausgelagert wird. Wächst die Belegung weiter, kann das System langsamer werden und die SD-Karte schneller verschleißen.',
+  'alert.swap_in_use.next':
+    'Den Arbeitsspeicher beobachten. Wird auch der verfügbare Speicher knapp, Anwendungen beenden, die nicht gebraucht werden.',
   'alert.storage_usage.relevant.cause':
     'Das Dateisystem {mount} ist zu {percent} % belegt. Über {threshold} % wird es gemeldet.',
   'alert.storage_usage.relevant.impact':
@@ -150,10 +151,6 @@ export const de = {
     'Oarfish zeigt allgemeine Linux-Informationen. Board-spezifische Funktionen gibt es nicht.',
   'alert.support_generic.next':
     'Auf der Seite Gerät steht der Grund. Ein passendes Boardprofil würde mehr Funktionen freischalten.',
-  'alert.support_compatible.cause': 'Dieses Gerät ist als kompatibel eingestuft, aber noch nicht verifiziert.',
-  'alert.support_compatible.impact':
-    'Nicht jede Funktion wurde auf echter Hardware vollständig geprüft.',
-  'alert.support_compatible.next': 'Die bekannten Einschränkungen stehen auf der Seite Gerät.',
 
   navLabel: 'Hauptnavigation',
   navDevice: 'Gerät',
