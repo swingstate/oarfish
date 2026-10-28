@@ -153,7 +153,7 @@ This is the installer's job for the first installation. Updating from the GUI co
 
 ## Hardware test results
 
-Three tests, one per gate (G3 and G4 on the same device; G5 on a Raspberry Pi Zero 2 W Rev 1.0 with the same revision code). Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
+Four tests (G3 and G4 on the same device; G5 and the UI foundation on a Raspberry Pi Zero 2 W Rev 1.0 with the same revision code). Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
 
 ### Gate G3: installer
 
@@ -175,7 +175,7 @@ Three tests, one per gate (G3 and G4 on the same device; G5 on a Raspberry Pi Ze
 
 Memory note: `systemctl status` shows no `Memory:` line on this image, because cgroup memory accounting is not enabled by default. The memory figure was therefore read from `/proc/<pid>/status` (`VmRSS`). It is the resident size of the Oarfish process at one moment, not a measurement under load and not a test of the 512 MB budget.
 
-Anonymous download and verification of the release: checked on 2026-10-26 for `v0.1.0-alpha.2` (`curl` without token, signature, SHA-256 of the files, version stamp in `install.sh`). The `releases/latest/download/install.sh` address is a different matter and is still to be verified with the first stable release (see [Install](#install)).
+Anonymous download and verification of the release: checked on 2026-10-26 for `v0.1.0-alpha.2` (`curl` without token, signature, SHA-256 of the files, version stamp in `install.sh`); later checked for `v0.1.0-alpha.5` (see [RELEASING.md](RELEASING.md#verify-a-release-anonymously)). The `releases/latest/download/install.sh` address is a different matter and is still to be verified with the first stable release (see [Install](#install)).
 
 The test setup is deliberately not identified here: no host or user names, no addresses.
 
@@ -251,6 +251,39 @@ The same rules as above apply: one device, one image, one moment, readings of mi
 - CPU usage percent and the network counters against a second tool.
 - The lost-connection display of Home after a restart (only the owner's statement above exists).
 
+### UI foundation (`v0.1.0-alpha.5`)
+
+User-run on 2026-10-28 (the owner ran the steps and reported the results). Not a gate: this checks the redesigned interface ([`UI.md`](UI.md)) on the device.
+
+| Item | Result |
+|---|---|
+| Device | Raspberry Pi Zero 2 W Rev 1.0, revision code 902120 (the same device model and revision code as in the G5 block) |
+| OS | Raspberry Pi OS (Debian 13 trixie, arm64) |
+| Kernel | `6.18.50+rpt-rpi-v8` |
+| Tested release | `v0.1.0-alpha.5`, commit `c86d15929ce0431b43a19dffe1c447844cac5451` |
+| Method | In-place upgrade from `v0.1.0-alpha.4` with the `install.sh` of the alpha.5 release: dry run, then installation. Signature OK, SHA-256 OK, service healthy. Then Home and "Gerät" viewed in Safari (light and dark theme), Chrome and Firefox through an SSH tunnel, and keyboard-only use in Chrome or Firefox (the owner did not name which). |
+| Support status | Compatible, not Verified. |
+| Layout | In all three browsers the layout looked as intended: nothing was cut off and no value list broke into single characters. The connection indicator read "Live". |
+| Alerts (D-C44, swap from 25 percent) | On the idle device the alert list was empty. 1.5 MiB of 415 MiB parked in swap raised no alert, and there was no alert for the Compatible tier. The support status was shown as a badge in the header. This confirms the alert tuning on the device. |
+| Network card | The tunnel interface with operstate `unknown` was shown in neutral grey, not red. |
+| Keyboard-only use | Worked in Chrome or Firefox, as reported by the owner: skip link, tab order, opening and closing the technical details, navigation to "Gerät" and the "Erneut laden" button. The focus indicator was visible. |
+
+The same rules as above apply: one device, one image, one moment. No host or user names, addresses, serial numbers or MAC addresses are recorded here. Idle CPU and `VmRSS` of `v0.1.0-alpha.5` were not measured again.
+
+**Not verified on hardware (UI foundation):**
+
+- The dark theme in Chrome and Firefox (not reported).
+- Screen-reader use.
+- Keyboard use in Safari.
+- The lost-connection display of the new UI on the device.
+- Idle CPU and `VmRSS` of `v0.1.0-alpha.5` (not re-measured).
+- Four simultaneous clients.
+- Ubuntu Server, other boards and other Raspberry Pi models.
+- Long-running behaviour.
+- CPU usage percent and the network counters against a second tool.
+
+Known gaps of the interface itself are listed in [`UI.md`](UI.md#known-gaps).
+
 ## Uninstall
 
 ```bash
@@ -308,16 +341,17 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 - Gate G3: dry run and install on a Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit), the unit file started by a real systemd (257), service active and enabled, start after a reboot, `/healthz`, the GUI through an SSH tunnel, and one process memory reading.
 - Gate G4 (`v0.1.0-alpha.3`): in-place upgrade from `v0.1.0-alpha.2` with the stamped installer; detection of the board, SoC family, OS adapter, kernel, memory, all seven capabilities, CPU temperature and boot medium (`mmc`); support status Compatible with the profile `raspberry-pi-zero-2-w`; the "Gerät" page in a browser through an SSH tunnel; and a second idle `VmRSS` reading (9212 kB). The unchanged unit file's sandbox did not block detection.
 - Gate G5 (`v0.1.0-alpha.4`): in-place upgrade from `v0.1.0-alpha.3` with the stamped installer; the unchanged unit file's sandbox did not block any file the dashboard reads; dashboard values against the device's own tools (AT-008); idle CPU and `VmRSS` with no browser, with one Safari tab and with the tab hidden; no writes by the process (AT-022); no swap activity (ORB-NFR-007); a service restart with the tab open (the owner reported expected behaviour); Home in Safari through an SSH tunnel. Details in [Gate G5: dashboard](#gate-g5-dashboard).
+- UI foundation (`v0.1.0-alpha.5`): in-place upgrade from `v0.1.0-alpha.4` with the stamped installer (dry run, installation, signature OK, SHA-256 OK, service healthy); Home and "Gerät" in Safari (light and dark), Chrome and Firefox through an SSH tunnel with the layout as intended and the indicator on "Live"; an empty alert list on the idle device (1.5 MiB of 415 MiB in swap raised no alert, none for the Compatible tier); the tunnel interface with operstate `unknown` in neutral grey; keyboard-only use in Chrome or Firefox, as reported by the owner. Details in [UI foundation](#ui-foundation-v010-alpha5).
 
 **Not verified:**
 
-- **Gate G5 (dashboard), what the hardware run did not cover**: Chromium and Firefox, keyboard-only and screen-reader use, four simultaneous clients, CPU usage percent and network counters against a second tool, and long-running behaviour. See [`DASHBOARD.md`](DASHBOARD.md#verification-status).
+- **Gate G5 (dashboard), what the hardware runs did not cover**: screen-reader use, keyboard use in Safari, the dark theme in Chrome and Firefox, the lost-connection display of the new UI on the device, idle CPU and `VmRSS` of `v0.1.0-alpha.5`, four simultaneous clients, CPU usage percent and network counters against a second tool, and long-running behaviour. See [`DASHBOARD.md`](DASHBOARD.md#verification-status) and [`UI.md`](UI.md#verification-status).
 - **Ubuntu Server and any other board or image** have not run on real hardware. Container results are no proof for them. That includes device detection on Ubuntu (fixtures and the architecture test only), other Raspberry Pi models, and USB boot.
 - Uninstall, and running the installer again for the same version, have not been tried on the device (only in the containers and the CI tests). An upgrade from one version to the next was done once on the device (G4 test); a rollback was not.
 - A tampered or damaged download has not been tried on the device (only in the CI tests).
 - The containers have **no systemd**: a small stand-in starts the binary. Only the one device above has run the unit file under a real systemd; other kernels and images may differ.
-- The 512 MB memory budget under load, long-term memory use, and write load on a microSD card are not tested. The idle `VmRSS` readings (7020 kB, 9212 kB and 8480 kB, three different releases) are not a budget test.
+- The 512 MB memory budget under load, long-term memory use, and write load on a microSD card are not tested. The idle `VmRSS` readings (7020 kB, 9212 kB and 8480 kB, three different releases; none for `v0.1.0-alpha.5`) are not a budget test.
 - The presence of OpenSSL 3 and the other tools on Ubuntu Server images, and on other versions of Raspberry Pi OS, is assumed from package information. One device had OpenSSL 3.5.7.
-- `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified on 2026-10-26 for `v0.1.0-alpha.2` (see [RELEASING.md](RELEASING.md)).
+- `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified for `v0.1.0-alpha.2` (2026-10-26) and for `v0.1.0-alpha.5` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.
 - Two installers running at the same time are not guarded against.
