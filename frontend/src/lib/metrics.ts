@@ -1,6 +1,7 @@
 // Client for GET /api/v1/metrics and the shapes of the metrics event stream
 // (docs/DASHBOARD.md). Everything that arrives is checked before it is used:
 // a malformed event must never crash the page.
+import { handleUnauthorized } from './session';
 
 export interface Load {
   one: number;
@@ -263,7 +264,8 @@ export type MetricsResult = { ok: true; metrics: MetricsResponse } | { ok: false
 /** Reads one snapshot with device summary, alerts and history. Never throws. */
 export async function fetchMetrics(fetchFn: typeof fetch = fetch, timeoutMs = 8000): Promise<MetricsResult> {
   try {
-    const res = await fetchFn('/api/v1/metrics', { cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetchFn('/api/v1/metrics', { cache: 'no-store', credentials: 'same-origin', signal: AbortSignal.timeout(timeoutMs) });
+    if (await handleUnauthorized(res)) return { ok: false };
     if (!res.ok) return { ok: false };
     const body: unknown = await res.json();
     if (!isSnapshot(body)) return { ok: false };

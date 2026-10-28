@@ -95,6 +95,23 @@ button:disabled {
   cursor: default;
 }
 
+/* The one main action of a form (sign in, create the account, change the password). */
+button.primary {
+  color: var(--color-accent-fg);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+button.primary:hover {
+  border-color: var(--color-text);
+}
+
+button.primary:disabled {
+  color: var(--color-text-disabled);
+  background: var(--color-surface-muted);
+  border-color: var(--color-border-strong);
+}
+
 /* Progressive disclosure: a native details element with a small chevron. */
 details > summary {
   display: flex;
@@ -180,6 +197,13 @@ details[open] > summary::before {
 
 /* Vertical rhythm between the parts of a page. */
 .stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+/* A form: fields one below the other. */
+.form {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);

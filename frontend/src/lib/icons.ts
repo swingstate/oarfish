@@ -21,6 +21,8 @@ export const iconPaths = {
   critical: ['M8 2.5h8L21.5 8v8L16 21.5H8L2.5 16V8z', 'M12 7.5v5', 'M12 16h.01'],
   success: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M8 12.5l2.7 2.7L16 9.5'],
   clock: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
+  user: ['M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8z', 'M4 21a8 8 0 0 1 16 0'],
+  lock: ['M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z', 'M8 11V8a4 4 0 0 1 8 0v3', 'M12 15v2'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof iconPaths;
