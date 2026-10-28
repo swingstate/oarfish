@@ -1,30 +1,25 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Device from './Device.svelte';
-  import Home from './Home.svelte';
+  import AppShell from './components/AppShell.svelte';
   import { t } from './lib/i18n';
+  import type { NavItem } from './lib/ui';
+  import { routeFromHash, routes } from './routes';
 
-  type View = 'home' | 'device';
-  const viewFromHash = (): View => (location.hash === '#/device' ? 'device' : 'home');
-
-  let view = $state<View>(viewFromHash());
+  let route = $state(routeFromHash(location.hash));
 
   onMount(() => {
-    const onHash = () => (view = viewFromHash());
+    const onHash = () => (route = routeFromHash(location.hash));
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   });
+
+  const items: NavItem[] = routes.map((r) => ({ id: r.id, href: r.path, label: t[r.labelKey], icon: r.icon }));
+
+  $effect(() => {
+    document.title = `${t[route.labelKey]} · ${t.brandName}`;
+  });
 </script>
 
-<main class:wide={view === 'home'}>
-  <nav aria-label={t.navLabel}>
-    <a href="#/" aria-current={view === 'home' ? 'page' : undefined}>{t.navHome}</a>
-    <a href="#/device" aria-current={view === 'device' ? 'page' : undefined}>{t.navDevice}</a>
-  </nav>
-
-  {#if view === 'device'}
-    <Device />
-  {:else}
-    <Home />
-  {/if}
-</main>
+<AppShell {items} current={route.id}>
+  <route.component />
+</AppShell>

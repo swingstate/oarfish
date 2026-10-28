@@ -1,24 +1,56 @@
 // German is the default UI language (ORB-GEN-006). English lives in en.ts with
-// exactly the same keys; a test checks that. Keys with a dot are looked up by
-// value that comes from the API (limitations, capabilities, support reasons).
-export const de = {
+// exactly the same keys; a test checks that.
+//
+// The file has two groups:
+//
+//   deUi  - labels and states: everything the interface says about itself
+//           (navigation, headings, field names, loading, empty, error and
+//           connection texts, status words). Plain German, short sentences,
+//           one word for one thing. The owner lifts this group in one piece
+//           (docs/UI.md, "State and label texts").
+//   deApi - sentences the API selects by key (alerts, support explanations,
+//           limitations, capabilities). Keys with a dot are looked up by
+//           value that comes from the API.
+//
+// The two groups are merged into `de`, so `t.homeTitle` and
+// `msg('alert.network_no_link.cause')` work the same for both.
+
+// ======================================================================
+// GROUP 1: UI TEXTS (labels and states)
+// ======================================================================
+export const deUi = {
+  // ---- Shell and navigation ----
+  brandName: 'Oarfish',
+  skipLink: 'Zum Inhalt springen',
+  navLabel: 'Hauptnavigation',
   navHome: 'Home',
-
+  navDevice: 'Gerät',
   homeTitle: 'Home',
-  homeLoading: 'Werte werden geladen …',
-  homeLoadError: 'Die Messwerte konnten nicht geladen werden.',
-  homeRetry: 'Erneut versuchen',
-  technicalDetails: 'Technische Einzelheiten',
+  deviceTitle: 'Gerät',
 
+  // ---- Connection: indicator at the top right ----
+  connIndicatorLive: 'Live',
+  connIndicatorConnecting: 'Verbindet …',
+  connIndicatorReconnecting: 'Verbindet neu …',
+  connIndicatorStale: 'Keine neuen Werte',
+  connIndicatorPaused: 'Pausiert',
+
+  // ---- States of the Home page ----
+  homeLoading: 'Werte werden geladen …',
+  homeLoadError: 'Die Werte konnten nicht geladen werden.',
+  homeLoadErrorHint: 'Prüfen Sie, ob Oarfish auf dem Gerät läuft, und versuchen Sie es noch einmal.',
+  homeRetry: 'Erneut versuchen',
   connConnecting: 'Verbindung wird aufgebaut …',
-  connLost:
-    'Verbindung unterbrochen. Die angezeigten Werte sind veraltet. Oarfish verbindet sich automatisch neu.',
-  connStale:
-    'Seit einigen Sekunden sind keine neuen Werte eingetroffen. Die angezeigten Werte sind möglicherweise veraltet.',
+  connLost: 'Die Verbindung ist unterbrochen. Die Werte sind veraltet. Oarfish verbindet sich automatisch neu.',
+  connStale: 'Seit einigen Sekunden kommen keine neuen Werte an. Die Werte sind vielleicht veraltet.',
   connLastUpdate: 'Letzte Aktualisierung: {time}',
   staleBadge: 'Veraltet',
+  unknownValue: 'Unbekannt',
+  unavailableValue: 'Nicht verfügbar',
+  technicalDetails: 'Technische Einzelheiten',
 
-  summaryHeading: 'Gerät',
+  // ---- Summary strip ----
+  summaryHeading: 'Überblick über das Gerät',
   sumHost: 'Hostname',
   sumBoard: 'Board',
   sumSoc: 'SoC',
@@ -26,20 +58,22 @@ export const de = {
   sumUptime: 'Laufzeit',
   sumSupport: 'Supportstatus',
   sumDeviceLink: 'Details auf der Seite Gerät',
-
   uptimeDaysHours: '{days} T {hours} Std.',
   uptimeHoursMinutes: '{hours} Std. {minutes} Min.',
   uptimeMinutes: '{minutes} Min.',
 
+  // ---- Alerts ----
   alertsHeading: 'Hinweise',
-  alertsNone: 'Keine Hinweise. Alles im grünen Bereich.',
+  alertsNone: 'Keine Hinweise. Alles in Ordnung.',
+  alertsNoneStale: 'Beim letzten Abruf gab es keine Hinweise.',
   alertCause: 'Ursache',
   alertImpact: 'Auswirkung',
   alertNext: 'Nächster Schritt',
   'level.critical': 'Kritisch',
-  'level.relevant': 'Relevant',
+  'level.relevant': 'Wichtig',
   'level.informational': 'Information',
 
+  // ---- CPU ----
   cpuHeading: 'CPU',
   cpuUsage: 'Auslastung',
   cpuLoad: 'Last (1 Min.)',
@@ -48,8 +82,9 @@ export const de = {
   cpuGovernor: 'Governor',
   cpuCores: 'Kerne',
   cpuLoadLong: 'Last (5 / 15 Min.)',
-  cpuNoFreq: 'Der Kernel meldet keine Taktfrequenz.',
+  cpuNoFreq: 'Der Kernel meldet keinen Takt.',
 
+  // ---- Memory ----
   memHeading: 'Arbeitsspeicher',
   memUsed: 'Belegt',
   memAvailable: 'Verfügbar',
@@ -58,6 +93,7 @@ export const de = {
   memSwapNone: 'Kein Swap eingerichtet',
   memUsedOf: '{used} von {total}',
 
+  // ---- Temperature ----
   tempHeading: 'Temperatur',
   tempNone: 'Keine Temperatursensoren gefunden.',
   tempSoc: 'SoC / CPU',
@@ -66,37 +102,99 @@ export const de = {
   'tempSource.thermal_zone': 'Thermal Zone',
   'tempSource.hwmon': 'Hardware-Monitor',
 
-  storageHeading: 'Speicher',
-  storageNone: 'Keine Datenträger gefunden.',
+  // ---- Storage ----
+  storageHeading: 'Speicherplatz',
+  storageNone: 'Kein Speicherplatz gefunden.',
   storageUsedOf: '{used} von {total} belegt',
   storageFree: 'Frei',
   storageFsType: 'Dateisystem',
 
+  // ---- Network ----
   netHeading: 'Netzwerk',
   netNone: 'Keine Netzwerkschnittstellen gefunden.',
   netAddresses: 'Adressen',
   netNoAddress: 'Keine Adresse',
   netRx: 'Empfang',
   netTx: 'Senden',
-  netSpeed: 'Verbindungsgeschwindigkeit',
+  netSpeed: 'Geschwindigkeit',
   netTotals: 'Übertragen seit dem Start',
   netRateWaiting: 'wird ermittelt …',
   netKind: 'Art',
   'linkState.up': 'Verbunden',
-  'linkState.down': 'Getrennt',
+  'linkState.down': 'Kein Link',
   'linkState.unknown': 'Unbekannt',
-  'linkState.dormant': 'Wartend',
-  'linkState.lowerlayerdown': 'Untere Schicht getrennt',
+  'linkState.dormant': 'Wartet',
+  'linkState.lowerlayerdown': 'Kein Link',
   'linkState.notpresent': 'Nicht vorhanden',
-  'linkState.testing': 'Wird getestet',
+  'linkState.testing': 'Wird geprüft',
   'netKind.ethernet': 'Ethernet',
   'netKind.wifi': 'WLAN',
   'netKind.other': 'Sonstige',
 
+  // ---- Sparklines (text alternatives) ----
   sparkCpu: 'CPU-Auslastung der letzten Minuten, zuletzt {value}',
-  sparkMemory: 'Speicherbelegung der letzten Minuten, zuletzt {value}',
+  sparkMemory: 'Belegter Arbeitsspeicher der letzten Minuten, zuletzt {value}',
   sparkTemperature: 'Temperatur der letzten Minuten, zuletzt {value}',
   sparkNoData: 'Noch kein Verlauf',
+
+  // ---- Device page ----
+  deviceLoading: 'Geräteinformationen werden geladen …',
+  deviceError: 'Die Geräteinformationen konnten nicht geladen werden.',
+  deviceErrorHint: 'Prüfen Sie, ob Oarfish auf dem Gerät läuft, und laden Sie die Seite noch einmal.',
+  deviceReload: 'Erneut laden',
+
+  hardwareHeading: 'Hardware',
+  fieldModel: 'Modell',
+  fieldVendor: 'Hersteller',
+  fieldSoc: 'SoC-Familie',
+  fieldArch: 'Architektur',
+  fieldRevision: 'Revisionscode',
+  fieldMemory: 'Arbeitsspeicher',
+
+  osHeading: 'Betriebssystem',
+  fieldOs: 'System',
+  fieldOsAdapter: 'Betriebssystem-Adapter',
+  fieldKernel: 'Kernel',
+
+  supportHeading: 'Supportstatus',
+  fieldTier: 'Stufe',
+  fieldProfile: 'Profil',
+  fieldMatchedBy: 'Erkannt über',
+  limitationsHeading: 'Bekannte Einschränkungen',
+  genericNoticeTitle: 'Generischer Modus',
+  unsupportedNoticeTitle: 'Nicht unterstützt',
+
+  sensorsHeading: 'Sensoren',
+  fieldCpuTemp: 'CPU-Temperatur',
+  fieldBootMedium: 'Bootmedium',
+
+  capabilitiesHeading: 'Fähigkeiten',
+  capabilitiesIntro: 'Oarfish bietet eine Funktion nur an, wenn die nötige Fähigkeit auf diesem Gerät gefunden wurde.',
+  capAvailable: 'Verfügbar',
+  capUnavailable: 'Nicht verfügbar',
+  capDetails: 'Technische Einzelheiten',
+  capSource: 'Geprüft',
+  capReason: 'Grund',
+
+  'tier.verified': 'Verifiziert',
+  'tier.compatible': 'Kompatibel',
+  'tier.community': 'Community',
+  'tier.experimental': 'Experimentell',
+  'tier.generic': 'Generisch',
+  'tier.unsupported': 'Nicht unterstützt',
+} as const;
+
+// ======================================================================
+// GROUP 2: API TEXTS (sentences chosen by a key from the API)
+// ======================================================================
+export const deApi = {
+  'alertTitle.cpu_temperature': 'Hohe CPU-Temperatur',
+  'alertTitle.memory_available': 'Wenig Arbeitsspeicher frei',
+  'alertTitle.swap_in_use': 'Auslagerungsspeicher belegt',
+  'alertTitle.storage_usage': 'Speicherplatz wird knapp',
+  'alertTitle.network_no_link': 'Keine Netzwerkverbindung',
+  'alertTitle.cpu_load': 'Hohe CPU-Last',
+  'alertTitle.support_generic': 'Generischer Modus',
 
   'alert.cpu_temperature.relevant.cause':
     'Die CPU-Temperatur beträgt {celsius} °C. Ab {threshold} °C wird sie als erhöht gemeldet.',
@@ -151,58 +249,6 @@ export const de = {
     'Oarfish zeigt allgemeine Linux-Informationen. Board-spezifische Funktionen gibt es nicht.',
   'alert.support_generic.next':
     'Auf der Seite Gerät steht der Grund. Ein passendes Boardprofil würde mehr Funktionen freischalten.',
-
-  navLabel: 'Hauptnavigation',
-  navDevice: 'Gerät',
-
-  deviceTitle: 'Gerät',
-  deviceLoading: 'Geräteinformationen werden geladen …',
-  deviceError: 'Die Geräteinformationen konnten nicht geladen werden.',
-  deviceReload: 'Erneut laden',
-  unknownValue: 'Unbekannt',
-  unavailableValue: 'Nicht verfügbar',
-
-  hardwareHeading: 'Hardware',
-  fieldModel: 'Modell',
-  fieldVendor: 'Hersteller',
-  fieldSoc: 'SoC-Familie',
-  fieldArch: 'Architektur',
-  fieldRevision: 'Revisionscode',
-  fieldMemory: 'Arbeitsspeicher',
-
-  osHeading: 'Betriebssystem',
-  fieldOs: 'System',
-  fieldOsAdapter: 'Betriebssystem-Adapter',
-  fieldKernel: 'Kernel',
-
-  supportHeading: 'Supportstatus',
-  fieldTier: 'Stufe',
-  fieldProfile: 'Profil',
-  fieldMatchedBy: 'Erkannt über',
-  limitationsHeading: 'Bekannte Einschränkungen',
-
-  genericNoticeTitle: 'Generischer Modus',
-  unsupportedNoticeTitle: 'Nicht unterstützt',
-
-  sensorsHeading: 'Sensoren',
-  fieldCpuTemp: 'CPU-Temperatur',
-  fieldBootMedium: 'Bootmedium',
-
-  capabilitiesHeading: 'Fähigkeiten',
-  capabilitiesIntro: 'Oarfish bietet Funktionen nur an, wenn die nötige Fähigkeit auf diesem Gerät gefunden wurde.',
-  capAvailable: 'Verfügbar',
-  capUnavailable: 'Nicht verfügbar',
-  capDetails: 'Technische Einzelheiten',
-  capSource: 'Geprüft',
-  capReason: 'Grund',
-
-  'tier.verified': 'Verifiziert',
-  'tier.compatible': 'Kompatibel',
-  'tier.community': 'Community',
-  'tier.experimental': 'Experimentell',
-  'tier.generic': 'Generisch',
-  'tier.unsupported': 'Nicht unterstützt',
-
   'support.unsupported.not_linux':
     'Oarfish läuft hier nicht unter Linux. Unterstützt wird nur Linux auf 64-Bit-ARM-Geräten.',
   'support.unsupported.not_arm64':
@@ -225,7 +271,6 @@ export const de = {
     'Das Profil ist unvollständig. Funktionen können fehlen oder sich ändern.',
   'support.verified.verified_combination':
     'Diese Kombination aus Board und Betriebssystem wurde auf echter Hardware vollständig getestet.',
-
   'limitation.generic_mode': 'Generischer Modus: keine board-spezifischen Aktionen',
   'limitation.raspberry_pi_no_board_profile':
     'Ein Raspberry Pi, für dessen Modell es noch kein Boardprofil gibt',
@@ -240,7 +285,6 @@ export const de = {
   'limitation.memory_512mb': 'Nur 512 MB Arbeitsspeicher',
   'limitation.evidence_install_only':
     'Auf echter Hardware wurde bisher nur die Installation getestet',
-
   'capability.procfs': 'Prozessinformationen (procfs)',
   'capability.sysfs': 'Geräteinformationen (sysfs)',
   'capability.systemd': 'Dienstverwaltung (systemd)',
@@ -248,18 +292,15 @@ export const de = {
   'capability.cgroup_v2': 'Ressourcengruppen (cgroup v2)',
   'capability.cpu_temperature': 'CPU-Temperatursensor',
   'capability.boot_medium': 'Bootmedium erkannt',
-
   'capabilityReason.not_found': 'Nicht gefunden',
   'capabilityReason.implausible_value': 'Unplausibler Wert',
   'capabilityReason.unrecognised_device': 'Gerät nicht erkannt',
   'capabilityReason.no_root_mount': 'Root-Dateisystem nicht ermittelbar',
   'capabilityReason.no_sensor': 'Kein Sensor gefunden',
   'capabilityReason.sensor_unreadable': 'Sensor nicht lesbar',
-
   'matchedBy.compatible': 'Gerätekennung (Device Tree)',
   'matchedBy.model': 'Modellbezeichnung',
   'matchedBy.generic_fallback': 'Kein passendes Boardprofil',
-
   'adapter.raspberry_pi_os': 'Raspberry Pi OS',
   'adapter.ubuntu': 'Ubuntu',
   'adapter.debian_family': 'Debian-Familie',
@@ -268,12 +309,13 @@ export const de = {
   'adapterStatus.not-yet-qualified': 'Noch nicht qualifiziert',
   'adapterStatus.generic': 'Allgemeine Unterstützung',
   'adapterStatus.unrecognised': 'Nicht erkannt',
-
   'bootMedium.mmc': 'SD-/MMC-Karte',
   'bootMedium.nvme': 'NVMe',
   'bootMedium.usb': 'USB-Datenträger',
   'bootMedium.unknown': 'Unbekannt',
 } as const;
+
+export const de = { ...deUi, ...deApi } as const;
 
 export type Messages = typeof de;
 export type MessageKey = keyof Messages;

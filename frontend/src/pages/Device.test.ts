@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import Device from './Device.svelte';
-import { genericArm64, piZero2W, unsupportedX86 } from './lib/device.fixtures';
-import { msg, t } from './lib/i18n';
+import { genericArm64, piZero2W, unsupportedX86 } from '../lib/device.fixtures';
+import { msg, t } from '../lib/i18n';
 
 afterEach(() => vi.unstubAllGlobals());
 

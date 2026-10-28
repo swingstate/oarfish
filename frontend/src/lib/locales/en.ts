@@ -1,23 +1,44 @@
 // English is prepared, not yet selectable in the UI. It must have exactly the
-// keys of de.ts (checked by i18n.test.ts).
-import type { Messages } from './de';
+// keys of de.ts (checked by i18n.test.ts), in the same two groups: UI texts
+// (labels and states) and API texts (sentences chosen by a key from the API).
+import type { deApi, deUi } from './de';
 
-export const en: { [K in keyof Messages]: string } = {
+// ======================================================================
+// GROUP 1: UI TEXTS (labels and states)
+// ======================================================================
+export const enUi: { [K in keyof typeof deUi]: string } = {
+  // ---- Shell and navigation ----
+  brandName: 'Oarfish',
+  skipLink: 'Skip to content',
+  navLabel: 'Main navigation',
   navHome: 'Home',
-
+  navDevice: 'Device',
   homeTitle: 'Home',
-  homeLoading: 'Loading values …',
-  homeLoadError: 'The measurements could not be loaded.',
-  homeRetry: 'Try again',
-  technicalDetails: 'Technical details',
+  deviceTitle: 'Device',
 
+  // ---- Connection: indicator at the top right ----
+  connIndicatorLive: 'Live',
+  connIndicatorConnecting: 'Connecting …',
+  connIndicatorReconnecting: 'Reconnecting …',
+  connIndicatorStale: 'No new values',
+  connIndicatorPaused: 'Paused',
+
+  // ---- States of the Home page ----
+  homeLoading: 'Loading values …',
+  homeLoadError: 'The values could not be loaded.',
+  homeLoadErrorHint: 'Check that Oarfish is running on the device, then try again.',
+  homeRetry: 'Try again',
   connConnecting: 'Connecting …',
-  connLost: 'Connection lost. The values shown are out of date. Oarfish reconnects automatically.',
-  connStale: 'No new values have arrived for a few seconds. The values shown may be out of date.',
+  connLost: 'The connection is lost. The values are out of date. Oarfish reconnects by itself.',
+  connStale: 'No new values have arrived for a few seconds. The values may be out of date.',
   connLastUpdate: 'Last update: {time}',
   staleBadge: 'Out of date',
+  unknownValue: 'Unknown',
+  unavailableValue: 'Not available',
+  technicalDetails: 'Technical details',
 
-  summaryHeading: 'Device',
+  // ---- Summary strip ----
+  summaryHeading: 'Device overview',
   sumHost: 'Host name',
   sumBoard: 'Board',
   sumSoc: 'SoC',
@@ -25,20 +46,22 @@ export const en: { [K in keyof Messages]: string } = {
   sumUptime: 'Uptime',
   sumSupport: 'Support status',
   sumDeviceLink: 'Details on the Device page',
-
   uptimeDaysHours: '{days} d {hours} h',
   uptimeHoursMinutes: '{hours} h {minutes} min',
   uptimeMinutes: '{minutes} min',
 
+  // ---- Alerts ----
   alertsHeading: 'Alerts',
   alertsNone: 'No alerts. Everything is in order.',
+  alertsNoneStale: 'There were no alerts at the last reading.',
   alertCause: 'Cause',
   alertImpact: 'Impact',
   alertNext: 'Next step',
   'level.critical': 'Critical',
-  'level.relevant': 'Relevant',
+  'level.relevant': 'Important',
   'level.informational': 'Information',
 
+  // ---- CPU ----
   cpuHeading: 'CPU',
   cpuUsage: 'Usage',
   cpuLoad: 'Load (1 min)',
@@ -47,8 +70,9 @@ export const en: { [K in keyof Messages]: string } = {
   cpuGovernor: 'Governor',
   cpuCores: 'Cores',
   cpuLoadLong: 'Load (5 / 15 min)',
-  cpuNoFreq: 'The kernel reports no clock frequency.',
+  cpuNoFreq: 'The kernel reports no clock speed.',
 
+  // ---- Memory ----
   memHeading: 'Memory',
   memUsed: 'In use',
   memAvailable: 'Available',
@@ -57,6 +81,7 @@ export const en: { [K in keyof Messages]: string } = {
   memSwapNone: 'No swap configured',
   memUsedOf: '{used} of {total}',
 
+  // ---- Temperature ----
   tempHeading: 'Temperature',
   tempNone: 'No temperature sensors found.',
   tempSoc: 'SoC / CPU',
@@ -65,37 +90,99 @@ export const en: { [K in keyof Messages]: string } = {
   'tempSource.thermal_zone': 'Thermal zone',
   'tempSource.hwmon': 'Hardware monitor',
 
+  // ---- Storage ----
   storageHeading: 'Storage',
-  storageNone: 'No storage devices found.',
+  storageNone: 'No storage found.',
   storageUsedOf: '{used} of {total} used',
   storageFree: 'Free',
   storageFsType: 'File system',
 
+  // ---- Network ----
   netHeading: 'Network',
   netNone: 'No network interfaces found.',
   netAddresses: 'Addresses',
   netNoAddress: 'No address',
   netRx: 'Receive',
   netTx: 'Send',
-  netSpeed: 'Link speed',
+  netSpeed: 'Speed',
   netTotals: 'Transferred since boot',
   netRateWaiting: 'measuring …',
   netKind: 'Type',
   'linkState.up': 'Connected',
-  'linkState.down': 'Disconnected',
+  'linkState.down': 'No link',
   'linkState.unknown': 'Unknown',
-  'linkState.dormant': 'Dormant',
-  'linkState.lowerlayerdown': 'Lower layer down',
+  'linkState.dormant': 'Waiting',
+  'linkState.lowerlayerdown': 'No link',
   'linkState.notpresent': 'Not present',
   'linkState.testing': 'Testing',
   'netKind.ethernet': 'Ethernet',
   'netKind.wifi': 'Wi-Fi',
   'netKind.other': 'Other',
 
+  // ---- Sparklines (text alternatives) ----
   sparkCpu: 'CPU usage over the last minutes, now {value}',
-  sparkMemory: 'Memory use over the last minutes, now {value}',
+  sparkMemory: 'Memory in use over the last minutes, now {value}',
   sparkTemperature: 'Temperature over the last minutes, now {value}',
   sparkNoData: 'No history yet',
+
+  // ---- Device page ----
+  deviceLoading: 'Loading device information …',
+  deviceError: 'The device information could not be loaded.',
+  deviceErrorHint: 'Check that Oarfish is running on the device, then reload the page.',
+  deviceReload: 'Reload',
+
+  hardwareHeading: 'Hardware',
+  fieldModel: 'Model',
+  fieldVendor: 'Vendor',
+  fieldSoc: 'SoC family',
+  fieldArch: 'Architecture',
+  fieldRevision: 'Revision code',
+  fieldMemory: 'Memory',
+
+  osHeading: 'Operating system',
+  fieldOs: 'System',
+  fieldOsAdapter: 'Operating system adapter',
+  fieldKernel: 'Kernel',
+
+  supportHeading: 'Support status',
+  fieldTier: 'Level',
+  fieldProfile: 'Profile',
+  fieldMatchedBy: 'Recognised by',
+  limitationsHeading: 'Known limitations',
+  genericNoticeTitle: 'Generic mode',
+  unsupportedNoticeTitle: 'Not supported',
+
+  sensorsHeading: 'Sensors',
+  fieldCpuTemp: 'CPU temperature',
+  fieldBootMedium: 'Boot medium',
+
+  capabilitiesHeading: 'Capabilities',
+  capabilitiesIntro: 'Oarfish only offers a function when the capability it needs was found on this device.',
+  capAvailable: 'Available',
+  capUnavailable: 'Not available',
+  capDetails: 'Technical details',
+  capSource: 'Probed',
+  capReason: 'Reason',
+
+  'tier.verified': 'Verified',
+  'tier.compatible': 'Compatible',
+  'tier.community': 'Community',
+  'tier.experimental': 'Experimental',
+  'tier.generic': 'Generic',
+  'tier.unsupported': 'Unsupported',
+};
+
+// ======================================================================
+// GROUP 2: API TEXTS (sentences chosen by a key from the API)
+// ======================================================================
+export const enApi: { [K in keyof typeof deApi]: string } = {
+  'alertTitle.cpu_temperature': 'High CPU temperature',
+  'alertTitle.memory_available': 'Little memory available',
+  'alertTitle.swap_in_use': 'Swap occupied',
+  'alertTitle.storage_usage': 'Storage space is running low',
+  'alertTitle.network_no_link': 'No network connection',
+  'alertTitle.cpu_load': 'High CPU load',
+  'alertTitle.support_generic': 'Generic mode',
 
   'alert.cpu_temperature.relevant.cause':
     'The CPU temperature is {celsius} °C. It is reported as elevated from {threshold} °C.',
@@ -145,58 +232,6 @@ export const en: { [K in keyof Messages]: string } = {
     'Oarfish shows general Linux information. There are no board-specific functions.',
   'alert.support_generic.next':
     'The Device page gives the reason. A matching board profile would unlock more functions.',
-
-  navLabel: 'Main navigation',
-  navDevice: 'Device',
-
-  deviceTitle: 'Device',
-  deviceLoading: 'Loading device information …',
-  deviceError: 'The device information could not be loaded.',
-  deviceReload: 'Reload',
-  unknownValue: 'Unknown',
-  unavailableValue: 'Not available',
-
-  hardwareHeading: 'Hardware',
-  fieldModel: 'Model',
-  fieldVendor: 'Vendor',
-  fieldSoc: 'SoC family',
-  fieldArch: 'Architecture',
-  fieldRevision: 'Revision code',
-  fieldMemory: 'Memory',
-
-  osHeading: 'Operating system',
-  fieldOs: 'System',
-  fieldOsAdapter: 'Operating system adapter',
-  fieldKernel: 'Kernel',
-
-  supportHeading: 'Support status',
-  fieldTier: 'Level',
-  fieldProfile: 'Profile',
-  fieldMatchedBy: 'Recognised by',
-  limitationsHeading: 'Known limitations',
-
-  genericNoticeTitle: 'Generic mode',
-  unsupportedNoticeTitle: 'Not supported',
-
-  sensorsHeading: 'Sensors',
-  fieldCpuTemp: 'CPU temperature',
-  fieldBootMedium: 'Boot medium',
-
-  capabilitiesHeading: 'Capabilities',
-  capabilitiesIntro: 'Oarfish only offers a function when the capability it needs was found on this device.',
-  capAvailable: 'Available',
-  capUnavailable: 'Not available',
-  capDetails: 'Technical details',
-  capSource: 'Probed',
-  capReason: 'Reason',
-
-  'tier.verified': 'Verified',
-  'tier.compatible': 'Compatible',
-  'tier.community': 'Community',
-  'tier.experimental': 'Experimental',
-  'tier.generic': 'Generic',
-  'tier.unsupported': 'Unsupported',
-
   'support.unsupported.not_linux':
     'Oarfish is not running on Linux here. Only Linux on 64-bit ARM devices is supported.',
   'support.unsupported.not_arm64':
@@ -219,7 +254,6 @@ export const en: { [K in keyof Messages]: string } = {
     'The profile is incomplete. Functions may be missing or change.',
   'support.verified.verified_combination':
     'This combination of board and operating system has been fully tested on real hardware.',
-
   'limitation.generic_mode': 'Generic mode: no board-specific actions',
   'limitation.raspberry_pi_no_board_profile':
     'A Raspberry Pi whose model has no board profile yet',
@@ -234,7 +268,6 @@ export const en: { [K in keyof Messages]: string } = {
   'limitation.memory_512mb': 'Only 512 MB of memory',
   'limitation.evidence_install_only':
     'So far only the installation has been tested on real hardware',
-
   'capability.procfs': 'Process information (procfs)',
   'capability.sysfs': 'Device information (sysfs)',
   'capability.systemd': 'Service management (systemd)',
@@ -242,18 +275,15 @@ export const en: { [K in keyof Messages]: string } = {
   'capability.cgroup_v2': 'Resource groups (cgroup v2)',
   'capability.cpu_temperature': 'CPU temperature sensor',
   'capability.boot_medium': 'Boot medium detected',
-
   'capabilityReason.not_found': 'Not found',
   'capabilityReason.implausible_value': 'Implausible value',
   'capabilityReason.unrecognised_device': 'Device not recognised',
   'capabilityReason.no_root_mount': 'Root file system could not be determined',
   'capabilityReason.no_sensor': 'No sensor found',
   'capabilityReason.sensor_unreadable': 'Sensor not readable',
-
   'matchedBy.compatible': 'Device identifier (device tree)',
   'matchedBy.model': 'Model name',
   'matchedBy.generic_fallback': 'No matching board profile',
-
   'adapter.raspberry_pi_os': 'Raspberry Pi OS',
   'adapter.ubuntu': 'Ubuntu',
   'adapter.debian_family': 'Debian family',
@@ -262,9 +292,10 @@ export const en: { [K in keyof Messages]: string } = {
   'adapterStatus.not-yet-qualified': 'Not yet qualified',
   'adapterStatus.generic': 'General support',
   'adapterStatus.unrecognised': 'Not recognised',
-
   'bootMedium.mmc': 'SD / MMC card',
   'bootMedium.nvme': 'NVMe',
   'bootMedium.usb': 'USB drive',
   'bootMedium.unknown': 'Unknown',
 };
+
+export const en = { ...enUi, ...enApi };

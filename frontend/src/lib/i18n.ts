@@ -1,9 +1,9 @@
 // German is the default UI language; English is prepared as a sibling
 // dictionary with the same keys (ORB-GEN-006). Components never contain UI text.
-import { de, type Messages } from './locales/de';
-import { en } from './locales/en';
+import { de, deApi, deUi, type Messages } from './locales/de';
+import { en, enApi, enUi } from './locales/en';
 
-export { de, en };
+export { de, deApi, deUi, en, enApi, enUi };
 export type { Messages };
 export const t: Messages = de;
 
@@ -14,6 +14,11 @@ export const t: Messages = de;
  */
 export function msg(key: string, dict: Readonly<Record<string, string>> = de): string {
   return dict[key] ?? key;
+}
+
+/** Whether the dictionary has a text for a key that is built from API data. */
+export function has(key: string, dict: Readonly<Record<string, string>> = de): boolean {
+  return Object.hasOwn(dict, key);
 }
 
 /** Values a message can interpolate: numbers are formatted for the language. */

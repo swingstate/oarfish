@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import Home from './Home.svelte';
-import { FakeEventSource } from './lib/eventsource.fake';
-import { en, fmt, msg, t } from './lib/i18n';
+import { FakeEventSource } from '../lib/eventsource.fake';
+import { en, fmt, msg, t } from '../lib/i18n';
 import {
   criticalTemperatureAlert,
   genericMetrics,
@@ -11,8 +11,8 @@ import {
   piSnapshot,
   relevantStorageAlert,
   relevantSwapAlert,
-} from './lib/metrics.fixtures';
-import type { MetricsResponse, Snapshot } from './lib/metrics';
+} from '../lib/metrics.fixtures';
+import type { MetricsResponse, Snapshot } from '../lib/metrics';
 
 beforeEach(() => {
   FakeEventSource.reset();
@@ -126,7 +126,8 @@ describe('Home', () => {
     // The governor, interface type and file system type are in there, not in the open page.
     expect(document.querySelector('details')!.textContent).toContain('ondemand');
     expect(screen.getByText(t.cpuGovernor, { selector: 'dt' }).closest('details')).not.toBeNull();
-    expect(screen.getByText(new RegExp(`${t.storageFsType}: ext4`)).closest('details')).not.toBeNull();
+    expect(screen.getAllByText(t.storageFsType, { selector: 'dt' })[0]!.closest('details')).not.toBeNull();
+    expect(screen.getAllByText('ext4')[0]!.closest('details')).not.toBeNull();
     expect(screen.getByText(msg('netKind.wifi')).closest('details')).not.toBeNull();
   });
 
@@ -354,10 +355,17 @@ describe('Home alerts', () => {
     expect(screen.getByRole('link', { name: t.sumDeviceLink }).getAttribute('href')).toBe('#/device');
     // Every progress bar has a name; every sparkline is a described image.
     for (const p of document.querySelectorAll('progress')) expect(p.getAttribute('aria-label')).toBeTruthy();
+    // Every svg is either a decorative icon (hidden from assistive technology) or a described image.
     for (const s of document.querySelectorAll('svg')) {
+      if (s.getAttribute('aria-hidden') === 'true') {
+        expect(s.getAttribute('role')).toBeNull();
+        expect(s.getAttribute('focusable')).toBe('false');
+        continue;
+      }
       expect(s.getAttribute('role')).toBe('img');
       expect(s.getAttribute('aria-label')).toBeTruthy();
     }
+    expect(document.querySelectorAll('svg[role="img"]').length).toBeGreaterThan(0);
   });
 });
 
