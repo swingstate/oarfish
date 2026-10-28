@@ -5,6 +5,7 @@ import { fmt, t } from './i18n';
 /** The rate-limit wait in the unit a person reads best. */
 export function waitText(seconds: number | null): string {
   const s = Math.max(1, Math.ceil(seconds ?? 1));
+  if (s === 1) return t.errorRateLimitedOneSecond;
   return s < 120 ? fmt('errorRateLimitedSeconds', { seconds: s }) : fmt('errorRateLimitedMinutes', { minutes: Math.ceil(s / 60) });
 }
 

@@ -96,6 +96,8 @@ func TestParsePHCRejectsMalformedAndOutOfBoundsHashes(t *testing.T) {
 		"spaces":              "$argon2id$v=19$m=19456, t=2,p=1$" + salt + "$" + key,
 		"padded base64":       "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "==$" + key,
 		"url base64":          "$argon2id$v=19$m=19456,t=2,p=1$" + "______________________" + "$" + key,
+		"line break in salt":  "$argon2id$v=19$m=19456,t=2,p=1$\r" + salt + "$" + key, // found by FuzzParsePHC
+		"line break in key":   "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "$" + key[:20] + "\n" + key[20:],
 		"salt too short":      "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAA$" + key,
 		"key too short":       "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "$AAAAAAA",
 		"key too long":        "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "$" + strings.Repeat("A", 200),

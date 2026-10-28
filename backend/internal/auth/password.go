@@ -121,6 +121,14 @@ func phcBase64(s string, minLen, maxLen int) ([]byte, bool) {
 	if len(s) > base64.RawStdEncoding.EncodedLen(maxLen) {
 		return nil, false
 	}
+	// The decoder skips \r and \n even in strict mode; a stored hash has
+	// neither, so only the alphabet itself is accepted.
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '+' || c == '/') {
+			return nil, false
+		}
+	}
 	b, err := base64.RawStdEncoding.Strict().DecodeString(s)
 	if err != nil || len(b) < minLen || len(b) > maxLen {
 		return nil, false

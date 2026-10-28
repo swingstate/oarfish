@@ -208,6 +208,7 @@ export const enUi: { [K in keyof typeof deUi]: string } = {
   accountWorking: 'Changing the password …',
   accountChanged: 'The password is changed. All other sessions have ended.',
   errorCredentials: 'The user name or the password is wrong.',
+  errorRateLimitedOneSecond: 'Too many attempts. Wait one second, then try again.',
   errorRateLimitedSeconds: 'Too many attempts. Wait {seconds} seconds, then try again.',
   errorRateLimitedMinutes: 'Too many attempts. Wait {minutes} minutes, then try again.',
   errorSetupToken: 'The setup code is wrong. Read it again on the device.',

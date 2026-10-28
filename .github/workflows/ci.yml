@@ -43,6 +43,11 @@ jobs:
       - name: go test
         working-directory: backend
         run: go test -race ./...
+      # ADR 0009 E1, ORB-NFR-001: the resident size after Argon2id hashes on
+      # Linux. Without the race detector, whose shadow memory would hide it.
+      - name: Hash memory is returned to the OS (Linux, no race detector)
+        working-directory: backend
+        run: go test -count=1 -run '^TestHashMemoryIsReturnedToTheOS$' -v ./internal/auth
       # Short fuzz runs of the parsers that read untrusted system files.
       # The seed corpora also run as ordinary tests in the step above.
       - name: Fuzz the detection, metrics and password-hash parsers

@@ -220,6 +220,7 @@ export const deUi = {
   accountWorking: 'Passwort wird geändert …',
   accountChanged: 'Das Passwort ist geändert. Alle anderen Sitzungen sind beendet.',
   errorCredentials: 'Benutzername oder Passwort ist falsch.',
+  errorRateLimitedOneSecond: 'Zu viele Versuche. Warten Sie eine Sekunde und versuchen Sie es dann erneut.',
   errorRateLimitedSeconds: 'Zu viele Versuche. Warten Sie {seconds} Sekunden und versuchen Sie es dann erneut.',
   errorRateLimitedMinutes: 'Zu viele Versuche. Warten Sie {minutes} Minuten und versuchen Sie es dann erneut.',
   errorSetupToken: 'Der Einrichtungscode stimmt nicht. Lesen Sie ihn auf dem Gerät erneut aus.',
