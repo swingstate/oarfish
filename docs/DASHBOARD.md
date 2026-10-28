@@ -1,10 +1,10 @@
 # Dashboard and metrics (Gate G5)
 
-The Home page shows live values of the device without a page reload: host name, board, SoC, operating system, uptime, CPU (usage, load, frequency, governor), memory and swap, temperatures, storage per file system, network interfaces, and prioritised alerts that name cause, impact and next step. The normative sources are specification 6.3 (ORB-DASH-001..007), 7.2, 8.7 and 11. The design decisions are proposed in [ADR 0008](adr/0008-dashboard-metrics.md) (status PROPOSED).
+The Home page shows live values of the device without a page reload: host name, board, SoC, operating system, uptime, CPU (usage, load, frequency, governor), memory and swap, temperatures, storage per file system, network interfaces, and prioritised alerts that name cause, impact and next step. The normative sources are specification 6.3 (ORB-DASH-001..007), 7.2, 8.7 and 11. The design decisions are recorded in [ADR 0008](adr/0008-dashboard-metrics.md) (Accepted, D-C31 to D-C41).
 
 Scope: read-only collection from files, the two API endpoints, the alert rules, the Home page, and the listen guard of decision D-C29. Not in G5: authentication, accounts and audit (G5.1, D-C27), any state-changing endpoint, throttling and undervoltage warnings (ORB-DASH-004, needs a safe board adapter), the plugin and application summary (ORB-DASH-007), processes, journal and services (G7), the resource view of external daemons (ORB-NFR-017), persisted history, configurable thresholds, `/readyz`.
 
-**Status: implemented and tested against synthetic fixtures. Not yet measured or confirmed on a Raspberry Pi** (see [Verification status](#verification-status)).
+**Status: implemented and tested against synthetic fixtures. Measured and checked once on one Raspberry Pi Zero 2 W with `v0.1.0-alpha.4`** ([hardware result](INSTALL.md#gate-g5-dashboard)); support status stays Compatible, not Verified. What is still open is listed under [Verification status](#verification-status).
 
 ## Where the values come from
 
@@ -69,7 +69,7 @@ no file read              publish first sample        (slow tier every 30 s)
 
 - **A one-shot request** (`GET /api/v1/metrics`) while nobody streams reads the device twice, 250 ms apart, so that CPU usage exists, and reuses the result for one second. It does not start a sampling session.
 - **Server timeouts.** `http.Server.WriteTimeout` (30 s) bounds a whole response and would cut every stream. The stream handler sets a write deadline before each write instead, which replaces the server's. `ReadTimeout` needs no change; `TestEventStreamOutlivesTheServerTimeouts` runs a stream through a server with 200 ms timeouts. On shutdown the handler ends all streams, so `Shutdown` does not wait for browsers (`TestShutdownEndsStreams`).
-- **Work per sample.** About 15 small file reads. `BenchmarkCollect` on the Pi Zero 2 W fixture (a developer Mac, so it shows work, not the time on the device) measured about 184 µs, 28 KB and 219 allocations per sample. The idle RSS and CPU on the Pi are **not measured yet**.
+- **Work per sample.** About 15 small file reads. `BenchmarkCollect` on the Pi Zero 2 W fixture (a developer Mac, so it shows work, not the time on the device) measured about 184 µs, 28 KB and 219 allocations per sample. Idle CPU and RSS on the Pi were measured once, see the [hardware result](INSTALL.md#gate-g5-dashboard) and [Verification status](#verification-status).
 
 ## API
 
@@ -141,6 +141,8 @@ A small rule engine (ORB-DASH-005) with three levels: `critical`, `relevant`, `i
 
 Translation keys: `alert.<rule>.<level>.<cause|impact|next>` for the three rules with two wordings (temperature, memory, storage), `alert.<rule>.<cause|impact|next>` for the others. A value that is unknown (a sensor that cannot be read, no memory data) raises no alert. A system that lists no network interface at all is not alerted either: that is far more often an unreadable sysfs than a missing network. The swap threshold of 1 MiB is a choice of ADR 0008 (a few KiB parked by the kernel are normal).
 
+> **Decided, not yet implemented:** the swap alert becomes relevant from **25 percent of the swap total in use**, not from 1 MiB (amendment of ADR 0008, decision 8, 2026-10-28). The table above shows what `v0.1.0-alpha.4` does. The next change (the alert tuning task, D-C42) implements the new threshold and updates this table.
+
 ## Home page
 
 Alerts first (grouped by level, in the only `aria-live` region of the page), a summary header (host name, board and SoC, OS, uptime, support tier with a link to the Gerät page), and cards for CPU, memory (with swap), temperature (every source, the SoC one labelled), storage (one usage bar per file system), and network (state, addresses, transfer rate computed in the browser from the counters). CPU, memory and temperature have an inline-SVG sparkline from the ring. Governor, core count, longer load averages, file system types, sensor ids, interface kind, speed and totals are behind "Technische Einzelheiten" (progressive disclosure, ORB-GEN-003).
@@ -185,14 +187,27 @@ Acceptance tests: AT-008 (real metrics), AT-021 (resource budget), AT-022 (micro
 
 **Verified by tests (no hardware, no network, no root):** everything in the table above, against synthetic fixtures (`backend/internal/metrics/testdata/`, see its README): a Raspberry Pi Zero 2 W style tree, a generic ARM64 tree, a tree without cpufreq, sensors, mounts or network, and hostile content (NUL bytes, escape sequences, invalid UTF-8, absurd and negative numbers; huge files, thousands of mounts, sensors and interfaces are generated in memory). The six parsers are fuzzed (5 seconds each in CI, `make fuzz`). `TestCollectOnTheRealHost` runs the collector on the real `/proc` and `/sys` of a Linux CI runner and asserts completeness and cleanliness only; it is skipped on macOS. The frontend is tested in jsdom with a fake `EventSource`.
 
+**Verified on hardware (one device, once):** user-run on 2026-10-27 on a Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120), Raspberry Pi OS (Debian 13 trixie, arm64), kernel `6.18.50+rpt-rpi-v8`, release `v0.1.0-alpha.4`, commit `5a9644edc551c0dc964ed9ab96e6fea1e51d80dc`, in-place upgrade from `v0.1.0-alpha.3` with the stamped installer, service unit unchanged. Method and numbers: [`INSTALL.md`](INSTALL.md#gate-g5-dashboard). This is one device, one image and one moment.
+
+- **The service sandbox.** The unchanged unit allowed every file the dashboard reads (cpufreq, thermal, `/proc/net/*`, `statfs` on both mounts). No blocked read was seen.
+- **AT-008.** Memory and swap (`free -b`), uptime, storage (`df -B1`), CPU temperature and current frequency matched the device's own tools (details in INSTALL.md).
+- **ORB-NFR-001, ORB-NFR-003.** Idle with no browser, five minutes: 0 of 30000 CPU ticks, `VmRSS` 8480 kB.
+- **ORB-NFR-002, one client only.** One Safari tab on Home, 60 s: 17 of 6000 ticks (0.28 percent of one core), `VmRSS` 12680 kB, `VmHWM` 12924 kB. With the tab hidden, 60 s: 0 of 6000 ticks; Safari closed the stream and the sampler was idle.
+- **AT-022.** `write_bytes` in `/proc/<pid>/io` was 0 for the process, including the browser session.
+- **ORB-NFR-007.** `vmstat 2 6` with the tab open: `si`, `so`, `bi`, `bo` 0, CPU idle 100 percent; 1.5 MiB parked in swap, no swap activity.
+- **ORB-NFR-014, in part.** The service was restarted while the tab was open; the owner reported that the page behaved as expected. The lost-connection banner was not recorded separately.
+- **Browser.** Home was viewed in Safari through an SSH tunnel, with live values in all cards and a transfer rate in the network card.
+
 **Not verified:**
 
-- **Nothing has run on a Raspberry Pi yet for G5.** AT-008 (values within tolerance of the device's own tools), AT-021 (ORB-NFR-001 idle RSS, ORB-NFR-002 peak RSS, ORB-NFR-003 idle CPU), AT-022 (no write loop) and ORB-NFR-007 (512 MB without permanent swap) are open. The benchmark above is the work of one sample on a Mac, not a measurement on the device.
-- **The service sandbox.** The unit file is unchanged. Reading `/proc/net/*`, `statfs` on the mounted file systems and the cpufreq files under `ProtectKernelTunables`, `PrivateDevices`, `RestrictAddressFamilies` and the `@system-service` filter is expected to work but has not been seen under a real systemd. If a read is blocked there, the unit must be changed deliberately in a later change (narrow, documented), not relaxed wholesale.
-- **Real kernels and real files.** The `fib_trie` and `route` formats were written from the kernel sources, not captured from the Pi. A different kernel or a driver that prints something else gives `null` or a missing address, not a crash.
-- **Browsers.** The page was never opened in Chromium, Firefox or Safari (ORB-NFR-012). The behaviour of the real `EventSource` (reconnect, visibility handling, the `503` case) is tested with a fake. AT-025 was checked by structure tests only (native elements, one live region, named progress bars and images), not with a screen reader or by hand.
+- **Chromium and Firefox.** Only Safari was used, once (ORB-NFR-012). The behaviour of the real `EventSource` in other browsers is tested with a fake only.
+- **The lost-connection display** (banner, "Veraltet" marking) was not recorded on the device; only the owner's statement above exists.
+- **Keyboard-only and screen-reader use.** AT-025 was checked by structure tests only (native elements, one live region, named progress bars and images), not with a screen reader or by hand.
+- **Four simultaneous clients.** The ORB-NFR-002 reading was taken with one client. The client cap and peak memory at four clients have not been measured on the device.
+- **CPU usage percent and network counters** were not compared with a second tool.
+- **Real kernels and real files.** The `fib_trie` and `route` formats were written from the kernel sources. One kernel (`6.18.50+rpt-rpi-v8`) was read under the unchanged unit with live values in all cards; other kernels or drivers that print something else give `null` or a missing address, not a crash.
 - **Ubuntu, other boards, other Raspberry Pi models.** Fixtures only.
-- **Long running.** No test runs for hours; the leak tests run many connect/disconnect cycles.
+- **Long running.** No test or measurement runs for hours; the leak tests run many connect/disconnect cycles. The device readings above span minutes.
 - **Deferred by specification or scope:** ORB-DASH-004 (throttling and undervoltage; needs a safe board adapter), ORB-DASH-007, ORB-NFR-017, authentication (G5.1).
 
 ### Checking a device (acceptance, by hand)

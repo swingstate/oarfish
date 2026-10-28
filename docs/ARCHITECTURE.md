@@ -117,7 +117,7 @@ internal/metrics/
 - **Files only, no program, no netlink.** The same rule as detection (ADR 0007, D-C19), extended to the live values. Which files may be opened is fixed and tested (`TestMetricsOpenOnlyAllowListedFiles`); the hardware address of an interface, the machine id, the environment and process data are not on the list.
 - **Detection and metrics are separate.** `internal/metrics` imports only `platform/source`; it does not import the hardware, operating-system, capability, profile or detector packages, the HTTP server or `net`. The server composes the device summary from the detection result. An architecture test enforces this, and that no product code imports `os/exec`.
 - **Sampling follows the watchers.** No client, no goroutine, no timer, no read. The first client starts a loop (baseline, then a sample every 2 s; slow data every 30 s); the last client stops it and clears the ring. A client holds one frame at most and is dropped when it stops reading. See [`DASHBOARD.md`](DASHBOARD.md) for the bounds.
-- **Proposed in [ADR 0008](adr/0008-dashboard-metrics.md)** (status PROPOSED): files only, Server-Sent Events, sampling only while watched, the ring, the thresholds, the client cap.
+- **Decided in [ADR 0008](adr/0008-dashboard-metrics.md)** (Accepted, D-C31 to D-C41): files only, Server-Sent Events, sampling only while watched, the ring, the thresholds, the client cap.
 
 ## Installer and the device layout (Gate G3)
 

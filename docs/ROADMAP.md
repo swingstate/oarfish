@@ -8,6 +8,7 @@
 | G3 | Pull-based installation script for Raspberry Pi OS |
 | G4 | Oarfish Core, hardware, OS, and capability detection |
 | G5 | Embedded dashboard with real metrics |
+| (task) | Between G5 and G5.1, in this order, each in its own session and pull request and not a gate (D-C42): alert tuning (swap threshold, fewer irrelevant alerts), then a UI foundation task (appearance and structure only, no new functions) |
 | G5.1 | Local access control and audit foundation |
 | G6 | GUI self-update, verification, health check, and rollback; Update Helper as a separate privileged process |
 | G7 | systemd, journal, processes, reboot, and shutdown; Privilege Broker with a fixed allowlist |

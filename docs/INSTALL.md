@@ -2,7 +2,7 @@
 
 Oarfish runs on a 64-bit ARM Linux device with systemd. You download one script, read it, and run it. The script downloads the release from GitHub, checks the signature, and installs Oarfish as a service. No GitHub account, no token, no Docker, no Node.js, no Python.
 
-**Status (Gates G3 and G4):** this installer, and the device detection built into the service, have run on **one** real Raspberry Pi Zero 2 W (see [Hardware test results](#hardware-test-results)); neither has been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today shows a health page and a read-only device page (what it detected about the board and the system); there is no login and no device management yet (later gates).
+**Status (Gates G3, G4 and G5):** this installer, the device detection built into the service and the dashboard have run on **one** real Raspberry Pi Zero 2 W at a time (see [Hardware test results](#hardware-test-results)); neither has been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today shows a health page and a read-only device page (what it detected about the board and the system); there is no login and no device management yet (later gates).
 
 **Kurzfassung (Deutsch):** `install.sh` von der Release-Seite laden, lesen, mit `sudo sh install.sh --dry-run` prüfen, dann mit `sudo sh install.sh` installieren. Die Oberfläche läuft nur auf `127.0.0.1:8484` (nur lokal). Von einem anderen Rechner erreichst du sie über einen SSH-Tunnel: `ssh -L 8484:127.0.0.1:8484 BENUTZER@GERAET`, dann im Browser <http://127.0.0.1:8484> öffnen. Deinstallieren: `sudo sh install.sh --uninstall` (Daten bleiben), mit `--purge` werden auch Daten und Benutzer gelöscht.
 
@@ -153,7 +153,7 @@ This is the installer's job for the first installation. Updating from the GUI co
 
 ## Hardware test results
 
-Two tests on the same device, one per gate. Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
+Three tests, one per gate (G3 and G4 on the same device; G5 on a Raspberry Pi Zero 2 W Rev 1.0 with the same revision code). Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
 
 ### Gate G3: installer
 
@@ -219,7 +219,37 @@ The same rules as above apply: one device, one image, one moment. The memory fig
 
 ### Gate G5: dashboard
 
-No hardware result yet. Gate G5 is implemented and tested against synthetic fixtures; the unit file is unchanged and the dashboard reads more of `/proc` and `/sys` than detection did. Whether the unchanged sandbox allows all of it, and what the dashboard costs at idle on the Pi, still has to be checked on the device. The steps and the numbers to record are in [`DASHBOARD.md`](DASHBOARD.md#checking-a-device-acceptance-by-hand). Until then, nothing in this document claims that G5 runs on a Raspberry Pi.
+User-run on 2026-10-27 (the owner ran the commands and reported the results).
+
+| Item | Result |
+|---|---|
+| Device | Raspberry Pi Zero 2 W Rev 1.0, revision code 902120 |
+| OS | Raspberry Pi OS (Debian 13 trixie, arm64) |
+| Kernel | `6.18.50+rpt-rpi-v8` |
+| Tested release | `v0.1.0-alpha.4`, commit `5a9644edc551c0dc964ed9ab96e6fea1e51d80dc` |
+| Method | In-place upgrade from `v0.1.0-alpha.3` with the `install.sh` of the alpha.4 release (signature OK, SHA-256 OK). The service unit was unchanged. Then the steps of [`DASHBOARD.md`](DASHBOARD.md#checking-a-device-acceptance-by-hand): the device's own tools (`free -b`, `uptime`, `df -B1`, the sysfs files), CPU ticks and `VmRSS` of the `oarfish` process from `/proc/<pid>/stat` and `/proc/<pid>/status`, `/proc/<pid>/io`, `vmstat 2 6`, and Home in Safari through an SSH tunnel. |
+| Support status | Compatible, not Verified. |
+| Sandbox | The unchanged unit allowed every file the dashboard reads: cpufreq, thermal, `/proc/net/*` and `statfs` on both mounts. No blocked read was seen. |
+| AT-008 | Values compared with the device's own tools: `free -b` (total, used, swap total, swap used) equal to the API, apart from a few MB of normal drift in available memory; `uptime` matched; `df -B1` numbers equal (the percentage differs only because `df` rounds up and the API shows one decimal); CPU temperature 38.09 °C against 37.6 °C read two minutes earlier; `scaling_cur_freq` 600000 kHz equal to 600 MHz. |
+| Idle, no browser (ORB-NFR-001, -003) | Five minutes: 0 of 30000 CPU ticks. `VmRSS` 8480 kB. |
+| One Safari tab on Home (ORB-NFR-002, one client only) | 60 s: 17 of 6000 ticks (0.28 percent of one core). `VmRSS` 12680 kB, `VmHWM` 12924 kB. |
+| Tab hidden | 60 s: 0 of 6000 ticks. Safari closed the stream and the sampler was idle. |
+| Write load (AT-022) | `write_bytes` 0 in `/proc/<pid>/io` for the process, including the browser session. |
+| Memory pressure (ORB-NFR-007) | `vmstat 2 6` with the tab open: `si` and `so` 0, `bi` and `bo` 0, CPU idle 100 percent. 1.5 MiB parked in swap, no swap activity. |
+| Restart with the tab open (ORB-NFR-014) | The service was restarted while the tab was open. The owner reported that the page behaved as expected. The lost-connection banner was not recorded separately. |
+| GUI | Home viewed in Safari through an SSH tunnel with live values in all cards and a transfer rate in the network card. |
+
+The same rules as above apply: one device, one image, one moment, readings of minutes and not of hours. Numbers are single readings, not a budget test under load. No host or user names, addresses, serial numbers or MAC addresses are recorded here.
+
+**Not verified on hardware (G5):**
+
+- Chromium and Firefox (only Safari was used, once).
+- Keyboard-only use and screen-reader use (AT-025 was checked by structure tests only).
+- Four simultaneous clients: the ORB-NFR-002 reading was taken with one.
+- Ubuntu Server, other boards and other Raspberry Pi models.
+- Long-running behaviour.
+- CPU usage percent and the network counters against a second tool.
+- The lost-connection display of Home after a restart (only the owner's statement above exists).
 
 ## Uninstall
 
@@ -277,15 +307,16 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 
 - Gate G3: dry run and install on a Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit), the unit file started by a real systemd (257), service active and enabled, start after a reboot, `/healthz`, the GUI through an SSH tunnel, and one process memory reading.
 - Gate G4 (`v0.1.0-alpha.3`): in-place upgrade from `v0.1.0-alpha.2` with the stamped installer; detection of the board, SoC family, OS adapter, kernel, memory, all seven capabilities, CPU temperature and boot medium (`mmc`); support status Compatible with the profile `raspberry-pi-zero-2-w`; the "Gerät" page in a browser through an SSH tunnel; and a second idle `VmRSS` reading (9212 kB). The unchanged unit file's sandbox did not block detection.
+- Gate G5 (`v0.1.0-alpha.4`): in-place upgrade from `v0.1.0-alpha.3` with the stamped installer; the unchanged unit file's sandbox did not block any file the dashboard reads; dashboard values against the device's own tools (AT-008); idle CPU and `VmRSS` with no browser, with one Safari tab and with the tab hidden; no writes by the process (AT-022); no swap activity (ORB-NFR-007); a service restart with the tab open (the owner reported expected behaviour); Home in Safari through an SSH tunnel. Details in [Gate G5: dashboard](#gate-g5-dashboard).
 
 **Not verified:**
 
-- **Gate G5 (dashboard) on a Raspberry Pi**: values against the device's own tools (AT-008), idle CPU and memory with and without a browser (AT-021, ORB-NFR-001/-003), write load (AT-022), and whether the unchanged sandbox allows every file the dashboard reads. See [`DASHBOARD.md`](DASHBOARD.md#verification-status).
+- **Gate G5 (dashboard), what the hardware run did not cover**: Chromium and Firefox, keyboard-only and screen-reader use, four simultaneous clients, CPU usage percent and network counters against a second tool, and long-running behaviour. See [`DASHBOARD.md`](DASHBOARD.md#verification-status).
 - **Ubuntu Server and any other board or image** have not run on real hardware. Container results are no proof for them. That includes device detection on Ubuntu (fixtures and the architecture test only), other Raspberry Pi models, and USB boot.
 - Uninstall, and running the installer again for the same version, have not been tried on the device (only in the containers and the CI tests). An upgrade from one version to the next was done once on the device (G4 test); a rollback was not.
 - A tampered or damaged download has not been tried on the device (only in the CI tests).
 - The containers have **no systemd**: a small stand-in starts the binary. Only the one device above has run the unit file under a real systemd; other kernels and images may differ.
-- The 512 MB memory budget under load, long-term memory use, and write load on a microSD card are not tested. The two idle `VmRSS` readings (7020 kB and 9212 kB, different releases) are not a budget test.
+- The 512 MB memory budget under load, long-term memory use, and write load on a microSD card are not tested. The idle `VmRSS` readings (7020 kB, 9212 kB and 8480 kB, three different releases) are not a budget test.
 - The presence of OpenSSL 3 and the other tools on Ubuntu Server images, and on other versions of Raspberry Pi OS, is assumed from package information. One device had OpenSSL 3.5.7.
 - `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified on 2026-10-26 for `v0.1.0-alpha.2` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.
