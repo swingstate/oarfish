@@ -21,7 +21,7 @@ Node.js is a build-time tool only. The Oarfish binary and the target device do n
 | Target | What it does |
 |---|---|
 | `make deps` | `npm ci` in `frontend/` (installs exactly the lockfile) |
-| `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` and `/api` to the backend. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`); it must be a loopback IP address with a port, the binary refuses anything else until Gate G5.1 (D-C29). |
+| `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` and `/api` to the backend. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`); it must be a loopback IP address with a port, the binary refuses anything else (D-C29, D-C48). |
 | `make test` | `go test ./...` (backend and `scripts/bundlegen`) and `vitest run` |
 | `make lint` | gofmt check, `go vet` (backend and `scripts/bundlegen`), `svelte-check` (TypeScript and Svelte type check) |
 | `make fuzz` | native Go fuzzing of the os-release parser, the device-tree compatible parser and the six metrics parsers (`/proc/stat`, `/proc/meminfo`, `fib_trie`, `if_inet6`, `mountinfo`, `route`), `FUZZTIME=10s` each (CI runs 5 s each; the seed corpora also run in `make test`) |

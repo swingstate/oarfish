@@ -117,9 +117,9 @@ journalctl -u oarfish -e          # the log
 curl http://127.0.0.1:8484/healthz   # {"status":"ok"}
 ```
 
-Oarfish listens on `127.0.0.1:8484` only. That means: only programs on the device itself can reach it. This is on purpose. There is no login yet, so it must not be reachable from the network, and the installer never opens it.
+Oarfish listens on `127.0.0.1:8484` only. That means: only programs on the device itself can reach it. This is on purpose. There is no login yet (it arrives with Gate G5.1, ADR 0009), so it must not be reachable from the network, and the installer never opens it.
 
-Until the login exists (Gate G5.1), the program also enforces this: it refuses to start when `-listen` is anything but a loopback IP address with a port (`127.0.0.1:8484`, another `127.x.x.x` address or `[::1]:8484`). An empty host (`:8484`), the unspecified addresses, any other IP address and host names such as `localhost` are refused with a message and exit status 1; there is no option or environment variable to override it. In the log: `oarfish refuses to start`.
+The program also enforces this, and Gate G5.1 does not lift it (D-C48): it refuses to start when `-listen` is anything but a loopback IP address with a port (`127.0.0.1:8484`, another `127.x.x.x` address or `[::1]:8484`). An empty host (`:8484`), the unspecified addresses, any other IP address and host names such as `localhost` are refused with a message and exit status 1; there is no option or environment variable to override it. In the log: `oarfish refuses to start`.
 
 **On the device itself** (with a browser, for example over a screen): open <http://127.0.0.1:8484>.
 
@@ -131,7 +131,7 @@ ssh -L 8484:127.0.0.1:8484 USER@DEVICE
 
 Leave that window open, then open <http://127.0.0.1:8484> in the browser on your own computer. If port 8484 is already in use there, take another local port: `ssh -L 9000:127.0.0.1:8484 USER@DEVICE` and open <http://127.0.0.1:9000>.
 
-Do not change the service to listen on another address; since Gate G5 the program would not start. Reverse proxy, TLS and network access come in later gates, together with authentication.
+Do not change the service to listen on another address; since Gate G5 the program would not start. Reverse proxy, TLS and network access need their own design before the MVP release (open item D-D10); the SSH tunnel is the way until then. After Gate G5.1 a device that is updated from an earlier release has no account yet and asks for one on first start (D-C46, ADR 0009).
 
 The first page is **Home**: live values of the device (CPU, memory, temperatures, storage, network) and alerts. The device is only read while a browser has Home open and visible (at most four windows at the same time). Opening Home shows the host name and the IP addresses of the device; do not share screenshots of it publicly.
 

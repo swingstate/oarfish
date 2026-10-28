@@ -14,7 +14,7 @@ What the binary does today:
 - detects, read-only and without running any program, the board, the operating system, the kernel and what the system can do, and serves the result at `GET /api/v1/device` ([`docs/DETECTION.md`](docs/DETECTION.md))
 - reads live metrics, read-only from `/proc` and `/sys` and only while a browser watches (host name, uptime, CPU, memory and swap, temperatures, storage, network), evaluates alerts, and serves them at `GET /api/v1/metrics` and as a Server-Sent Events stream at `GET /api/v1/events` ([`docs/DASHBOARD.md`](docs/DASHBOARD.md))
 - serves the embedded frontend: the "Home" page with live values, sparklines and alerts, and the "Gerät" page, which shows the detected device and its support status
-- refuses to start when `-listen` is not a literal loopback IP address with a port, until authentication exists (Gate G5.1, decision D-C29)
+- refuses to start when `-listen` is not a literal loopback IP address with a port (decision D-C29; Gate G5.1 does not lift it, see D-C48)
 
 What it does **not** do yet: authentication (Gate G5.1), throttling and undervoltage warnings, plugins, self-update. Those belong to later gates. The installer (Gate G3) and the detection (Gate G4, release `v0.1.0-alpha.3`) have run on one Raspberry Pi Zero 2 W, which Oarfish reports as Compatible, not Verified (see [`docs/INSTALL.md`](docs/INSTALL.md)). Nothing has run on Ubuntu Server (fixtures and the architecture test only), on other boards or on other Raspberry Pi models. `docs/INSTALL.md` and `docs/DETECTION.md` list what is and is not verified.
 
@@ -27,7 +27,7 @@ sudo sh install.sh --dry-run
 sudo sh install.sh
 ```
 
-The GUI listens on `127.0.0.1:8484` only; reach it from another machine with an SSH tunnel. Until Gate G5.1 (login) is done, the binary refuses any other listen address. Release signing key id: `11F1C52777090BFC`. Full instructions, uninstall and troubleshooting: [`docs/INSTALL.md`](docs/INSTALL.md).
+The GUI listens on `127.0.0.1:8484` only; reach it from another machine with an SSH tunnel. The binary refuses any other listen address; this stays after the login of Gate G5.1 until LAN access and HTTPS are designed (D-C48). Release signing key id: `11F1C52777090BFC`. Full instructions, uninstall and troubleshooting: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ## Platform baseline
 
@@ -46,7 +46,7 @@ Requirements on the development machine: Go (version in [`backend/go.mod`](backe
 ```bash
 make deps    # npm ci
 make build   # frontend build + host binary -> bin/oarfish
-bin/oarfish    # listens on 127.0.0.1:8484 (a loopback address is the only one it accepts until Gate G5.1)
+bin/oarfish    # listens on 127.0.0.1:8484 (a loopback address is the only one it accepts; this stays after Gate G5.1, D-C48)
 ```
 
 Open <http://127.0.0.1:8484/> or `curl http://127.0.0.1:8484/healthz`.

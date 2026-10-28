@@ -48,9 +48,9 @@ frontend/src ──vite build──▶ backend/internal/web/dist ──go:embed�
 
 All responses carry `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'`, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`. The server sets read-header, read, write and idle timeouts and a header size limit. The write timeout bounds a whole response and would cut every event stream, so the stream handler sets its own write deadline before each write and ends its streams when the server shuts down (ADR 0008).
 
-The process listens on `127.0.0.1:8484` by default (loopback only, ORB-ONB-003). The port is a G1 default, not a specification value. `-listen` must be a literal loopback IP address with a port (`127.0.0.0/8` or `[::1]`); anything else, including an empty host, the unspecified addresses and host names such as `localhost`, stops the process before it listens, with a message and exit status 1. There is no override (D-C29, `server.ValidateListen`). This stays until Gate G5.1.
+The process listens on `127.0.0.1:8484` by default (loopback only, ORB-ONB-003). The port is a G1 default, not a specification value. `-listen` must be a literal loopback IP address with a port (`127.0.0.0/8` or `[::1]`); anything else, including an empty host, the unspecified addresses and host names such as `localhost`, stops the process before it listens, with a message and exit status 1. There is no override (D-C29, `server.ValidateListen`). The guard stays after G5.1 until LAN access and HTTPS are designed (D-C48, open item D-D10).
 
-`/readyz` and authentication are specified (sections 8.7, 13.1) but do not exist yet. The API has no authentication; the service therefore stays on loopback (D-C11). Authentication and audit belong to Gate G5.1 (D-C27).
+`/readyz` and authentication are specified (sections 8.7, 13.1) but do not exist yet. Today the API has no authentication; the service therefore stays on loopback (D-C11). Authentication and audit are designed in [ADR 0009](adr/0009-local-access-control-and-audit.md) and built in Gate G5.1 (D-C27, D-C45); from then on every `/api/v1` route except login, setup, session status and a minimal health check requires a session (D-C46).
 
 ## Frontend
 
