@@ -2,7 +2,7 @@
 
 The Home page shows live values of the device without a page reload: host name, board, SoC, operating system, uptime, CPU (usage, load, frequency, governor), memory and swap, temperatures, storage per file system, network interfaces, and prioritised alerts that name cause, impact and next step. The normative sources are specification 6.3 (ORB-DASH-001..007), 7.2, 8.7 and 11. The design decisions are recorded in [ADR 0008](adr/0008-dashboard-metrics.md) (Accepted, D-C31 to D-C41).
 
-Scope: read-only collection from files, the two API endpoints, the alert rules, the Home page, and the listen guard of decision D-C29. Not in G5: authentication, accounts and audit (G5.1, D-C27), any state-changing endpoint, throttling and undervoltage warnings (ORB-DASH-004, needs a safe board adapter), the plugin and application summary (ORB-DASH-007), processes, journal and services (G7), the resource view of external daemons (ORB-NFR-017), persisted history, configurable thresholds, `/readyz`.
+Scope: read-only collection from files, the two API endpoints, the alert rules, the Home page, and the listen guard of decision D-C29. Not in G5: authentication, accounts and audit (G5.1, D-C27, ADR 0009; from G5.1 on the dashboard API requires a session, D-C46), any state-changing endpoint, throttling and undervoltage warnings (ORB-DASH-004, needs a safe board adapter), the plugin and application summary (ORB-DASH-007), processes, journal and services (G7), the resource view of external daemons (ORB-NFR-017), persisted history, configurable thresholds, `/readyz`.
 
 **Status: implemented and tested against synthetic fixtures. Measured and checked once on one Raspberry Pi Zero 2 W with `v0.1.0-alpha.4`** ([hardware result](INSTALL.md#gate-g5-dashboard)), and the redesigned Home viewed once with `v0.1.0-alpha.5` ([result](INSTALL.md#ui-foundation-v010-alpha5)); support status stays Compatible, not Verified. What is still open is listed under [Verification status](#verification-status).
 
@@ -153,7 +153,7 @@ Top to bottom: a summary strip (host name, board and SoC, OS, uptime, support st
 
 ## Listen guard (D-C29)
 
-Until Gate G5.1 is PASS, the binary starts only if `-listen` is a literal loopback IP address with a port: `127.0.0.0/8` or `[::1]`. It refuses an empty host (`:8484`), the unspecified addresses, every other IP address, every host name including `localhost` (the message says to use `127.0.0.1`), a zone, an IPv4-mapped IPv6 address, and port `0`. There is no override flag and no environment variable. The error is logged and the exit status is 1. The default and the systemd unit stay `127.0.0.1:8484`. After G5.1 a non-loopback address will need explicit configuration, a warning and enabled authentication (ORB-SEC-010).
+The binary starts only if `-listen` is a literal loopback IP address with a port: `127.0.0.0/8` or `[::1]`. It refuses an empty host (`:8484`), the unspecified addresses, every other IP address, every host name including `localhost` (the message says to use `127.0.0.1`), a zone, an IPv4-mapped IPv6 address, and port `0`. There is no override flag and no environment variable. The error is logged and the exit status is 1. The default and the systemd unit stay `127.0.0.1:8484`. G5.1 does not change this: a non-loopback address stays refused until LAN access and HTTPS are designed (D-C48, open item D-D10).
 
 ## Requirement to test
 

@@ -30,7 +30,7 @@ Gate G5 adds the Home page with live values of the device (spec 6.3, 7.2, 8.7). 
 
 **9. Privacy by construction.** The host name and the IP addresses are shown on the live page and in the live API only. The hardware address of an interface (`/sys/class/net/<if>/address`) is never read. IPv6 link-local addresses and IPv6 addresses built from the hardware address (EUI-64) are not shown, because both contain the MAC address. Mount points under `/home/<user>`, `/media/<user>` and `/run/media/<user>` are shortened so that no user name appears. Machine id, serial number, environment, process list, user databases and SSH data are never read. A test lists every file the collector may open.
 
-**10. The listen guard (D-C29).** The binary refuses to start unless `-listen` is a literal loopback IP address with a port. No override. This stays until Gate G5.1.
+**10. The listen guard (D-C29).** The binary refuses to start unless `-listen` is a literal loopback IP address with a port. No override. This stays until Gate G5.1 (amended by D-C48: it stays after G5.1 as well, until LAN access and HTTPS are designed, D-D10).
 
 **11. Frontend.** Svelte 5, no chart library, no new dependency. Sparklines are inline SVG. Transfer rates are computed in the browser from the counters. Only the alert list is an `aria-live` region. The old "Status" view and its `/healthz` check are replaced by Home, whose connection state tells the same thing and more.
 

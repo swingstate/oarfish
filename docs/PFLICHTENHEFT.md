@@ -2,9 +2,9 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.3.3
+- Dokumentversion: 0.3.4
 - Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G4 abgenommen)
-- Stand: 27. Oktober 2026
+- Stand: 28. Oktober 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
@@ -652,8 +652,8 @@ Eine Funktion gilt erst dann als fertig, wenn:
 | `/opt/oarfish/releases/<version>` | Versionierte, unveränderliche Releases. |
 | `/opt/oarfish/current` | Atomarer Symlink auf aktives Release. |
 | `/etc/oarfish/config.json` | Validierte Hauptkonfiguration. |
-| `/etc/oarfish/secrets/` | Restriktiv geschützte Secrets. |
-| `/var/lib/oarfish/` | Pluginzustand, Profile, Updatezustand und kleine persistente Daten. |
+| `/etc/oarfish/secrets/` | Restriktiv geschützte Secrets, die der Betreiber bereitstellt; der Dienst liest sie nur. |
+| `/var/lib/oarfish/` | Pluginzustand, Profile, Updatezustand und kleine persistente Daten, auch alle vom Dienst geschriebenen Geheimnisse und Zustände (Administratorkonto, Setup-Token, Auditdatei), weil der Dienst unter `/etc` nicht schreiben kann (`ProtectSystem=strict`). |
 | `/var/cache/oarfish/` | Wiederherstellbare Caches und Release-Downloads. |
 | `/run/oarfish/` | Sockets, Locks und ephemere Zustände. |
 | `/usr/libexec/oarfish-update-helper` | Eng begrenzter privilegierter Update Helper. |
@@ -1201,3 +1201,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.3.1 | 23. Oktober 2026 | Produkt von Orbit in Oarfish umbenannt (Name, Binary, Pfade, Repository). Anforderungs-IDs `ORB-*` bleiben unverändert. |
 | 0.3.2 | 27. Oktober 2026 | Abschnitt 3.2: Andere Raspberry-Pi-Modelle sind Compatible, sobald ein Board- oder Familienprofil existiert; bis dahin Generic mit den erkannten Pi-Fähigkeiten (Entscheidung D-C26, ADR 0007). |
 | 0.3.3 | 27. Oktober 2026 | Abschnitt 14.2: neues Gate G5.1 "Lokaler Zugriffsschutz und Audit-Grundlage" zwischen G5 und G6, G6 setzt G5.1 PASS voraus (D-C27); Update Helper in G6, Privilege Broker in G7, Capability-Prüfung im Broker in G8 (D-C28); bis G5.1 PASS keine nicht-lokale Listen-Adresse (D-C29); Abschnitt 17: D-07 fällig in G5.1; Abschnitt 6.4: Anforderungs-IDs ORB-UPD-001 bis 003 in ORB-OSU-001 bis 003 umbenannt, Abschnitt 6.12 unverändert (D-C30); Kopfzeile: Status und Stand aktualisiert. |
+| 0.3.4 | 28. Oktober 2026 | Abschnitt 8.2: Zeilen `/etc/oarfish/secrets/` und `/var/lib/oarfish/` präzisiert; vom Dienst geschriebene Geheimnisse und Zustände (Konto, Setup-Token, Audit) liegen unter `/var/lib/oarfish`, `/etc/oarfish/secrets/` bleibt für vom Betreiber bereitgestellte, nur gelesene Secrets (D-C47, ADR 0009); Kopfzeile: Stand aktualisiert. |
