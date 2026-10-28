@@ -7,11 +7,14 @@ LDFLAGS := -s -w \
 	-X github.com/swingstate/oarfish/backend/internal/version.Commit=$(COMMIT)
 
 LISTEN ?= 127.0.0.1:8484
+# The development backend keeps its account, setup token and audit here
+# (git-ignored). The service on a device uses $STATE_DIRECTORY from systemd.
+DEV_STATE ?= $(CURDIR)/.dev-state
 FUZZTIME ?= 10s
 
 .DEFAULT_GOAL := help
 .PHONY: help dev dev-backend dev-frontend deps test test-backend test-frontend test-release-tools \
-	lint lint-backend lint-frontend fuzz frontend-build build build-arm64 \
+	lint lint-backend lint-frontend fuzz frontend-build build build-arm64 bench-arm64 \
 	release-bundle check-reproducible test-signing test-installer lint-shell clean
 
 help: ## List targets
@@ -24,7 +27,8 @@ dev: ## Run the Go backend and the Vite dev server (UI on http://localhost:5173)
 	$(MAKE) -j2 dev-backend dev-frontend
 
 dev-backend:
-	cd backend && go run ./cmd/oarfish -listen $(LISTEN)
+	mkdir -p -m 0700 $(DEV_STATE)
+	cd backend && go run ./cmd/oarfish -listen $(LISTEN) -state-dir $(DEV_STATE)
 
 dev-frontend:
 	cd frontend && npm run dev
@@ -53,12 +57,13 @@ lint-backend:
 lint-frontend:
 	cd frontend && npm run check
 
-fuzz: ## Fuzz the os-release, device-tree and metrics parsers (FUZZTIME=10s each)
+fuzz: ## Fuzz the os-release, device-tree, metrics and password-hash parsers (FUZZTIME=10s each)
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseOSRelease$$' -fuzztime $(FUZZTIME) ./internal/platform/operating_system
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseCompatible$$' -fuzztime $(FUZZTIME) ./internal/platform/hardware
 	@for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes; do \
 		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./internal/metrics/parse) || exit 1; \
 	done
+	cd backend && go test -run '^$$' -fuzz '^FuzzParsePHC$$' -fuzztime $(FUZZTIME) ./internal/auth
 
 frontend-build:
 	cd frontend && npm run build
@@ -68,6 +73,11 @@ build: frontend-build ## Build the host binary with embedded frontend into bin/o
 
 build-arm64: frontend-build ## Cross-build bin/oarfish-linux-arm64 (CGO_ENABLED=0)
 	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o ../bin/oarfish-linux-arm64 ./cmd/oarfish
+
+bench-arm64: ## Cross-build the Argon2id benchmark test binary to build/bench/ (not part of any release)
+	mkdir -p build/bench
+	cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go test -c -trimpath -o ../build/bench/oarfish-auth-bench.test ./internal/auth
+	@echo "Copy build/bench/oarfish-auth-bench.test to the device; docs/AUTH.md, \"Measurements on the device\", has the commands."
 
 release-bundle: frontend-build ## Build the unsigned release bundle + manifest into dist/release (same script as CI)
 	scripts/release-bundle.sh
@@ -86,5 +96,5 @@ lint-shell: ## shellcheck the installer (POSIX sh, all severities) and the repos
 	shellcheck -x -S warning scripts/*.sh
 
 clean: ## Remove build outputs (keeps the tracked embed placeholder)
-	rm -rf bin dist
+	rm -rf bin dist build
 	find backend/internal/web/dist -mindepth 1 ! -name .gitkeep -delete

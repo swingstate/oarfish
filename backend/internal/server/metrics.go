@@ -93,8 +93,8 @@ type alertsEvent struct {
 	Alerts        []metrics.Alert `json:"alerts"`
 }
 
-func metricsUnavailable(w http.ResponseWriter) {
-	writeError(w, http.StatusServiceUnavailable, apiError{
+func metricsUnavailable(w http.ResponseWriter, r *http.Request) {
+	writeError(w, r, http.StatusServiceUnavailable, apiError{
 		Code:     "metrics_unavailable",
 		Message:  "Live metrics are not available in this build.",
 		Recovery: "Restart Oarfish.",
@@ -103,7 +103,7 @@ func metricsUnavailable(w http.ResponseWriter) {
 
 func handleMetrics(w http.ResponseWriter, r *http.Request, cfg config) {
 	if cfg.metrics == nil {
-		metricsUnavailable(w)
+		metricsUnavailable(w, r)
 		return
 	}
 	frame, err := cfg.metrics.src.Once(r.Context())
@@ -111,7 +111,7 @@ func handleMetrics(w http.ResponseWriter, r *http.Request, cfg config) {
 		if r.Context().Err() != nil {
 			return // the client left
 		}
-		writeError(w, http.StatusServiceUnavailable, apiError{
+		writeError(w, r, http.StatusServiceUnavailable, apiError{
 			Code:     "metrics_unavailable",
 			Message:  "The device could not be read just now.",
 			Recovery: "Try again in a few seconds.",
@@ -147,21 +147,25 @@ func deviceSummary(src DeviceSource) metricsDevice {
 
 // handleEvents serves the Server-Sent Events stream. A client counts as a
 // watcher for as long as the request lasts: sampling starts with it and stops
-// after the last one. The stream carries
+// after the last one. The stream ends at once when its session ends
+// (sessionDone: logout, expiry, eviction, a password change elsewhere); it
+// then sends a last "session" event so the browser does not reconnect in a
+// loop. The stream itself does not extend the session (ADR 0009, E2). It carries
 //
 //	event: history   the ring, once at the start
 //	event: alerts    at the start and whenever the alert list changes
 //	event: metrics   about every two seconds
 //	: heartbeat      a comment every 15 seconds, so proxies and the browser see the line is alive
-func handleEvents(w http.ResponseWriter, r *http.Request, cfg config) {
+//	event: session   {"schema_version":1,"state":"ended"}, last, when the session ended
+func handleEvents(w http.ResponseWriter, r *http.Request, cfg config, sessionDone <-chan struct{}) {
 	if cfg.metrics == nil {
-		metricsUnavailable(w)
+		metricsUnavailable(w, r)
 		return
 	}
 	select {
 	case <-cfg.streamsDone:
 		w.Header().Set("Retry-After", strconv.Itoa(int(streamRetry/time.Second)))
-		writeError(w, http.StatusServiceUnavailable, apiError{
+		writeError(w, r, http.StatusServiceUnavailable, apiError{
 			Code:     "shutting_down",
 			Message:  "Oarfish is shutting down.",
 			Recovery: "Reload this page in a few seconds.",
@@ -173,7 +177,7 @@ func handleEvents(w http.ResponseWriter, r *http.Request, cfg config) {
 	sub, err := m.src.Subscribe()
 	if errors.Is(err, metrics.ErrTooManyClients) {
 		w.Header().Set("Retry-After", strconv.Itoa(int(streamRetry/time.Second)))
-		writeError(w, http.StatusServiceUnavailable, apiError{
+		writeError(w, r, http.StatusServiceUnavailable, apiError{
 			Code:     "too_many_stream_clients",
 			Message:  "Too many browser windows are watching this device.",
 			Recovery: "Close another Oarfish window and reload this page.",
@@ -181,7 +185,7 @@ func handleEvents(w http.ResponseWriter, r *http.Request, cfg config) {
 		return
 	}
 	if err != nil {
-		metricsUnavailable(w)
+		metricsUnavailable(w, r)
 		return
 	}
 	defer sub.Close()
@@ -223,6 +227,9 @@ func handleEvents(w http.ResponseWriter, r *http.Request, cfg config) {
 			return
 		case <-cfg.streamsDone:
 			return
+		case <-sessionDone:
+			send(sessionEnded)
+			return
 		case <-heartbeat.C:
 			if !send(": heartbeat\n\n") {
 				return
@@ -240,6 +247,9 @@ func handleEvents(w http.ResponseWriter, r *http.Request, cfg config) {
 		}
 	}
 }
+
+// sessionEnded is the last event of a stream whose session ended.
+const sessionEnded = "event: session\ndata: {\"schema_version\":1,\"state\":\"ended\"}\n\n"
 
 func sendEvent(send func(string) bool, name string, v any) bool {
 	data, err := json.Marshal(v)

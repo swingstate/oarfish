@@ -23,7 +23,7 @@ func deviceHandler(t *testing.T, fsys fs.FS, env hardware.Env) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewHandler(fstest.MapFS{}, WithDevice(detector.New(fsys, env, reg)))
+	return signedInHandler(t, WithDevice(detector.New(fsys, env, reg)))
 }
 
 var linuxARM64 = hardware.Env{GOOS: "linux", GOARCH: "arm64"}
@@ -188,7 +188,7 @@ func TestDeviceEndpointAcceptsOnlyGet(t *testing.T) {
 func TestDeviceEndpointRejectsARequestBody(t *testing.T) {
 	h := deviceHandler(t, platformtest.Fixture(t, "pi-zero-2w-raspios"), linuxARM64)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/device", strings.NewReader(`{"x":1}`)))
+	h.ServeHTTP(rec, newRequest(http.MethodGet, "/api/v1/device", strings.NewReader(`{"x":1}`)))
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "request_body_not_allowed") {
 		t.Errorf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -209,7 +209,7 @@ func TestUnknownAPIPathsGetATypedNotFound(t *testing.T) {
 }
 
 func TestDeviceEndpointWithoutDetectionIs503(t *testing.T) {
-	rec := get(t, NewHandler(fstest.MapFS{}), http.MethodGet, "/api/v1/device")
+	rec := get(t, signedInHandler(t), http.MethodGet, "/api/v1/device")
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "device_info_unavailable") {
 		t.Errorf("status = %d, body %s", rec.Code, rec.Body)
 	}

@@ -91,6 +91,11 @@ const (
 
 	pkgMetrics      = "internal/metrics"
 	pkgMetricsParse = "internal/metrics/parse"
+
+	pkgAuth       = "internal/auth"
+	pkgAudit      = "internal/audit"
+	pkgSecurefile = "internal/securefile"
+	pkgClock      = "internal/clock"
 )
 
 func mod(rel string) string { return modulePath + "/" + rel }
@@ -319,7 +324,7 @@ func TestArchitectureNoProductCodeRunsAProgram(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && (d.Name() == "testdata" || d.Name() == "platformtest" || d.Name() == "metricstest") {
+		if d.IsDir() && (d.Name() == "testdata" || d.Name() == "platformtest" || d.Name() == "metricstest" || d.Name() == "clocktest") {
 			return filepath.SkipDir
 		}
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
@@ -348,13 +353,13 @@ func TestArchitectureNoProductCodeRunsAProgram(t *testing.T) {
 
 // The test helper packages must not leak into the product binary.
 func TestArchitectureTestHelpersAreOnlyImportedByTests(t *testing.T) {
-	helpers := []string{mod("internal/platform/platformtest"), mod("internal/metrics/metricstest")}
+	helpers := []string{mod("internal/platform/platformtest"), mod("internal/metrics/metricstest"), mod("internal/clock/clocktest")}
 	root := backendDir(t)
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return err
 		}
-		if strings.Contains(path, "platformtest") || strings.Contains(path, "metricstest") {
+		if strings.Contains(path, "platformtest") || strings.Contains(path, "metricstest") || strings.Contains(path, "clocktest") {
 			return nil
 		}
 		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
@@ -413,5 +418,139 @@ func TestArchitectureMetricsNamesNoIdentifyingFile(t *testing.T) {
 	}
 	if checked < 8 {
 		t.Fatalf("only %d files checked", checked)
+	}
+}
+
+// ADR 0009: the access-control and audit packages do not know the HTTP layer
+// (the server wires them in), run no program, and do not depend on detection
+// or metrics. The audit package does not depend on auth either: it takes only
+// typed values.
+func TestArchitectureAuthAndAuditAreBelowTheServer(t *testing.T) {
+	for _, rel := range []string{pkgAuth, pkgAudit, pkgSecurefile, pkgClock} {
+		c := closure(t, rel)
+		for _, bad := range []string{
+			mod(pkgServer), "net/http", "os/exec", "plugin", "unsafe", "log", "log/slog",
+			mod(pkgMetrics), mod(pkgDetector), mod(pkgHardware), mod(pkgOS),
+		} {
+			if c[bad] {
+				t.Errorf("%s imports %s", rel, bad)
+			}
+		}
+	}
+	if closure(t, pkgAudit)[mod(pkgAuth)] {
+		t.Error("audit imports auth")
+	}
+	// Positive control: the walk sees the real dependencies.
+	if c := closure(t, pkgAuth); !c[mod(pkgSecurefile)] || !c[mod(pkgClock)] || !c["golang.org/x/crypto/argon2"] {
+		t.Fatal("the import walk is broken: auth must import securefile, clock and argon2")
+	}
+	if !closure(t, pkgServer)[mod(pkgAuth)] || !closure(t, pkgServer)[mod(pkgAudit)] {
+		t.Fatal("the server must be the package that wires auth and audit in")
+	}
+}
+
+// ADR 0009, E1: the only third-party code is golang.org/x/crypto/argon2. No
+// Go file imports any other golang.org/x package or any other module, and
+// argon2 itself brings only blake2b (its hash core) and, on amd64,
+// golang.org/x/sys/cpu. go.mod requires exactly those two modules.
+func TestArchitectureOnlyArgon2FromXCrypto(t *testing.T) {
+	root := backendDir(t)
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return err
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range parsed.Imports {
+			p, _ := strconv.Unquote(imp.Path.Value)
+			first, _, _ := strings.Cut(p, "/")
+			if !strings.Contains(first, ".") || strings.HasPrefix(p, modulePath) {
+				continue // standard library or this module
+			}
+			if p != "golang.org/x/crypto/argon2" {
+				rel, _ := filepath.Rel(root, path)
+				t.Errorf("%s imports %s; the only allowed third-party package is golang.org/x/crypto/argon2", rel, p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The packages argon2 pulls in, read from the module cache.
+	allowed := map[string]bool{"golang.org/x/crypto/argon2": true, "golang.org/x/crypto/blake2b": true, "golang.org/x/sys/cpu": true}
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var required []string
+	for _, line := range strings.Split(string(data), "\n") {
+		f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "require "))
+		if len(f) >= 2 && strings.HasPrefix(f[1], "v") && strings.Contains(f[0], ".") {
+			required = append(required, f[0])
+		}
+	}
+	sort.Strings(required)
+	if strings.Join(required, " ") != "golang.org/x/crypto golang.org/x/sys" {
+		t.Errorf("go.mod requires %v, want exactly golang.org/x/crypto and golang.org/x/sys", required)
+	}
+	modCache := os.Getenv("GOMODCACHE")
+	if modCache == "" {
+		modCache = filepath.Join(build.Default.GOPATH, "pkg", "mod")
+	}
+	versions := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		f := strings.Fields(strings.TrimPrefix(strings.TrimSpace(line), "require "))
+		if len(f) >= 2 && strings.HasPrefix(f[0], "golang.org/x/") {
+			versions[f[0]] = f[1]
+		}
+	}
+	dirOf := func(pkg string) string {
+		for m, v := range versions {
+			if rest, ok := strings.CutPrefix(pkg, m+"/"); ok {
+				return filepath.Join(modCache, m+"@"+v, rest)
+			}
+		}
+		return ""
+	}
+	queue := []string{"golang.org/x/crypto/argon2"}
+	seen := map[string]bool{}
+	for len(queue) > 0 {
+		pkg := queue[0]
+		queue = queue[1:]
+		if seen[pkg] {
+			continue
+		}
+		seen[pkg] = true
+		if !allowed[pkg] {
+			t.Errorf("argon2 pulls in %s", pkg)
+			continue
+		}
+		dir := dirOf(pkg)
+		files, _ := filepath.Glob(filepath.Join(dir, "*.go"))
+		if len(files) == 0 {
+			t.Skipf("module source of %s not in the module cache (%s); run go mod download", pkg, dir)
+		}
+		for _, f := range files {
+			if strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+			parsed, err := parser.ParseFile(token.NewFileSet(), f, nil, parser.ImportsOnly)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, imp := range parsed.Imports {
+				p, _ := strconv.Unquote(imp.Path.Value)
+				if first, _, _ := strings.Cut(p, "/"); strings.Contains(first, ".") {
+					queue = append(queue, p)
+				}
+			}
+		}
+	}
+	if !seen["golang.org/x/crypto/blake2b"] {
+		t.Fatal("the walk did not see blake2b; it is blind")
 	}
 }

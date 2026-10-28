@@ -12,7 +12,7 @@ import (
 func get(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	h.ServeHTTP(rec, newRequest(method, path, nil))
 	return rec
 }
 

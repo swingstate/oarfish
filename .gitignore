@@ -16,6 +16,10 @@ CLAUDE.local.md
 # Build outputs
 bin/
 /dist/
+/build/
+
+# State of the development backend (make dev): account, setup token, audit
+/.dev-state/
 frontend/dist/
 coverage/
 node_modules/
