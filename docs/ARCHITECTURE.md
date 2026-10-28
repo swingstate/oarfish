@@ -55,7 +55,8 @@ The process listens on `127.0.0.1:8484` by default (loopback only, ORB-ONB-003).
 ## Frontend
 
 - Svelte 5 (runes), TypeScript strict mode, no router, no UI framework.
-- UI strings come from `src/lib/i18n.ts` (German default, ORB-GEN-006); an English dictionary can be added with the same keys.
+- UI strings come from `src/lib/i18n.ts` (German default, ORB-GEN-006); an English dictionary has the same keys. The texts are two named groups: UI texts (labels and states) and API texts (sentences chosen by a key from the API).
+- The code is split into `styles/` (one token file with a light and a dark set, element defaults), `components/` (app shell, card, badge, meter, sparkline, key-value list, alert list, connection indicator, empty state, summary strip, page header, icon), `pages/` (Home, Gerät) and `routes.ts`, the one list of pages from which the navigation, the router and the page title are built. A new page adds one entry there. Fonts are the system fonts, icons are an own inline-SVG set, nothing is requested from outside. Details, tokens and rules: [`UI.md`](UI.md).
 - Two views, switched by a `#/device` hash (no router): "Home" (default), the live dashboard backed by `/api/v1/metrics` and `/api/v1/events`, and the "Gerät" page backed by `/api/v1/device`. Nothing else is shown, in line with the "no fake functions" rule (section 7.1). All UI text is in `src/lib/locales/de.ts` (default) and `en.ts` (prepared). The old status view and its `/healthz` check were replaced by Home, whose connection state says the same and more.
 - Home keeps an `EventSource` open only while the tab is visible, shows lost connections and stale values, computes transfer rates from counters in the browser, and draws sparklines as inline SVG (no chart library, no new dependency). Details: [`DASHBOARD.md`](DASHBOARD.md).
 
