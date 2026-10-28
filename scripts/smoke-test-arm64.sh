@@ -45,7 +45,10 @@ echo "version: $version_out"
 [ -z "${EXPECTED_VERSION:-}" ] || grep -qF "oarfish $EXPECTED_VERSION " <<<"$version_out" \
   || die "version output does not contain $EXPECTED_VERSION"
 
-"${run[@]}" "$BIN" -listen "127.0.0.1:$PORT" >"$TMP/server.log" 2>&1 &
+# The service keeps its account, setup token and audit in the state directory
+# (systemd passes STATE_DIRECTORY); a fresh one starts in setup mode.
+mkdir -m 0700 "$TMP/state"
+STATE_DIRECTORY="$TMP/state" "${run[@]}" "$BIN" -listen "127.0.0.1:$PORT" >"$TMP/server.log" 2>&1 &
 pid=$!
 
 fail() { echo "SMOKE TEST FAILED: $*" >&2; echo "--- server log ---" >&2; cat "$TMP/server.log" >&2; exit 1; }
@@ -75,8 +78,20 @@ code="$(curl -s -o "$TMP/asset.js" -w '%{http_code}' "$BASE$asset")"
 [ "$code" = 200 ] && [ -s "$TMP/asset.js" ] || fail "$asset answered $code"
 echo "GET $asset -> 200 ($(wc -c < "$TMP/asset.js" | tr -d ' ') bytes)"
 
+# Access control (ADR 0009): a fresh state directory is in setup mode, the API
+# needs a session, and the setup token file exists but is not in the log.
+code="$(curl -s -o "$TMP/session.json" -w '%{http_code}' "$BASE/api/v1/session")"
+if [ "$code" != 200 ] || ! grep -q '"state":"setup_required"' "$TMP/session.json"; then fail "/api/v1/session answered $code $(cat "$TMP/session.json")"; fi
+echo "GET /api/v1/session -> 200 setup_required"
+code="$(curl -s -o "$TMP/device.json" -w '%{http_code}' "$BASE/api/v1/device")"
+if [ "$code" != 401 ] || ! grep -q '"setup_required"' "$TMP/device.json"; then fail "/api/v1/device answered $code without a session"; fi
+echo "GET /api/v1/device  -> 401 setup_required (no data without an account)"
+[ -s "$TMP/state/setup-token" ] || fail "no setup token file in the state directory"
+if grep -qF "$(cat "$TMP/state/setup-token")" "$TMP/server.log"; then fail "the setup token is in the log"; fi
+echo "setup token written to the state directory, not to the log"
+
 echo "SMOKE TEST PASSED (${emu})"
 summary <<SUM
 ### ARM64 smoke test
-\`$(basename "$BUNDLE")\` extracted, started $([ "$emu" = none ] && echo "natively" || echo "under \`$emu\`"): \`/healthz\` returned 200, \`/\` served the embedded frontend.
+\`$(basename "$BUNDLE")\` extracted, started $([ "$emu" = none ] && echo "natively" || echo "under \`$emu\`"): \`/healthz\` returned 200, \`/\` served the embedded frontend, a fresh state directory was in setup mode and \`/api/v1/device\` answered 401 without a session.
 SUM

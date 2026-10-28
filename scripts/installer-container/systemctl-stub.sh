@@ -3,7 +3,9 @@
 # run the installed binary as the oarfish user with exactly the command line of
 # the installed unit's ExecStart (so unit and binary cannot drift apart: an
 # argument the binary does not know makes it exit and the health check fail),
-# minus everything systemd adds (sandboxing, restart policy, boot).
+# minus everything systemd adds (sandboxing, restart policy, boot). The one
+# thing it does emulate is StateDirectory=: systemd passes STATE_DIRECTORY, and
+# the binary refuses to start without a state directory.
 S=/tmp/fake-systemd
 mkdir -p "$S"
 echo "$*" >> "$S/calls.log"
@@ -27,7 +29,8 @@ start_proc() {
   shift
   if [ "$exe" != /opt/oarfish/current/oarfish ]; then echo "unexpected ExecStart binary: $exe" >&2; exit 1; fi
   echo "ExecStart arguments: $*" >> "$S/calls.log"
-  setpriv --reuid=oarfish --regid=oarfish --clear-groups "$FAKE_ROOT$exe" "$@" </dev/null >"$S/oarfish.log" 2>&1 &
+  grep -q '^StateDirectory=oarfish$' "$UNIT" || { echo "the unit has no StateDirectory=oarfish" >&2; exit 1; }
+  STATE_DIRECTORY="$FAKE_ROOT/var/lib/oarfish" setpriv --reuid=oarfish --regid=oarfish --clear-groups "$FAKE_ROOT$exe" "$@" </dev/null >"$S/oarfish.log" 2>&1 &
   echo $! > "$S/pid"
 }
 

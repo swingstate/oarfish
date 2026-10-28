@@ -84,6 +84,20 @@ for f in oarfish.service LICENSE THIRD_PARTY_NOTICES.txt; do
 done
 ok "ownership and modes of directories, binary and the other release files"
 
+# Access control (ADR 0009): the fresh installation is in setup mode, its
+# secrets are the service user's alone, and the API gives nothing without an account.
+[ "$(own "$R/var/lib/oarfish/setup-token")" = "oarfish:oarfish 600" ] || fail "setup-token is $(own "$R/var/lib/oarfish/setup-token")"
+[ "$(own "$R/var/lib/oarfish/auth")" = "oarfish:oarfish 700" ] || fail "auth/ is $(own "$R/var/lib/oarfish/auth")"
+[ "$(own "$R/var/lib/oarfish/audit")" = "oarfish:oarfish 700" ] || fail "audit/ is $(own "$R/var/lib/oarfish/audit")"
+[ ! -e "$R/var/lib/oarfish/auth/account.json" ] || fail "an account exists after a fresh installation"
+ok "setup token 0600, auth/ and audit/ 0700, all owned by oarfish; no account yet"
+code="$(curl -s -o /tmp/device.json -w '%{http_code}' "http://$listen/api/v1/device")"
+if [ "$code" != 401 ] || ! grep -q '"setup_required"' /tmp/device.json; then fail "/api/v1/device answered $code without an account"; fi
+ok "GET /api/v1/device -> 401 setup_required"
+if grep -qF "$(cat "$R/var/lib/oarfish/setup-token")" /tmp/fake-systemd/oarfish.log; then fail "the setup token is in the service log"; fi
+grep -q 'sudo cat /var/lib/oarfish/setup-token' /tmp/install.out || fail "the installer does not name the setup-token command"
+ok "the setup token is not in the service log; the installer names the command to read it"
+
 pid="$(cat /tmp/fake-systemd/pid)"
 [ "$(awk '/^Uid:/ {print $2}' "/proc/$pid/status")" = "$(id -u oarfish)" ] || fail "process $pid does not run as oarfish"
 ok "the process runs as the oarfish user (not root)"
