@@ -1,0 +1,176 @@
+/*
+ * Oarfish design tokens. The single source of every colour, space, size and
+ * duration in the UI. Components use these names and never a literal value.
+ * docs/UI.md lists them with their values; tokens.test.ts checks the
+ * contrast of every text and graphic pair in both themes.
+ *
+ * Colour values are plain hex so the contrast test can read them. A token that
+ * is not a colour may use any CSS value.
+ *
+ * Themes: the light set is the default, the dark set follows
+ * prefers-color-scheme. There is no theme switch.
+ *
+ * Layout breakpoint (media queries cannot read custom properties): the shell
+ * changes from sidebar to top bar below 60rem. Cards use an intrinsic grid and
+ * need no further breakpoint.
+ */
+
+:root {
+  /* Tells the browser that this page has both themes, so scrollbars and form
+     controls follow the active one. */
+  color-scheme: light dark;
+
+  /* ---- Colour: surfaces ---- */
+  --color-page: #f3f4f6;
+  --color-surface: #ffffff;
+  --color-surface-muted: #eceef2;
+
+  /* ---- Colour: text ---- */
+  --color-text: #161a20;
+  --color-text-secondary: #454d5a;
+  --color-text-disabled: #5f6775;
+
+  /* ---- Colour: borders. "border" separates, "border-strong" outlines UI parts (3:1). ---- */
+  --color-border: #dde1e7;
+  --color-border-strong: #6f798a;
+
+  /* ---- Colour: the one accent ---- */
+  --color-accent: #0b6b7d;
+  --color-accent-fg: #ffffff;
+  --color-accent-subtle-bg: #dff0f4;
+  --color-accent-subtle-fg: #08505f;
+
+  /* ---- Colour: focus ---- */
+  --color-focus-ring: #1a56db;
+
+  /* ---- Colour: semantic roles. Warning and critical are for real alerts only. ---- */
+  --color-success-bg: #e6f4ea;
+  --color-success-fg: #14532d;
+  --color-success-border: #2f7d4f;
+
+  --color-information-bg: #e8effd;
+  --color-information-fg: #1e3a8a;
+  --color-information-border: #2c64d1;
+
+  --color-warning-bg: #fff3d6;
+  --color-warning-fg: #6b3a00;
+  --color-warning-border: #b05a00;
+
+  --color-critical-bg: #fdeceb;
+  --color-critical-fg: #8a1c13;
+  --color-critical-border: #c42b1c;
+
+  /* Neutral is not a status. It is for "no link", "unknown" and "not available". */
+  --color-neutral-bg: #eceff3;
+  --color-neutral-fg: #3a424e;
+  --color-neutral-border: #6f798a;
+
+  /* ---- Spacing scale (4 px steps at the default text size) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* ---- Radii ---- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 999px;
+
+  /* ---- Type ---- */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.875rem;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+
+  /* ---- Elevation ---- */
+  --shadow-card: 0 1px 2px 0 rgb(16 24 32 / 0.06);
+  --shadow-raised: 0 4px 12px 0 rgb(16 24 32 / 0.1);
+
+  /* ---- Focus ring ---- */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* ---- Motion. Nothing animates when a value updates; these are for hover and focus only. ---- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Stale values (connection lost): how far values are dimmed ---- */
+  --opacity-stale: 0.85;
+
+  /* ---- Layout ---- */
+  --sidebar-width: 14rem;
+  --content-max: 80rem;
+  --target-min: 1.5rem; /* smallest interactive target, 24 CSS px (WCAG 2.5.8) */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-page: #0f1318;
+    --color-surface: #171c23;
+    --color-surface-muted: #202731;
+
+    --color-text: #e8ebf0;
+    --color-text-secondary: #aeb7c4;
+    --color-text-disabled: #8a94a3;
+
+    --color-border: #2a313b;
+    --color-border-strong: #6f7a89;
+
+    --color-accent: #52b6cb;
+    --color-accent-fg: #04232b;
+    --color-accent-subtle-bg: #12343c;
+    --color-accent-subtle-fg: #93d6e5;
+
+    --color-focus-ring: #7db2ff;
+
+    --color-success-bg: #12301f;
+    --color-success-fg: #92dfad;
+    --color-success-border: #3fa86a;
+
+    --color-information-bg: #14264d;
+    --color-information-fg: #a9c6ff;
+    --color-information-border: #5b8fe8;
+
+    --color-warning-bg: #3a2a08;
+    --color-warning-fg: #ffd58a;
+    --color-warning-border: #d9922b;
+
+    --color-critical-bg: #3d1713;
+    --color-critical-fg: #ffb3aa;
+    --color-critical-border: #ef6a5b;
+
+    --color-neutral-bg: #222a35;
+    --color-neutral-fg: #c4ccd8;
+    --color-neutral-border: #6f7a89;
+
+    --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+    --shadow-raised: 0 4px 12px 0 rgb(0 0 0 / 0.5);
+  }
+}
+
+/* Reduced motion: every duration becomes instant. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0.01ms;
+    --duration-base: 0.01ms;
+  }
+}
