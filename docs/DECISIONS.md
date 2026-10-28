@@ -47,6 +47,7 @@
 | D-C41 | The Status view and its `/healthz` check in the GUI are replaced by Home, whose connection state tells the same and more. ADR 0008, decision 11. |
 | D-C42 | After G5 and before G5.1, two small tasks run in this order, each in its own session and pull request and not as gates: first an alert tuning change (the swap threshold of D-C38, fewer irrelevant alerts), then a UI foundation task (appearance and structure only, no new functions). G5.1 follows. No gate identifier or acceptance criterion changes. |
 | D-C43 | Board support through signed profile packages and external plugins stays post-MVP (specification 8.4, ORB-NFR-016, ORB-PLG-005, ADR 0007); this confirms the existing baseline of D-C21. Until then the UI and the API are data-driven: they must not hardcode interface names, port names, hardware addresses or board names, and every list (interfaces, sensors, storage) is rendered from the API data. |
+| D-C44 | Amends D-C38: the informational alert for the Compatible tier ("Compatible, not Verified") is dropped, because it fires on every device that is not yet verified and tells nothing to act on. The support status stays visible in the Home header and on the Device page. The informational alert for Generic Mode stays. The three alert levels stay in the engine and in the API. Implemented by the alert tuning task (D-C42). ADR 0008, decision 8. |
 
 ## Deferred, not blocking Gate G1
 
