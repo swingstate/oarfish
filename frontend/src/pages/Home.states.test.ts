@@ -230,3 +230,99 @@ describe('Home states', () => {
     expect(badge('nic-d').textContent).toBe(t['linkState.unknown']); // not a raw key
   });
 });
+
+// A statement about the present is made only while the stream is live. Old values never say "all fine"
+// or promise a measurement that cannot come.
+describe('Home wording of stale and lost states', () => {
+  const liveRegions = () => document.querySelectorAll('[aria-live], [role="status"], [role="alert"], [role="log"]');
+  const withBytes = (rx: number, tx: number) => (s: ReturnType<typeof snapshotAt>) => {
+    s.network[0]!.rx_bytes = 123456789 + rx;
+    s.network[0]!.tx_bytes = 23456789 + tx;
+  };
+
+  it('empty alert list: the current text while live, a text about the last reading when lost or reconnecting', async () => {
+    const es = await open();
+    expect(screen.getByText(t.alertsNone)).toBeTruthy();
+    expect(screen.queryByText(t.alertsNoneStale)).toBeNull();
+    expect(liveRegions()).toHaveLength(1);
+
+    es.dropAndRetry(); // connection lost, reconnecting
+    await waitFor(() => expect(screen.getByText(t.alertsNoneStale)).toBeTruthy());
+    expect(screen.queryByText(t.alertsNone)).toBeNull();
+    expect(screen.getByText(t.alertsNoneStale).closest('[aria-live="polite"]')).not.toBeNull();
+    expect(liveRegions()).toHaveLength(1);
+
+    es.open();
+    es.send('metrics', snapshotAt(2));
+    await waitFor(() => expect(screen.getByText(t.alertsNone)).toBeTruthy());
+    expect(screen.queryByText(t.alertsNoneStale)).toBeNull();
+    expect(liveRegions()).toHaveLength(1);
+  });
+
+  it('empty alert list: an open but silent stream also says only what was true at the last reading', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      stubMetrics(piMetrics);
+      render(Home);
+      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      FakeEventSource.last.open();
+      FakeEventSource.last.send('metrics', snapshotAt(2));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(screen.getByText(t.alertsNone)).toBeTruthy();
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(screen.getByText(t.alertsNoneStale)).toBeTruthy();
+      expect(screen.queryByText(t.alertsNone)).toBeNull();
+      expect(liveRegions()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the wording free of an all-clear claim in every stale text', () => {
+    for (const text of [t.alertsNoneStale, t.connLost, t.connStale]) expect(text).not.toMatch(/in Ordnung|alles gut|keine Probleme/i);
+    expect(t.alertsNoneStale).toContain('letzten Abruf');
+  });
+
+  it('network rates: waiting only while live; the last rate when lost; "Nicht verfügbar" when there is none', async () => {
+    const es = await open();
+    expect(textOf('rx-wlan0')).toBe(t.netRateWaiting); // live, second reading still missing
+
+    es.send('metrics', snapshotAt(2, withBytes(4096, 1024)));
+    await waitFor(() => expect(textOf('rx-wlan0')).toBe('2,0 KiB/s')); // live
+    expect(textOf('tx-wlan0')).toBe('512 B/s');
+
+    es.dropAndRetry(); // lost: the last rate stays, inside the dimmed, marked card
+    await waitFor(() => expect(screen.getByTestId('connection-notice')).toBeTruthy());
+    expect(textOf('rx-wlan0')).toBe('2,0 KiB/s');
+    expect(screen.getByTestId('network-wlan0').closest('section')!.getAttribute('data-stale')).toBe('true');
+    expect(screen.getByTestId('home').textContent).not.toContain(t.netRateWaiting);
+  });
+
+  it('network rates: a lost connection before a rate exists shows "Nicht verfügbar", never a promise', async () => {
+    const es = await open();
+    expect(textOf('rx-wlan0')).toBe(t.netRateWaiting);
+    es.dropAndRetry();
+    await waitFor(() => expect(screen.getByTestId('connection-notice')).toBeTruthy());
+    expect(textOf('rx-wlan0')).toBe(t.unavailableValue);
+    expect(textOf('tx-wlan0')).toBe(t.unavailableValue);
+    expect(screen.getByTestId('home').textContent).not.toContain(t.netRateWaiting);
+
+    es.open(); // live again, still no second reading: waiting is true again
+    await waitFor(() => expect(textOf('rx-wlan0')).toBe(t.netRateWaiting));
+  });
+
+  it('network rates: an open but silent stream says "Nicht verfügbar" as well', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      stubMetrics(piMetrics);
+      render(Home);
+      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      FakeEventSource.last.open();
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(textOf('rx-wlan0')).toBe(t.unavailableValue);
+      expect(screen.getByTestId('home').textContent).not.toContain(t.netRateWaiting);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

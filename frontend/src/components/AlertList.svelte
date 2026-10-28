@@ -5,7 +5,12 @@
   import AlertItem from './AlertItem.svelte';
   import Icon from './Icon.svelte';
 
-  let { alerts }: { alerts: Alert[] } = $props();
+  interface Props {
+    alerts: Alert[];
+    /** The values are old: an empty list then only says what was true at the last reading. */
+    stale?: boolean;
+  }
+  let { alerts, stale = false }: Props = $props();
 </script>
 
 <!--
@@ -14,7 +19,7 @@
 -->
 <div class="alert-list" aria-live="polite" aria-relevant="additions text">
   {#if alerts.length === 0}
-    <p class="none"><Icon name="success" /><span>{t.alertsNone}</span></p>
+    <p class="none"><Icon name="success" /><span>{stale ? t.alertsNoneStale : t.alertsNone}</span></p>
   {:else}
     {#each alertLevels as level (level)}
       {@const items = alerts.filter((a) => a.level === level)}

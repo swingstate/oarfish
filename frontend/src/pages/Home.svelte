@@ -47,6 +47,8 @@
   let loadingDevice = false;
 
   const stale = $derived(snapshot !== null && (conn === 'stale' || conn === 'reconnecting'));
+  // A statement about the present ("no alerts", "measuring") is only made while the stream is live.
+  const live = $derived(conn === 'live');
 
   function applySnapshot(s: Snapshot, fromStream: boolean): void {
     const at = Date.parse(s.collected_at);
@@ -167,7 +169,7 @@
       <SummaryStrip items={summary(s, device)} label={t.summaryHeading} {stale} />
 
       <Card id="alerts" title={t.alertsHeading} wide>
-        <AlertList {alerts} />
+        <AlertList {alerts} stale={!live} />
       </Card>
 
       <div class="card-grid">
@@ -317,6 +319,8 @@
             <ul class="rows">
               {#each s.network as nic (nic.name)}
                 {@const rate = rates[nic.name]}
+                <!-- "Measuring" is only promised while live. Otherwise the last rate (dimmed with the card) or "not available". -->
+                {@const rateText = (bytes: number | null | undefined) => f.formatRate(bytes ?? null) ?? (live ? t.netRateWaiting : t.unavailableValue)}
                 <li class="stack-sm" data-testid="network-{nic.name}">
                   <div class="line">
                     <span class="nic">
@@ -334,8 +338,8 @@
                   </p>
                   <KeyValueList
                     items={[
-                      { label: t.netRx, value: f.formatRate(rate?.rx ?? null) ?? t.netRateWaiting, mono: true, testid: 'rx-' + nic.name },
-                      { label: t.netTx, value: f.formatRate(rate?.tx ?? null) ?? t.netRateWaiting, mono: true, testid: 'tx-' + nic.name },
+                      { label: t.netRx, value: rateText(rate?.rx), mono: true, testid: 'rx-' + nic.name },
+                      { label: t.netTx, value: rateText(rate?.tx), mono: true, testid: 'tx-' + nic.name },
                     ]}
                   />
                   <details>

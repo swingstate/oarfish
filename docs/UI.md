@@ -228,11 +228,11 @@ Each state is designed and has a test (`pages/Home.states.test.ts`, `pages/Home.
 | Loading (first paint) | Page header, an `EmptyState` with "Werte werden geladen …", the indicator "Verbindet …". | `Home.states.test.ts` "state loading" |
 | Live | Indicator "Live", values in place, no notice, no Veraltet. | "state live" |
 | Connection lost | The last values stay, dimmed; every card and the strip say "Veraltet"; a notice says what happened and when the last update was. | "state connection lost" |
-| Reconnecting | Indicator "Verbindet neu …". Without any data yet the page says "Verbindung wird aufgebaut …". | "state reconnecting", "state reconnecting without data" |
+| Reconnecting | Indicator "Verbindet neu …". Without any data yet the page says "Verbindung wird aufgebaut …". Network rates show the last value (dimmed) or "Nicht verfügbar", never "wird ermittelt …". | "state reconnecting", "state reconnecting without data" |
 | Open but silent | Indicator "Keine neuen Werte" and a notice, after 7 seconds without a value. | "state open but silent" |
 | Paused | Indicator "Pausiert" (the tab was hidden; no stream is open). | "state paused" |
 | Load error | `EmptyState` with the error, a hint and a retry button. | "state load error" |
-| No alerts | One calm line with a check icon, inside the live region. | "state no alerts" |
+| No alerts | One calm line with a check icon, inside the live region. While live it says "Keine Hinweise. Alles in Ordnung.". While the values are stale, the connection is lost or reconnecting, it says only "Beim letzten Abruf gab es keine Hinweise." | "state no alerts", "empty alert list" in `Home.states.test.ts` |
 | One alert per level | Three groups with counts; each alert with icon, short title, cause, impact and next step. | "state one alert per level" |
 | No sensors, no storage, no interfaces | One plain line in the card. | "state no sensors, no storage, no interfaces" |
 | Unknown values | A neutral placeholder ("Unbekannt", "Nicht verfügbar"), never an empty field, `null` or `NaN`. | "state unknown values" |
@@ -240,6 +240,18 @@ Each state is designed and has a test (`pages/Home.states.test.ts`, `pages/Home.
 | Very long host name | One line, ellipsis, full name as `title`. | "state very long host name" |
 | Link states | `up` is a green "Verbunden". "Kein Link", "Unbekannt" and any state this version does not know are neutral grey, never a warning. | "shows a link state honestly" |
 | Support tier | `verified` success, `compatible` information, `experimental` warning, `unsupported` critical, everything else neutral. | "colours the support status by tier" |
+
+Where stale values could read as a current claim (checked for the wording fix; only wording and marking were changed):
+
+| Place | While stale, lost or reconnecting | Result |
+|---|---|---|
+| Empty alert list | "Beim letzten Abruf gab es keine Hinweise." | Fixed |
+| Network rates | Last rate, dimmed with the card, or "Nicht verfügbar"; "wird ermittelt …" only while live | Fixed |
+| Link badge "Verbunden" and addresses | Inside a dimmed card that says "Veraltet" | Marked by the card, unchanged |
+| Meters, values, sparklines | Same, and the sparkline text says "zuletzt" | Marked by the card, unchanged |
+| Summary strip | Dimmed, "Veraltet" badge | Marked, unchanged |
+| Alerts that exist | Shown as they were at the last reading. The alerts card is not dimmed and has no Veraltet badge | Open: marking it needs a component change |
+| Tab shown again after a pause | Old values show without Veraltet until the stream opens ("Verbindet …"); the two texts above are already cautious there | Open: needs a change in the stale logic |
 
 The alert rules themselves (including the rule "no interface has a link") are unchanged and described in [`DASHBOARD.md`](DASHBOARD.md#alerts). The UI shows no alert for a single interface without a link.
 
@@ -286,6 +298,7 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `uptimeMinutes` | {minutes} Min. | {minutes} min |
 | `alertsHeading` | Hinweise | Alerts |
 | `alertsNone` | Keine Hinweise. Alles in Ordnung. | No alerts. Everything is in order. |
+| `alertsNoneStale` | Beim letzten Abruf gab es keine Hinweise. | There were no alerts at the last reading. |
 | `alertCause` | Ursache | Cause |
 | `alertImpact` | Auswirkung | Impact |
 | `alertNext` | Nächster Schritt | Next step |
@@ -394,7 +407,8 @@ For the state and label texts (`deUi`, German and English). `i18n.test.ts` check
 5. A missing value is "Unbekannt" (we cannot tell) or "Nicht verfügbar" (the device does not provide it), never blank.
 6. Use the typographic ellipsis "…" for work in progress, not three dots.
 7. Numbers follow the German format (decimal comma, thousands point); units are binary.
-8. A text is never in a component. A new text is added to `deUi` and `enUi` together.
+8. Old values never claim that all is fine and never promise a measurement. A statement about the present ("Keine Hinweise. Alles in Ordnung.", "wird ermittelt …") is shown only while the stream is live; otherwise the text says what was true at the last reading, or "Nicht verfügbar".
+9. A text is never in a component. A new text is added to `deUi` and `enUi` together.
 
 ## Accessibility
 

@@ -65,6 +65,7 @@ export const deUi = {
   // ---- Alerts ----
   alertsHeading: 'Hinweise',
   alertsNone: 'Keine Hinweise. Alles in Ordnung.',
+  alertsNoneStale: 'Beim letzten Abruf gab es keine Hinweise.',
   alertCause: 'Ursache',
   alertImpact: 'Auswirkung',
   alertNext: 'Nächster Schritt',

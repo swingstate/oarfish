@@ -53,6 +53,7 @@ export const enUi: { [K in keyof typeof deUi]: string } = {
   // ---- Alerts ----
   alertsHeading: 'Alerts',
   alertsNone: 'No alerts. Everything is in order.',
+  alertsNoneStale: 'There were no alerts at the last reading.',
   alertCause: 'Cause',
   alertImpact: 'Impact',
   alertNext: 'Next step',
