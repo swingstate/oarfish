@@ -2,7 +2,7 @@
 
 Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and two pages (Home and Gerät) built on them, in a light and a dark theme. This is appearance and structure only: no function was added and no API changed. It is not a gate (decisions D-C42, D-C43). The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). Home itself is described in [`DASHBOARD.md`](DASHBOARD.md#home-page).
 
-**Status: implemented and tested** with jsdom unit tests and with headless Chrome on one developer Mac (layout checks at five widths, reference screenshots). **Not verified:** Safari and Firefox rendering of the new styles, a screen reader, keyboard use by hand, forced-colours mode in a real browser, and any real device. See [Verification status](#verification-status).
+**Status: implemented and tested** with jsdom unit tests and with headless Chrome on one developer Mac (layout checks at five widths, reference screenshots). **Checked once on a Raspberry Pi Zero 2 W with `v0.1.0-alpha.5`** in Safari, Chrome and Firefox ([hardware result](INSTALL.md#ui-foundation-v010-alpha5)). **Not verified:** a screen reader, keyboard use in Safari, forced-colours mode in a real browser, the lost-connection display on the device. See [Verification status](#verification-status) and [Known gaps](#known-gaps).
 
 The tokens in this file are named and explicit on purpose. They are meant to be carried into a design tool and back. The source of truth is [`frontend/src/styles/tokens.css`](../frontend/src/styles/tokens.css); `tokens.test.ts` fails when a token this file lists is missing there, and `docs.test.ts` fails when this file lacks a token, a component or a text that the code has.
 
@@ -22,6 +22,7 @@ The tokens in this file are named and explicit on purpose. They are meant to be 
 12. [Reference screenshots](#reference-screenshots)
 13. [Size and performance](#size-and-performance)
 14. [Verification status](#verification-status)
+15. [Known gaps](#known-gaps)
 
 ## Code layout
 
@@ -542,10 +543,34 @@ Updating a sample changes text and attributes in place: no element is added or r
 
 **Verified in headless Chrome on one Mac, by a script that is not in the repository:** the layout checks and the screenshots described above; that the page loads and is styled under the server's `Content-Security-Policy` (`default-src 'self'`, no inline style attribute exists); and the Tab order (skip link, brand, navigation, links, `summary` elements) with a visible 2 px focus ring on each stop, in both themes.
 
+**Verified on one device, once:** user-run on 2026-10-28 on a Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120), Raspberry Pi OS (Debian 13 trixie, arm64), kernel `6.18.50+rpt-rpi-v8`, release `v0.1.0-alpha.5`, commit `c86d15929ce0431b43a19dffe1c447844cac5451`, in-place upgrade from `v0.1.0-alpha.4`. Method and details: [`INSTALL.md`](INSTALL.md#ui-foundation-v010-alpha5). As reported by the owner:
+
+- **Layout in three browsers.** Home and Gerät were viewed in Safari (light and dark theme), Chrome and Firefox through an SSH tunnel. The layout looked as intended, nothing was cut off and no value list broke into single characters. The connection indicator read "Live".
+- **Alert tuning (D-C44, swap from 25 percent).** On the idle device the alert list was empty: 1.5 MiB of 415 MiB parked in swap raised no alert, and there was no alert for the Compatible tier. The support status was shown as a badge in the header.
+- **Neutral interface state.** The tunnel interface with operstate `unknown` was shown in neutral grey, not red.
+- **Keyboard-only use** worked in Chrome or Firefox (the owner did not name which): skip link, tab order, opening and closing the technical details, navigation to Gerät and the "Erneut laden" button. The focus indicator was visible.
+
 **Not verified:**
 
-- **Safari and Firefox.** The styles use only widely supported CSS (grid, flex, `min()`, custom properties, `progress` pseudo-elements for both engines), but they were not opened in either. Meters use `::-webkit-progress-*` and `::-moz-progress-*`.
-- **A screen reader and keyboard use by hand.** Only structure is tested (roles, names, native elements).
+- **The dark theme in Chrome and Firefox.** Not reported; only Safari's dark theme was looked at on the device.
+- **A screen reader.** Only structure is tested (roles, names, native elements).
+- **Keyboard use in Safari.**
+- **The lost-connection display** of the new UI on the device.
+- **Idle CPU and `VmRSS` of `v0.1.0-alpha.5`.** Not re-measured.
+- **Four simultaneous clients.**
+- **Ubuntu Server, other boards and other Raspberry Pi models.**
+- **Long-running behaviour.**
+- **CPU usage percent and network counters** against a second tool.
 - **Forced colours.** The rules exist; they were not looked at in Windows high contrast.
-- **A real device.** The new UI was not served from a Raspberry Pi, and the contrast was computed, not measured on a screen.
+- **Contrast on a screen.** It was computed, not measured.
 - **Rendering at other zoom factors** than the ones listed.
+
+## Known gaps
+
+Known and not scheduled. None of these is planned for a gate yet.
+
+- The alerts card is not dimmed or marked as stale when the connection is lost. The banner above the cards says it.
+- After a hidden tab becomes visible again, old values show without the stale marking until the stream is open.
+- The green check icon also appears next to the text "Beim letzten Abruf gab es keine Hinweise."
+- In wide windows a large gap remains between the sidebar and the content (the token `--content-max`).
+- The Gerät page says "Nur 512 MB Arbeitsspeicher" from the profile text, while the rest of the UI uses MiB.

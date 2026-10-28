@@ -4,7 +4,7 @@ The Home page shows live values of the device without a page reload: host name, 
 
 Scope: read-only collection from files, the two API endpoints, the alert rules, the Home page, and the listen guard of decision D-C29. Not in G5: authentication, accounts and audit (G5.1, D-C27), any state-changing endpoint, throttling and undervoltage warnings (ORB-DASH-004, needs a safe board adapter), the plugin and application summary (ORB-DASH-007), processes, journal and services (G7), the resource view of external daemons (ORB-NFR-017), persisted history, configurable thresholds, `/readyz`.
 
-**Status: implemented and tested against synthetic fixtures. Measured and checked once on one Raspberry Pi Zero 2 W with `v0.1.0-alpha.4`** ([hardware result](INSTALL.md#gate-g5-dashboard)); support status stays Compatible, not Verified. What is still open is listed under [Verification status](#verification-status).
+**Status: implemented and tested against synthetic fixtures. Measured and checked once on one Raspberry Pi Zero 2 W with `v0.1.0-alpha.4`** ([hardware result](INSTALL.md#gate-g5-dashboard)), and the redesigned Home viewed once with `v0.1.0-alpha.5` ([result](INSTALL.md#ui-foundation-v010-alpha5)); support status stays Compatible, not Verified. What is still open is listed under [Verification status](#verification-status).
 
 ## Where the values come from
 
@@ -196,12 +196,18 @@ Acceptance tests: AT-008 (real metrics), AT-021 (resource budget), AT-022 (micro
 - **ORB-NFR-014, in part.** The service was restarted while the tab was open; the owner reported that the page behaved as expected. The lost-connection banner was not recorded separately.
 - **Browser.** Home was viewed in Safari through an SSH tunnel, with live values in all cards and a transfer rate in the network card.
 
+**Verified on hardware with the redesigned UI (one device, once):** user-run on 2026-10-28 on the same device model and revision code, same OS and kernel, release `v0.1.0-alpha.5`, commit `c86d15929ce0431b43a19dffe1c447844cac5451`, in-place upgrade from `v0.1.0-alpha.4` (dry run, installation, signature OK, SHA-256 OK, service healthy). Details: [`INSTALL.md`](INSTALL.md#ui-foundation-v010-alpha5) and [`UI.md`](UI.md#verification-status). As reported by the owner:
+
+- **Browsers.** Home and Gerät were viewed in Safari (light and dark), Chrome and Firefox through an SSH tunnel; the layout looked as intended and the connection indicator read "Live".
+- **Alerts (D-C44).** On the idle device the alert list was empty: 1.5 MiB of 415 MiB in swap raised no alert, and there was no alert for the Compatible tier.
+- **Network card.** The tunnel interface with operstate `unknown` was shown in neutral grey, not red.
+- **Keyboard-only use** worked in Chrome or Firefox (not named).
+
 **Not verified:**
 
-- **The redesigned UI** (UI foundation task, after the hardware reading above) was checked in jsdom and in headless Chrome on a Mac; it was not opened on the device, in Safari or in Firefox. See [`UI.md`](UI.md#verification-status).
-- **Chromium and Firefox.** Only Safari was used, once (ORB-NFR-012). The behaviour of the real `EventSource` in other browsers is tested with a fake only.
-- **The lost-connection display** (banner, "Veraltet" marking) was not recorded on the device; only the owner's statement above exists.
-- **Keyboard-only and screen-reader use.** AT-025 was checked by structure tests only (native elements, one live region, named progress bars and images), not with a screen reader or by hand.
+- **Screen-reader use.** AT-025 was checked by structure tests (native elements, one live region, named progress bars and images) and, for keyboard-only use, once by hand in Chrome or Firefox (see above); not with a screen reader, and not by keyboard in Safari.
+- **The lost-connection display** (banner, "Veraltet" marking) was not recorded on the device, neither with the old nor with the new UI; for the old UI only the owner's statement above exists.
+- **Idle CPU and `VmRSS` of `v0.1.0-alpha.5`.** Not re-measured; the readings above are from `v0.1.0-alpha.4`.
 - **Four simultaneous clients.** The ORB-NFR-002 reading was taken with one client. The client cap and peak memory at four clients have not been measured on the device.
 - **CPU usage percent and network counters** were not compared with a second tool.
 - **Real kernels and real files.** The `fib_trie` and `route` formats were written from the kernel sources. One kernel (`6.18.50+rpt-rpi-v8`) was read under the unchanged unit with live values in all cards; other kernels or drivers that print something else give `null` or a missing address, not a crash.
