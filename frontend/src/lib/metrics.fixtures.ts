@@ -42,12 +42,20 @@ export const piSnapshot: Snapshot = {
   ],
 };
 
-export const complianceAlert: Alert = {
-  id: 'support_compatible',
+export const genericModeAlert: Alert = {
+  id: 'support_generic',
   level: 'informational',
-  cause: { key: 'alert.support_compatible.cause' },
-  impact: { key: 'alert.support_compatible.impact' },
-  next_step: { key: 'alert.support_compatible.next' },
+  cause: { key: 'alert.support_generic.cause' },
+  impact: { key: 'alert.support_generic.impact' },
+  next_step: { key: 'alert.support_generic.next' },
+};
+
+export const relevantSwapAlert: Alert = {
+  id: 'swap_in_use',
+  level: 'relevant',
+  cause: { key: 'alert.swap_in_use.cause', params: { percent: 31.2, used_mib: 160 } },
+  impact: { key: 'alert.swap_in_use.impact', params: { percent: 31.2, used_mib: 160 } },
+  next_step: { key: 'alert.swap_in_use.next', params: { percent: 31.2, used_mib: 160 } },
 };
 
 export const criticalTemperatureAlert: Alert = {
@@ -87,7 +95,7 @@ export const piMetrics: MetricsResponse = {
     support_explanation_key: 'support.compatible.profile_not_verified',
     generic_mode: false,
   },
-  alerts: [complianceAlert],
+  alerts: [], // the Compatible tier is shown in the header, not as an alert
   history: piHistory,
 };
 
@@ -111,14 +119,6 @@ export const genericMetrics: MetricsResponse = {
     support_explanation_key: 'support.generic.no_board_profile',
     generic_mode: true,
   },
-  alerts: [
-    {
-      id: 'support_generic',
-      level: 'informational',
-      cause: { key: 'alert.support_generic.cause' },
-      impact: { key: 'alert.support_generic.impact' },
-      next_step: { key: 'alert.support_generic.next' },
-    },
-  ],
+  alerts: [genericModeAlert],
   history: { schema_version: 1, interval_seconds: 2, cpu_percent: [], memory_used_percent: [], temperature_celsius: [] },
 };

@@ -25,10 +25,10 @@ const (
 	MemoryAvailableRelevantPercent = 15.0 // available memory below this share of the total: relevant
 	MemoryAvailableCriticalPercent = 8.0  // below this share: critical
 
-	// SwapUsedMinBytes is the swap use that counts as "in use". A few KiB that
-	// the kernel parks there are normal; 1 MiB stops the alert from flickering
-	// on rounding without hiding real swapping (ORB-NFR-007).
-	SwapUsedMinBytes = 1 << 20
+	// SwapUsedRelevantPercent is the share of the swap total that counts as a
+	// lot. Pages that the kernel parks in swap stay there without any swap
+	// activity, so a small occupied share is normal and raises nothing (D-C38).
+	SwapUsedRelevantPercent = 25.0 // swap occupied from this share of the swap total: relevant
 
 	StorageRelevantPercent = 85.0 // a real file system used above this share: relevant
 	StorageCriticalPercent = 95.0 // above this share: critical
@@ -88,9 +88,14 @@ func Evaluate(s Snapshot, ctx AlertContext) []Alert {
 		}
 	}
 
-	// 3. Swap in use.
-	if m := s.Memory; m.SwapUsedBytes != nil && *m.SwapUsedBytes >= SwapUsedMinBytes {
-		add(simple("swap_in_use", LevelRelevant, map[string]any{"used_mib": round(float64(*m.SwapUsedBytes)/(1<<20), 1)}))
+	// 3. Swap occupied: a share of the swap total. Occupied is not active, so
+	// the texts do not claim that the system is swapping. An unknown or zero
+	// swap total (no swap configured) raises nothing.
+	if m := s.Memory; m.SwapTotalBytes != nil && m.SwapUsedBytes != nil && *m.SwapTotalBytes > 0 {
+		pct := float64(*m.SwapUsedBytes) / float64(*m.SwapTotalBytes) * 100
+		if pct >= SwapUsedRelevantPercent {
+			add(simple("swap_in_use", LevelRelevant, map[string]any{"percent": round(pct, 1), "used_mib": round(float64(*m.SwapUsedBytes)/(1<<20), 1)}))
+		}
 	}
 
 	// 4. Storage: every real file system on its own.
@@ -127,12 +132,11 @@ func Evaluate(s Snapshot, ctx AlertContext) []Alert {
 		add(simple("cpu_load", LevelRelevant, map[string]any{"load": s.CPU.Load.One, "cores": *s.CPU.Cores}))
 	}
 
-	// 7. Informational: the support status from device detection.
-	switch ctx.SupportTier {
-	case "generic":
+	// 7. Informational: Generic Mode from device detection. The support tier
+	// itself ("Compatible", "Verified", ...) is shown in the Home header and on
+	// the Device page, not as an alert (D-C44).
+	if ctx.SupportTier == "generic" {
 		add(simple("support_generic", LevelInformational, nil))
-	case "compatible":
-		add(simple("support_compatible", LevelInformational, nil))
 	}
 
 	sort.SliceStable(alerts, func(i, j int) bool { return levelRank(alerts[i].Level) < levelRank(alerts[j].Level) })
@@ -190,7 +194,7 @@ func AlertKeys() []string {
 		{"memory_available", []string{LevelRelevant, LevelCritical}},
 		{"storage_usage", []string{LevelRelevant, LevelCritical}},
 		{"swap_in_use", nil}, {"network_no_link", nil}, {"cpu_load", nil},
-		{"support_generic", nil}, {"support_compatible", nil},
+		{"support_generic", nil},
 	} {
 		for _, part := range []string{"cause", "impact", "next"} {
 			if r.levels == nil {

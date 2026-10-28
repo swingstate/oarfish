@@ -2,14 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import Home from './Home.svelte';
 import { FakeEventSource } from './lib/eventsource.fake';
-import { fmt, msg, t } from './lib/i18n';
+import { en, fmt, msg, t } from './lib/i18n';
 import {
-  complianceAlert,
   criticalTemperatureAlert,
   genericMetrics,
+  genericModeAlert,
   piMetrics,
   piSnapshot,
   relevantStorageAlert,
+  relevantSwapAlert,
 } from './lib/metrics.fixtures';
 import type { MetricsResponse, Snapshot } from './lib/metrics';
 
@@ -272,7 +273,7 @@ describe('Home alerts', () => {
   // ORB-DASH-005
   it('shows alerts first, grouped by level, each with cause, impact and next step', async () => {
     const es = await renderLive();
-    es.send('alerts', { schema_version: 1, alerts: [criticalTemperatureAlert, relevantStorageAlert, complianceAlert] });
+    es.send('alerts', { schema_version: 1, alerts: [criticalTemperatureAlert, relevantStorageAlert, genericModeAlert] });
 
     const group = (level: string) => document.querySelector(`.alert-group[data-level="${level}"]`) as HTMLElement;
     await waitFor(() => expect(group('critical')).not.toBeNull());
@@ -287,11 +288,36 @@ describe('Home alerts', () => {
 
     const relevant = within(group('relevant'));
     expect(relevant.getByText('Das Dateisystem / ist zu 88,4 % belegt. Über 85 % wird es gemeldet.')).toBeTruthy();
-    expect(within(group('informational')).getByText(t['alert.support_compatible.cause'])).toBeTruthy();
+    expect(within(group('informational')).getByText(t['alert.support_generic.cause'])).toBeTruthy();
 
     // The alerts come before every other part of the page.
     const sections = Array.from(document.querySelectorAll('.home section')).map((s) => s.getAttribute('aria-labelledby'));
     expect(sections[0]).toBe('alerts-heading');
+  });
+
+  // The swap alert says occupied, gives the percentage and the amount, and does not claim swapping (D-C38).
+  it('words the swap alert as occupied swap, in German and in English', async () => {
+    const es = await renderLive();
+    es.send('alerts', { schema_version: 1, alerts: [relevantSwapAlert] });
+    const relevant = () => document.querySelector('.alert-group[data-level="relevant"]') as HTMLElement;
+    await waitFor(() => expect(relevant()).not.toBeNull());
+    expect(within(relevant()).getByText('Der Auslagerungsspeicher (Swap) ist zu 31,2 % belegt (160 MiB).')).toBeTruthy();
+    expect(within(relevant()).getByText(t['alert.swap_in_use.impact'])).toBeTruthy();
+    expect(within(relevant()).getByText(t['alert.swap_in_use.next'])).toBeTruthy();
+
+    for (const dict of [t, en]) {
+      expect(dict['alert.swap_in_use.cause']).toContain('{percent}');
+      expect(dict['alert.swap_in_use.cause']).toContain('{used_mib}');
+    }
+    expect(en['alert.swap_in_use.cause']).toBe('Swap is {percent} % occupied ({used_mib} MiB).');
+    expect(t['alert.swap_in_use.impact']).toContain('nicht, dass gerade ausgelagert wird');
+    expect(en['alert.swap_in_use.impact']).toContain('does not mean that the system is swapping right now');
+  });
+
+  it('does not alert for the Compatible tier; the status stays in the header', async () => {
+    await renderLive(piMetrics);
+    expect(screen.getByText(t.alertsNone)).toBeTruthy();
+    expect(text('tier')).toBe(t['tier.compatible']);
   });
 
   it('says so when there is nothing to report, and when the list changes', async () => {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeEventSource } from './eventsource.fake';
-import { piHistory, piSnapshot, complianceAlert } from './metrics.fixtures';
+import { piHistory, piSnapshot, genericModeAlert } from './metrics.fixtures';
 import { MetricsStream, type StreamState } from './stream';
 
 let hidden = false;
@@ -46,12 +46,12 @@ describe('MetricsStream', () => {
 
     FakeEventSource.last.open();
     FakeEventSource.last.send('history', piHistory);
-    FakeEventSource.last.send('alerts', { schema_version: 1, alerts: [complianceAlert] });
+    FakeEventSource.last.send('alerts', { schema_version: 1, alerts: [genericModeAlert] });
     FakeEventSource.last.send('metrics', piSnapshot);
 
     expect(states).toEqual(['connecting', 'live']);
     expect(snapshots).toEqual([piSnapshot]);
-    expect(alerts).toEqual([[complianceAlert]]);
+    expect(alerts).toEqual([[genericModeAlert]]);
     expect(histories).toEqual([piHistory]);
     stream.stop();
   });
