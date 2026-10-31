@@ -197,7 +197,7 @@ Four tests (G3 and G4 on the same device; G5 and the UI foundation on a Raspberr
 
 Memory note: `systemctl status` shows no `Memory:` line on this image, because cgroup memory accounting is not enabled by default. The memory figure was therefore read from `/proc/<pid>/status` (`VmRSS`). It is the resident size of the Oarfish process at one moment, not a measurement under load and not a test of the 512 MB budget.
 
-Anonymous download and verification of the release: checked on 2026-10-26 for `v0.1.0-alpha.2` (`curl` without token, signature, SHA-256 of the files, version stamp in `install.sh`); later checked for `v0.1.0-alpha.5` (see [RELEASING.md](RELEASING.md#verify-a-release-anonymously)). The `releases/latest/download/install.sh` address is a different matter and is still to be verified with the first stable release (see [Install](#install)).
+Anonymous download and verification of the release: checked on 2026-10-26 for `v0.1.0-alpha.2` (`curl` without token, signature, SHA-256 of the files, version stamp in `install.sh`); later checked for `v0.1.0-alpha.6` (see [RELEASING.md](RELEASING.md#verify-a-release-anonymously)). The `releases/latest/download/install.sh` address is a different matter and is still to be verified with the first stable release (see [Install](#install)).
 
 The test setup is deliberately not identified here: no host or user names, no addresses.
 
@@ -374,6 +374,6 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 - The containers have **no systemd**: a small stand-in starts the binary. Only the one device above has run the unit file under a real systemd; other kernels and images may differ.
 - The 512 MB memory budget under load, long-term memory use, and write load on a microSD card are not tested. The idle `VmRSS` readings (7020 kB, 9212 kB and 8480 kB, three different releases; none for `v0.1.0-alpha.5`) are not a budget test.
 - The presence of OpenSSL 3 and the other tools on Ubuntu Server images, and on other versions of Raspberry Pi OS, is assumed from package information. One device had OpenSSL 3.5.7.
-- `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified for `v0.1.0-alpha.2` (2026-10-26) and for `v0.1.0-alpha.5` (see [RELEASING.md](RELEASING.md)).
+- `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified for `v0.1.0-alpha.2` (2026-10-26) and for `v0.1.0-alpha.6` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.
 - Two installers running at the same time are not guarded against.
