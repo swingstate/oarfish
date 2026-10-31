@@ -6,6 +6,12 @@
 // (the browser does that itself for a dropped connection; for a refused one,
 // for example 503 when too many windows are open, it must be done by hand),
 // and it reports a "stale" state when the stream is open but no values arrive.
+//
+// The stream belongs to a session (ADR 0009, E2). When the session ends, the
+// server sends a last "session" event and closes; this class then stops for
+// good and reports it, instead of reconnecting. When the browser gives up on a
+// refused connection, the class asks checkSession before it tries again: a 401
+// (session gone) must not turn into a reconnect loop.
 import { parseAlerts, parseHistory, parseSnapshot, type Alert, type History, type Snapshot } from './metrics';
 
 export type StreamState =
@@ -22,6 +28,8 @@ export interface StreamHandlers {
   onState(state: StreamState): void;
   /** A message that could not be read and was ignored. */
   onMalformed?(event: string): void;
+  /** The session of the stream ended; the stream has stopped and does not reconnect. */
+  onSessionEnded?(): void;
 }
 
 /** The part of EventSource this class uses, so tests can supply a fake. */
@@ -43,12 +51,15 @@ export interface StreamOptions {
   createSource?: (url: string) => EventSourceLike;
   isHidden?: () => boolean;
   doc?: Pick<Document, 'addEventListener' | 'removeEventListener'>;
+  /** Asked before a reconnect by hand; false means the session is gone and the stream stops. */
+  checkSession?: () => Promise<boolean>;
 }
 
 const CLOSED = 2; // EventSource.CLOSED
 
 export class MetricsStream {
-  private readonly o: Required<StreamOptions>;
+  private readonly o: Required<Omit<StreamOptions, 'checkSession'>>;
+  private readonly checkSession: (() => Promise<boolean>) | undefined;
   private source: EventSourceLike | null = null;
   private staleTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -67,6 +78,7 @@ export class MetricsStream {
       doc: document,
       ...options,
     };
+    this.checkSession = options.checkSession;
   }
 
   /** Starts listening, now if the page is visible, otherwise when it becomes visible. */
@@ -117,15 +129,28 @@ export class MetricsStream {
       this.clearStale();
       this.setState('reconnecting');
       if (es.readyState === CLOSED) {
-        // The browser gave up (for example on a 503). Try again by hand, later each time.
+        // The browser gave up (for example on a 503, or a 401 when the session
+        // is gone). Ask whether the session still exists; if so, try again by
+        // hand, later each time.
         es.close();
         this.source = null;
         const delay = Math.min(this.o.baseDelayMs * 2 ** this.attempt, this.o.maxDelayMs);
         this.attempt++;
-        this.retryTimer = setTimeout(() => {
-          this.retryTimer = null;
-          if (this.running && !this.o.isHidden()) this.open();
-        }, delay);
+        const retry = () => {
+          this.retryTimer = setTimeout(() => {
+            this.retryTimer = null;
+            if (this.running && !this.o.isHidden()) this.open();
+          }, delay);
+        };
+        if (!this.checkSession) {
+          retry();
+          return;
+        }
+        void this.checkSession().then((alive) => {
+          if (!this.running || this.source !== null) return;
+          if (alive) retry();
+          else this.endSession();
+        });
       }
       // Otherwise the browser is reconnecting itself after the server's retry hint.
     };
@@ -154,6 +179,16 @@ export class MetricsStream {
       this.h.onHistory(hist);
       return true;
     });
+    on('session', () => {
+      this.endSession();
+      return true;
+    });
+  }
+
+  /** The session is gone: stop for good and say so. */
+  private endSession(): void {
+    this.stop();
+    this.h.onSessionEnded?.();
   }
 
   private armStale(): void {

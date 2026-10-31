@@ -1,6 +1,6 @@
 # User interface foundation
 
-Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and two pages (Home and Gerät) built on them, in a light and a dark theme. This is appearance and structure only: no function was added and no API changed. It is not a gate (decisions D-C42, D-C43). The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). Home itself is described in [`DASHBOARD.md`](DASHBOARD.md#home-page).
+Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and the pages built on them, in a light and a dark theme: Home and Gerät (UI foundation task, D-C42, D-C43), and since Gate G5.1 the access pages Einrichten (setup), Anmelden (login) and Konto (account), described in [`AUTH.md`](AUTH.md) and in [Access states](#access-states-gate-g51) below. The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). Home itself is described in [`DASHBOARD.md`](DASHBOARD.md#home-page).
 
 **Status: implemented and tested** with jsdom unit tests and with headless Chrome on one developer Mac (layout checks at five widths, reference screenshots). **Checked once on a Raspberry Pi Zero 2 W with `v0.1.0-alpha.5`** in Safari, Chrome and Firefox ([hardware result](INSTALL.md#ui-foundation-v010-alpha5)). **Not verified:** a screen reader, keyboard use in Safari, forced-colours mode in a real browser, the lost-connection display on the device. See [Verification status](#verification-status) and [Known gaps](#known-gaps).
 
@@ -37,6 +37,11 @@ frontend/src/
   components/              the reusable components (below)
   pages/Home.svelte        Home, built on the components
   pages/Device.svelte      Gerät, built on the components
+  pages/Setup.svelte       Einrichten: first start with the setup token (G5.1)
+  pages/Login.svelte       Anmelden (G5.1)
+  pages/Account.svelte     Konto: change the password (G5.1), reached from the user menu
+  lib/session.ts           the session client; the CSRF token lives in its module variable only
+  lib/authErrors.ts        error codes of the access endpoints to sentences
   lib/ui.ts                tones, and how API values map to them
   lib/icons.ts             the own icon set (inline SVG paths)
   lib/contrast.ts          WCAG contrast maths in plain TypeScript
@@ -191,7 +196,12 @@ All components are Svelte 5 with TypeScript and no dependency. They hold no UI t
 
 | Component | Purpose | Props | States and behaviour |
 |---|---|---|---|
-| `AppShell` | Skip link, banner with brand and navigation, main area. Below 60rem the sidebar is a top bar. | `items` (navigation entries), `current` (id), `children` | Current entry has `aria-current="page"`, a tint and a bar, so it is not shown by colour alone. The skip link moves focus to `main` and never changes the address. |
+| `AppShell` | Skip link, banner with brand and navigation, main area. Below 60rem the sidebar is a top bar. | `items` (navigation entries), `current` (id), `account` (the user menu), `children` | Current entry has `aria-current="page"`, a tint and a bar, so it is not shown by colour alone. The skip link moves focus to `main` and never changes the address. |
+| `AuthShell` | The frame before sign-in (checking, setup, login): brand bar and one narrow column in `main`. No navigation, no device data. | `children` | One `main` landmark; the page inside has the `h1`. |
+| `BrandMark` | The Oarfish mark, decorative. | none | `aria-hidden`; the brand name next to it is the text. |
+| `UserMenu` | The signed-in user in the shell: a native `details` whose `summary` is the user name; inside, the link to Konto and the Abmelden button. | `username`, `accountHref`, `current`, `onLogout`, `busy` | The summary's accessible name is "Benutzermenü: <name>". Opened with Enter or Space. Not a live region. |
+| `FormField` | Label, optional help, input and the field's own error, tied together with `for`, `aria-describedby` and `aria-invalid`. | `id`, `label`, `value` (bindable), `type` (`text`, `password`), `autocomplete`, `help`, `error`, `disabled`, `input` (bindable element) | Always `autocapitalize="off"` and `spellcheck="false"`. An error adds a 2 px critical border and the error text below the field, never colour alone. |
+| `FormMessage` | The message area of a form. | `tone`, `testid` | `role="alert"` for `critical` (announced at once), `role="status"` otherwise. A new error is a new node, so the same sentence is announced again. |
 | `PageHeader` | The one `h1` of a page and an optional small aside. | `title`, `aside` | Wraps on a narrow screen. |
 | `Card` | A labelled section with a heading (`<id>-heading`), an icon and a body. | `id`, `title`, `icon`, `stale`, `wide` | `stale`: the body is dimmed to `--opacity-stale` (contrast is tested at that opacity) and the header shows the Veraltet badge. |
 | `SummaryStrip` | The row at the top of Home: host name, board, operating system, uptime, support status. A group, not a section. | `items`, `label`, `stale` | The host name is cut to one line with the full text as `title`; other values wrap. A missing value is a neutral placeholder. |
@@ -206,7 +216,7 @@ All components are Svelte 5 with TypeScript and no dependency. They hold no UI t
 | `EmptyState` | A state without data: loading, error, or "nothing found". | `icon`, `tone`, `title`, `description`, `compact`, `role` | Full size on a page, `compact` inside a card. Only an error state gets `role="alert"`. |
 | `Icon` | One of the own icons, decorative (`aria-hidden`). | `name` | Sizes with the text (`1.25em`), colour is `currentColor`. |
 
-Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `wifi`, `ethernet`, `info`, `warning`, `critical`, `success`, `clock`. They are 24 by 24 outline paths drawn for this project, so there is no icon library and no third-party licence. The icon for an interface follows the API field `kind` (`wifi`, `ethernet`, else the generic `network`).
+Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `wifi`, `ethernet`, `info`, `warning`, `critical`, `success`, `clock`, `user`, `lock`. They are 24 by 24 outline paths drawn for this project, so there is no icon library and no third-party licence. The icon for an interface follows the API field `kind` (`wifi`, `ethernet`, else the generic `network`).
 
 ## Layout rules and breakpoints
 
@@ -241,6 +251,25 @@ Each state is designed and has a test (`pages/Home.states.test.ts`, `pages/Home.
 | Very long host name | One line, ellipsis, full name as `title`. | "state very long host name" |
 | Link states | `up` is a green "Verbunden". "Kein Link", "Unbekannt" and any state this version does not know are neutral grey, never a warning. | "shows a link state honestly" |
 | Support tier | `verified` success, `compatible` information, `experimental` warning, `unsupported` critical, everything else neutral. | "colours the support status by tier" |
+
+### Access states (Gate G5.1)
+
+The app shows nothing of the dashboard until `GET /api/v1/session` has answered (ADR 0009). Tests: `pages/Auth.test.ts`, `lib/session.test.ts`, `App.test.ts`.
+
+| State | What the user sees | Test |
+|---|---|---|
+| Checking the session | `AuthShell` with "Sitzung wird geprüft …"; no navigation, no request for device data, no stream. | `Auth.test.ts` "shows nothing of the dashboard before the session state is known" |
+| Oarfish unreachable | "Oarfish ist nicht erreichbar." with the hint and "Erneut versuchen". | "says so when Oarfish cannot be reached, and tries again" |
+| Setup required | Einrichten: setup code with the command `sudo cat /var/lib/oarfish/setup-token`, user name, password twice; a read-only section "Erreichbarkeit" says that Oarfish is reachable on this device only (loopback). There is no binding choice. Focus starts on the first field. | "names the command for the token, says that Oarfish listens on this device only, and has accessible fields" |
+| Setup rule broken | The broken rule in the message area and at the field, the field marked invalid and focused, both password fields cleared. Nothing is sent. | "checks the rules before sending and names the broken one" |
+| Setup token wrong | "Der Einrichtungscode stimmt nicht. …", focus on the setup code. | "shows the server answer for a wrong token, then sets up and opens the app" |
+| Login | Anmelden: user name (`autocomplete="username"`), password (`current-password`); focus on the user name. | "has labelled fields with the right autocomplete and the focus on the user name" |
+| Login failed | One sentence for a wrong user name and a wrong password; the password is cleared, the user name kept, focus on the password. | "gives the same sentence for a wrong user name and a wrong password, and clears the password" |
+| Rate limited | "Zu viele Versuche. Warten Sie 8 Sekunden …" ("eine Sekunde" for one, minutes from two minutes on). | "shows the wait time when rate limited" |
+| Session ended | Back on Anmelden with "Die Sitzung ist beendet. Melden Sie sich erneut an." after any 401, after the stream's last `session` event, or when a refused stream finds the session gone. The stream is closed and not reopened. | "returns to the login page with "session ended" on a 401, without a reconnect loop", "returns to the login page when the server ends the stream with the session event", "asks for the session before reconnecting a refused stream, and stops when it is gone" |
+| Signed out | Back on Anmelden with "Sie sind abgemeldet."; the stream is closed. | "has a user menu with the account page and Abmelden, and logs out" |
+| Account | Konto: "Angemeldet als …", the session lifetimes, the form current / new / repeat. Errors as above; success: "Das Passwort ist geändert. Alle anderen Sitzungen sind beendet." | "changes the password on the account page" |
+| No secret in the browser | The CSRF token is in a module variable; neither it nor a password is in `localStorage`, `sessionStorage`, `document.cookie`, the address, the title or the page. | "signs in, keeps the token out of browser storage and the address, and sends no CSRF-free change", `session.test.ts` "reads the session state and keeps the CSRF token in memory only" |
 
 Where stale values could read as a current claim (checked for the wording fix; only wording and marking were changed):
 
@@ -396,6 +425,57 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `tier.experimental` | Experimentell | Experimental |
 | `tier.generic` | Generisch | Generic |
 | `tier.unsupported` | Nicht unterstützt | Unsupported |
+| `navAccount` | Konto | Account |
+| `accountTitle` | Konto | Account |
+| `userMenuLabel` | Benutzermenü | User menu |
+| `logout` | Abmelden | Sign out |
+| `sessionLoading` | Sitzung wird geprüft … | Checking the session … |
+| `sessionError` | Oarfish ist nicht erreichbar. | Oarfish cannot be reached. |
+| `setupTitle` | Oarfish einrichten | Set up Oarfish |
+| `setupIntro` | Legen Sie das Administratorkonto an. Ohne dieses Konto zeigt Oarfish keine Daten des Geräts. | Create the administrator account. Without it, Oarfish shows no data of the device. |
+| `setupTokenLabel` | Einrichtungscode | Setup code |
+| `setupTokenHelp` | Nur wer Zugang zum Gerät hat, kann ihn lesen. Zeigen Sie ihn dort mit diesem Befehl an: | Only someone with access to the device can read it. Show it there with this command: |
+| `setupTokenCommand` | sudo cat /var/lib/oarfish/setup-token | sudo cat /var/lib/oarfish/setup-token |
+| `setupBindingHeading` | Erreichbarkeit | Reachability |
+| `setupBinding` | Oarfish ist nur auf diesem Gerät erreichbar (Loopback, 127.0.0.1). Von einem anderen Rechner aus nutzen Sie einen SSH-Tunnel. | Oarfish can only be reached on this device (loopback, 127.0.0.1). From another computer, use an SSH tunnel. |
+| `usernameLabel` | Benutzername | User name |
+| `usernameHelp` | 1 bis 32 Zeichen: Kleinbuchstaben, Ziffern, Punkt, Bindestrich und Unterstrich. | 1 to 32 characters: lower-case letters, digits, dot, hyphen and underscore. |
+| `passwordLabel` | Passwort | Password |
+| `newPasswordHelp` | Mindestens 12 Zeichen. Mehrere Wörter sind leicht zu merken. | At least 12 characters. Several words are easy to remember. |
+| `passwordRepeatLabel` | Passwort wiederholen | Repeat the password |
+| `setupSubmit` | Konto anlegen | Create account |
+| `setupWorking` | Konto wird angelegt … | Creating the account … |
+| `loginTitle` | Anmelden | Sign in |
+| `loginIntro` | Melden Sie sich mit dem Administratorkonto an. | Sign in with the administrator account. |
+| `loginSubmit` | Anmelden | Sign in |
+| `loginWorking` | Anmeldung läuft … | Signing in … |
+| `loginExpired` | Die Sitzung ist beendet. Melden Sie sich erneut an. | The session has ended. Sign in again. |
+| `loginLoggedOut` | Sie sind abgemeldet. | You are signed out. |
+| `accountSignedInAs` | Angemeldet als {user}. | Signed in as {user}. |
+| `accountSessionNote` | Eine Sitzung endet nach einer Stunde ohne Aktivität, spätestens nach zwölf Stunden. | A session ends after one hour without activity, at the latest after twelve hours. |
+| `accountPasswordHeading` | Passwort ändern | Change password |
+| `currentPasswordLabel` | Aktuelles Passwort | Current password |
+| `newPasswordLabel` | Neues Passwort | New password |
+| `newPasswordRepeatLabel` | Neues Passwort wiederholen | Repeat the new password |
+| `accountSubmit` | Passwort ändern | Change password |
+| `accountWorking` | Passwort wird geändert … | Changing the password … |
+| `accountChanged` | Das Passwort ist geändert. Alle anderen Sitzungen sind beendet. | The password is changed. All other sessions have ended. |
+| `errorCredentials` | Benutzername oder Passwort ist falsch. | The user name or the password is wrong. |
+| `errorRateLimitedOneSecond` | Zu viele Versuche. Warten Sie eine Sekunde und versuchen Sie es dann erneut. | Too many attempts. Wait one second, then try again. |
+| `errorRateLimitedSeconds` | Zu viele Versuche. Warten Sie {seconds} Sekunden und versuchen Sie es dann erneut. | Too many attempts. Wait {seconds} seconds, then try again. |
+| `errorRateLimitedMinutes` | Zu viele Versuche. Warten Sie {minutes} Minuten und versuchen Sie es dann erneut. | Too many attempts. Wait {minutes} minutes, then try again. |
+| `errorSetupToken` | Der Einrichtungscode stimmt nicht. Lesen Sie ihn auf dem Gerät erneut aus. | The setup code is wrong. Read it again on the device. |
+| `errorSetupDone` | Das Administratorkonto ist schon eingerichtet. Melden Sie sich an. | The administrator account exists already. Sign in. |
+| `errorUsername` | Dieser Benutzername ist nicht erlaubt. Erlaubt sind 1 bis 32 Kleinbuchstaben, Ziffern, Punkt, Bindestrich und Unterstrich. | This user name is not allowed. Allowed are 1 to 32 lower-case letters, digits, dot, hyphen and underscore. |
+| `errorPasswordShort` | Das Passwort ist zu kurz. Es braucht mindestens 12 Zeichen. | The password is too short. It needs at least 12 characters. |
+| `errorPasswordLong` | Das Passwort ist zu lang. Es darf höchstens 128 Zeichen haben. | The password is too long. It may have at most 128 characters. |
+| `errorPasswordCommon` | Dieses Passwort ist zu verbreitet. Wählen Sie ein anderes. | This password is too common. Choose another one. |
+| `errorPasswordInvalid` | Das Passwort enthält ein Zeichen, das nicht erlaubt ist. | The password contains a character that is not allowed. |
+| `errorPasswordMismatch` | Die beiden Passwörter sind nicht gleich. | The two passwords are not the same. |
+| `errorCurrentPassword` | Das aktuelle Passwort ist falsch. | The current password is wrong. |
+| `errorRequired` | Dieses Feld ist leer. | This field is empty. |
+| `errorNetwork` | Oarfish ist nicht erreichbar. Prüfen Sie die Verbindung und versuchen Sie es erneut. | Oarfish cannot be reached. Check the connection and try again. |
+| `errorGeneric` | Das hat nicht funktioniert. Versuchen Sie es erneut. | That did not work. Try again. |
 
 ## Text rules
 
@@ -420,8 +500,9 @@ Target: WCAG 2.2 AA (ORB-NFR-011). What is tested and what is not is in [Verific
 - **Focus.** One visible ring (`--focus-ring-*`) with 3:1 against every background. No sticky element covers a focused element.
 - **Target size.** Buttons, navigation entries, `summary` and links are at least 24 by 24 CSS pixels (`--target-min`).
 - **Landmarks and headings.** `header` (banner, with the navigation), `nav` with a name, `main`. One `h1` per page; `h2` for cards, `h3` for alert groups, `h4` for alert titles; no level is skipped. A skip link is the first focusable element.
-- **Native elements.** Only `a`, `button` and `summary` are interactive. No `tabindex` above 0, no `role="button"`.
-- **Live region.** Only the alert list has `aria-live`, exactly as before. The connection indicator, the notices and the metric values are not announced. The Gerät page keeps its loading and error roles.
+- **Native elements.** Only `a`, `button`, `summary` and, on the access pages, labelled `input` elements are interactive. No `tabindex` above 0, no `role="button"`. Forms submit with Enter.
+- **Live region.** On Home only the alert list has `aria-live`, exactly as before. The connection indicator, the notices and the metric values are not announced. The Gerät page keeps its loading and error roles. The forms of Einrichten, Anmelden and Konto each have one message area (`FormMessage`): errors as `role="alert"`, the expired and signed-out notes and the success note as `role="status"`.
+- **Forms.** Every field has a visible label and, where it helps, a help text tied with `aria-describedby`. An error names the rule, marks the field with `aria-invalid` and a thicker border, and moves the focus to the field. Password fields are cleared after every submit. On a page change the focus goes to the first field.
 - **Images and icons.** Icons are `aria-hidden`. A sparkline is an image with a text alternative that includes the latest value. A meter has an accessible name and its value.
 - **Motion.** Nothing animates when a value updates (no transition on a bar, no animation at all). Hover and open effects use `--duration-*`, which `prefers-reduced-motion` sets to zero.
 - **Colour schemes and forced colours.** `color-scheme: light dark`; `forced-colors: active` rules for focus, borders, meters, the indicator dot and the current entry.
@@ -528,12 +609,14 @@ Do not add an entry for a function that does not exist yet (specification 7.1, "
 
 Initial frontend, `gzip -9` per file (the budget in ORB-NFR-006 is 750,000 bytes):
 
-| | Before | After |
-|---|---|---|
-| `index.html` | 263 | 265 |
-| CSS | 1,806 | 4,522 |
-| JavaScript | 27,122 | 36,258 |
-| **Total** | **29,191** | **41,045** |
+| | Before the UI foundation | After the UI foundation | After Gate G5.1 |
+|---|---|---|---|
+| `index.html` | 263 | 265 | 266 |
+| CSS | 1,806 | 4,522 | 5,003 |
+| JavaScript | 27,122 | 36,258 | 43,195 |
+| **Total** | **29,191** | **41,045** | **48,464** |
+
+The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added.
 
 Updating a sample changes text and attributes in place: no element is added or removed and the cards stay the same nodes (`Home.update.test.ts`). The sparkline path is derived from its values and changes only when a sample arrives. No CSS animation exists.
 
@@ -550,8 +633,11 @@ Updating a sample changes text and attributes in place: no element is added or r
 - **Neutral interface state.** The tunnel interface with operstate `unknown` was shown in neutral grey, not red.
 - **Keyboard-only use** worked in Chrome or Firefox (the owner did not name which): skip link, tab order, opening and closing the technical details, navigation to Gerät and the "Erneut laden" button. The focus indicator was visible.
 
+**Gate G5.1 access pages:** verified by the jsdom tests above only. They have not been opened in a real browser yet; the cookie behaviour in Safari, Chrome and Firefox against `http://127.0.0.1` through an SSH tunnel is part of the hardware check ([`AUTH.md`](AUTH.md#measurements-and-checks-on-the-device)).
+
 **Not verified:**
 
+- **The access pages (setup, login, account, user menu) in any real browser, and their layout at the five widths.**
 - **The dark theme in Chrome and Firefox.** Not reported; only Safari's dark theme was looked at on the device.
 - **A screen reader.** Only structure is tested (roles, names, native elements).
 - **Keyboard use in Safari.**

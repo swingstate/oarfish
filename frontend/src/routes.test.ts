@@ -4,9 +4,12 @@ import { icons } from './lib/icons.fake';
 import { routeFromHash, routes, type Route } from './routes';
 
 describe('navigation list', () => {
-  it('lists Home first and then Gerät, and nothing else', () => {
-    expect(routes.map((r) => r.id)).toEqual(['home', 'device']);
-    expect(routes.map((r) => de[r.labelKey])).toEqual(['Home', 'Gerät']);
+  it('lists Home first and then Gerät in the navigation, and the account page outside it', () => {
+    const nav = routes.filter((r) => r.nav !== false);
+    expect(nav.map((r) => r.id)).toEqual(['home', 'device']);
+    expect(nav.map((r) => de[r.labelKey])).toEqual(['Home', 'Gerät']);
+    expect(routes.filter((r) => r.nav === false).map((r) => r.id)).toEqual(['account']);
+    expect(routeFromHash('#/account').id).toBe('account');
   });
 
   it('has unique ids and paths, a text in both languages, and a known icon for every entry', () => {

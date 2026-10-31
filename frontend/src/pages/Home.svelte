@@ -27,6 +27,7 @@
     type Rate,
     type Snapshot,
   } from '../lib/metrics';
+  import { fetchSession, sessionLost } from '../lib/session';
   import { MetricsStream, type StreamState } from '../lib/stream';
   import { linkTone, seriesRange, tierTone, type KeyValueItem, type MeterLevel, type SummaryItem } from '../lib/ui';
 
@@ -101,6 +102,18 @@
         conn = s;
         // The device summary only comes with the one-shot request; try again if it failed.
         if (s === 'live' && device === null) void load();
+      },
+      // The server ended the stream because the session ended (logout elsewhere,
+      // expiry, a password change): back to the login page, no reconnect.
+      onSessionEnded: () => sessionLost('expired'),
+    }, {
+      // Before reconnecting by hand after a refused stream: is the session still
+      // there? A network error counts as yes (unstable Wi-Fi, ORB-NFR-014).
+      checkSession: async () => {
+        const r = await fetchSession();
+        if (!r.ok || r.session.state === 'authenticated') return true;
+        sessionLost(r.session.state === 'setup_required' ? 'setup_required' : 'expired');
+        return false;
       },
     });
     stream.start();

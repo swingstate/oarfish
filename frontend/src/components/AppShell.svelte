@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import { t } from '../lib/i18n';
   import type { NavItem } from '../lib/ui';
+  import BrandMark from './BrandMark.svelte';
   import Icon from './Icon.svelte';
 
   interface Props {
@@ -9,9 +10,11 @@
     items: NavItem[];
     /** The id of the entry whose page is shown. */
     current: string;
+    /** The user menu (account and logout), after the navigation. */
+    account?: Snippet;
     children: Snippet;
   }
-  let { items, current, children }: Props = $props();
+  let { items, current, account, children }: Props = $props();
 
   let main: HTMLElement | undefined = $state();
 
@@ -28,10 +31,7 @@
   <header>
     <div class="side">
       <a class="brand" href={items[0]?.href ?? '#/'}>
-        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M2.5 12c3-5.5 9.5-6.5 13.5-3.2L21.5 6v12L16 15.2c-4 3.3-10.5 2.3-13.5-3.2z" />
-          <circle cx="8" cy="11" r="1" />
-        </svg>
+        <BrandMark />
         <span>{t.brandName}</span>
       </a>
       <nav aria-label={t.navLabel}>
@@ -46,6 +46,7 @@
           {/each}
         </ul>
       </nav>
+      {#if account}{@render account()}{/if}
     </div>
   </header>
 
@@ -104,17 +105,6 @@
     font-weight: var(--weight-semibold);
     color: var(--color-text);
     text-decoration: none;
-  }
-
-  .mark {
-    flex: none;
-    width: 1.5rem;
-    height: 1.5rem;
-    fill: var(--color-accent);
-  }
-
-  .mark circle {
-    fill: var(--color-surface);
   }
 
   nav ul {

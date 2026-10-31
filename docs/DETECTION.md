@@ -10,7 +10,7 @@ Normative sources: Pflichtenheft 3.4 to 3.7, 6.2, 7.2, 8.3, 8.4, 12.4. Decisions
 
 In: read-only detection, the profile registry, the support tier, the read-only API and the Gerät page.
 
-Not in G4: dashboard, metrics and charts (G5); authentication, accounts and audit (G5.1, D-C27); self-update with its update helper (G6, D-C28); the privilege broker (G7) and its capability check (G8, D-C28); systemd and journal management (G7); plugins; package, network and service adapters; signed profile packages; any Ubuntu-specific behaviour; running any external program. The API stays on loopback (`127.0.0.1:8484`, D-C11); there is no login yet, so it must not be exposed.
+Not in G4: dashboard, metrics and charts (G5); authentication, accounts and audit (G5.1, D-C27, [`AUTH.md`](AUTH.md); since then `GET /api/v1/device` needs a session); self-update with its update helper (G6, D-C28); the privilege broker (G7) and its capability check (G8, D-C28); systemd and journal management (G7); plugins; package, network and service adapters; signed profile packages; any Ubuntu-specific behaviour; running any external program. The API stays on loopback (`127.0.0.1:8484`, D-C11); there is no login yet, so it must not be exposed.
 
 ## Architecture
 

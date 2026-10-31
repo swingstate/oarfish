@@ -43,9 +43,14 @@ jobs:
       - name: go test
         working-directory: backend
         run: go test -race ./...
+      # ADR 0009 E1, ORB-NFR-001: the resident size after Argon2id hashes on
+      # Linux. Without the race detector, whose shadow memory would hide it.
+      - name: Hash memory is returned to the OS (Linux, no race detector)
+        working-directory: backend
+        run: go test -count=1 -run '^TestHashMemoryIsReturnedToTheOS$' -v ./internal/auth
       # Short fuzz runs of the parsers that read untrusted system files.
       # The seed corpora also run as ordinary tests in the step above.
-      - name: Fuzz the detection and metrics parsers
+      - name: Fuzz the detection, metrics and password-hash parsers
         working-directory: backend
         run: |
           go test -run '^$' -fuzz '^FuzzParseOSRelease$' -fuzztime 5s ./internal/platform/operating_system
@@ -53,6 +58,18 @@ jobs:
           for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes; do
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/metrics/parse
           done
+          go test -run '^$' -fuzz '^FuzzParsePHC$' -fuzztime 5s ./internal/auth
+      # ADR 0009 E1: golang.org/x/crypto/argon2 is the only third-party package
+      # (TestArchitectureOnlyArgon2FromXCrypto checks the imports); here the
+      # compiler's own view of the release target confirms it.
+      - name: Only argon2 and its closure from golang.org/x in the linux/arm64 build
+        working-directory: backend
+        run: |
+          deps="$(GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./cmd/oarfish | grep -v '^github.com/swingstate/oarfish/' || true)"
+          echo "$deps"
+          extra="$(echo "$deps" | grep -vxE 'golang.org/x/crypto/(argon2|blake2b)|golang.org/x/sys/cpu' || true)"
+          if [ -n "$extra" ]; then echo "unexpected third-party packages: $extra"; exit 1; fi
+          go mod verify
       # scripts/bundlegen is a separate stdlib-only module (release packaging).
       - name: Release tooling uses the same Go version
         run: diff <(grep '^go ' backend/go.mod) <(grep '^go ' scripts/bundlegen/go.mod)

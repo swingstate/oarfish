@@ -202,4 +202,41 @@ describe('MetricsStream', () => {
     expect(FakeEventSource.instances).toHaveLength(1);
     stream.stop();
   });
+
+  it('stops for good and reports it when the server ends the stream with the session event', () => {
+    const ended = vi.fn();
+    const stream = new MetricsStream(
+      { onSnapshot: () => {}, onAlerts: () => {}, onHistory: () => {}, onState: () => {}, onSessionEnded: ended },
+      { createSource: (url) => new FakeEventSource(url), isHidden: () => hidden, doc },
+    );
+    stream.start();
+    FakeEventSource.last.open();
+    FakeEventSource.last.send('session', { schema_version: 1, state: 'ended' });
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(FakeEventSource.last.closed).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    setHidden(true);
+    setHidden(false);
+    vi.advanceTimersByTime(60000);
+    expect(FakeEventSource.instances).toHaveLength(1); // no reconnect, no listener left
+  });
+
+  it('asks checkSession before a reconnect by hand: retries while it says yes, stops when it says no', async () => {
+    const ended = vi.fn();
+    let alive = true;
+    const stream = new MetricsStream(
+      { onSnapshot: () => {}, onAlerts: () => {}, onHistory: () => {}, onState: () => {}, onSessionEnded: ended },
+      { createSource: (url) => new FakeEventSource(url), isHidden: () => hidden, doc, baseDelayMs: 1000, checkSession: () => Promise.resolve(alive) },
+    );
+    stream.start();
+    FakeEventSource.last.fail();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    alive = false;
+    FakeEventSource.last.fail();
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    expect(ended).toHaveBeenCalledTimes(1);
+    stream.stop();
+  });
 });

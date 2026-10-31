@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// D-C29: until Gate G5.1 the binary refuses a listen address that is not a
-// literal loopback IP address with a port.
+// D-C29, D-C48: the binary refuses a listen address that is not a literal
+// loopback IP address with a port, also after Gate G5.1, until LAN access and
+// HTTPS are designed (D-D10).
 func TestValidateListen(t *testing.T) {
 	accepted := []struct{ in, want string }{
 		{"127.0.0.1:8484", "127.0.0.1:8484"},
@@ -82,5 +83,26 @@ func TestValidateListenErrorIsBounded(t *testing.T) {
 	_, err := ValidateListen(strings.Repeat("x", 100000) + ":1")
 	if err == nil || len(err.Error()) > 300 {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+// D-C48: the refusal names the reason that still holds after Gate G5.1 (LAN
+// access and HTTPS are not designed), not the old "until authentication
+// exists" reason.
+func TestValidateListenMessageNamesTheOpenDesign(t *testing.T) {
+	_, err := ValidateListen("192.0.2.1:8484")
+	if err == nil {
+		t.Fatal("a non-loopback address was accepted")
+	}
+	msg := err.Error()
+	for _, want := range []string{"LAN access and HTTPS", "D-D10", "127.0.0.1:8484"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message %q does not mention %q", msg, want)
+		}
+	}
+	for _, stale := range []string{"G5.1", "until authentication exists"} {
+		if strings.Contains(msg, stale) {
+			t.Errorf("message %q still says %q", msg, stale)
+		}
 	}
 }

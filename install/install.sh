@@ -517,6 +517,10 @@ do_install() {
   say "  Open the GUI on this device:  http://$LISTEN_ADDR"
   say "  From another computer (the service listens on loopback only), open an SSH tunnel:"
   say "      ssh -L 8484:$LISTEN_ADDR <user>@<this-device>     then browse http://127.0.0.1:8484"
+  if [ ! -f "$STATE_DIR/auth/account.json" ]; then
+    say "  No administrator account exists yet. The GUI asks for the setup token; show it on this device with:"
+    say "      sudo cat /var/lib/oarfish/setup-token"
+  fi
   say "  Release key checked: $OARFISH_KEY_ID"
 }
 

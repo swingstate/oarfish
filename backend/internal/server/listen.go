@@ -8,9 +8,11 @@ import (
 	"strconv"
 )
 
-// ValidateListen enforces decision D-C29: until Gate G5.1 (authentication) is
-// PASS, the listen address must be a literal loopback IP address with a port,
-// that is 127.0.0.0/8 or [::1]. It returns the address in canonical form.
+// ValidateListen enforces decisions D-C29 and D-C48: the listen address must be
+// a literal loopback IP address with a port, that is 127.0.0.0/8 or [::1].
+// Non-loopback listening stays refused until LAN access and HTTPS are designed
+// (open item D-D10); local authentication alone (Gate G5.1) does not lift it.
+// It returns the address in canonical form.
 //
 // An empty host (":8484"), an unspecified address (0.0.0.0, [::]), any other
 // IP address and every host name, "localhost" included, are refused. There is
@@ -36,7 +38,7 @@ func ValidateListen(addr string) (string, error) {
 		return "", fmt.Errorf("the listen host %q is not a literal loopback IP address; host names such as \"localhost\" are not accepted, use 127.0.0.1", host)
 	}
 	if !ip.IsLoopback() {
-		return "", fmt.Errorf("the listen address %q is not a loopback address; until authentication exists (Gate G5.1) Oarfish listens on 127.0.0.0/8 or [::1] only; use 127.0.0.1:%s", addr, portHint(portText))
+		return "", fmt.Errorf("the listen address %q is not a loopback address; until LAN access and HTTPS are designed (D-C48, D-D10) Oarfish listens on 127.0.0.0/8 or [::1] only; use 127.0.0.1:%s", addr, portHint(portText))
 	}
 	port, err := strconv.ParseUint(portText, 10, 16)
 	if err != nil || port == 0 {

@@ -15,7 +15,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"github.com/swingstate/oarfish/backend/internal/metrics"
@@ -56,7 +55,7 @@ func newMetricsFixture(t *testing.T, fixture string, maxClients int) *metricsFix
 			return metrics.AlertContext{SupportTier: dev.Result().Support.Tier}
 		},
 	})
-	h := NewHandler(fstest.MapFS{}, WithDevice(dev), WithMetrics(s, WithHeartbeat(40*time.Millisecond), WithStreamWriteTimeout(time.Second)))
+	h := signedInHandler(t, WithDevice(dev), WithMetrics(s, WithHeartbeat(40*time.Millisecond), WithStreamWriteTimeout(time.Second)))
 	f := &metricsFixture{live: live, sampler: s, handler: h}
 	f.tickCPU(t)
 	return f
@@ -204,7 +203,7 @@ func TestMetricsEndpointsAreReadOnly(t *testing.T) {
 			}
 		}
 		rec := httptest.NewRecorder()
-		f.handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, strings.NewReader(`{"x":1}`)))
+		f.handler.ServeHTTP(rec, newRequest(http.MethodGet, path, strings.NewReader(`{"x":1}`)))
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "request_body_not_allowed") {
 			t.Errorf("GET %s with a body = %d %s", path, rec.Code, rec.Body)
 		}
@@ -220,7 +219,7 @@ func TestMetricsEndpointsAreReadOnly(t *testing.T) {
 }
 
 func TestMetricsEndpointsWithoutASamplerAre503(t *testing.T) {
-	h := NewHandler(fstest.MapFS{})
+	h := signedInHandler(t)
 	for _, path := range []string{"/api/v1/metrics", "/api/v1/events"} {
 		rec := get(t, h, http.MethodGet, path)
 		if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "metrics_unavailable") {
@@ -480,13 +479,13 @@ func (w *stuckWriter) Write(p []byte) (int, error) {
 
 func TestStuckStreamClientIsDroppedByTheWriteDeadline(t *testing.T) {
 	f := newMetricsFixture(t, "pi-zero-2w", 4)
-	h := NewHandler(fstest.MapFS{}, WithMetrics(f.sampler, WithStreamWriteTimeout(150*time.Millisecond), WithHeartbeat(time.Hour)))
+	h := signedInHandler(t, WithMetrics(f.sampler, WithStreamWriteTimeout(150*time.Millisecond), WithHeartbeat(time.Hour)))
 	w := &stuckWriter{header: http.Header{}}
 	done := make(chan struct{})
 	start := time.Now()
 	go func() {
 		defer close(done)
-		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/events", nil))
+		h.ServeHTTP(w, newRequest(http.MethodGet, "/api/v1/events", nil))
 	}()
 	select {
 	case <-done:
@@ -608,7 +607,7 @@ func TestMetricsOutputContainsNoPrivateData(t *testing.T) {
 				Collector:  metrics.NewCollector(metricstest.NewLive(t, fixture), metricstest.Statfs(sizes)),
 				OnceWindow: time.Millisecond,
 			})
-			h := NewHandler(fstest.MapFS{}, WithMetrics(sampler))
+			h := signedInHandler(t, WithMetrics(sampler))
 			body := get(t, h, http.MethodGet, "/api/v1/metrics").Body.String()
 
 			for name, re := range privateInAPI {

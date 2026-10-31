@@ -191,3 +191,36 @@ func TestDashboardDocsContainNoPrivateValues(t *testing.T) {
 		}
 	}
 }
+
+// authInScope are the MUST requirements of Gate G5.1 (spec 14.2, D-C27) and
+// the acceptance test AT-023.
+var authInScope = []string{
+	"ORB-ONB-002", "ORB-AUTH-001", "ORB-AUTH-002", "ORB-AUTH-003",
+	"ORB-SEC-004", "ORB-SEC-005", "ORB-SEC-006", "ORB-SEC-007", "AT-023", "ORB-NFR-009",
+}
+
+// Pflichtenheft 12.4 for Gate G5.1: the table in docs/AUTH.md.
+func TestAuthTraceabilityTableIsComplete(t *testing.T) {
+	checkTraceability(t, "AUTH.md", authInScope)
+}
+
+// Documentation of Gate G5.1 carries no identifying values and no token that
+// looks real: no 32-hex-digit value (the setup token's form), no IP address
+// outside the documentation ranges besides loopback.
+func TestAuthDocsContainNoPrivateValues(t *testing.T) {
+	for _, rel := range [][]string{{"docs", "AUTH.md"}, {"docs", "adr", "0009-local-access-control-and-audit.md"}} {
+		data, err := os.ReadFile(repoFile(t, rel...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.NewReplacer("127.0.0.1", "", "127.0.0.0/8", "").Replace(string(data))
+		for _, m := range scanPrivate(text) {
+			name, _, _ := strings.Cut(m, ":")
+			switch name {
+			case "serial number", "host name", "home directory", "user name entry", "environment", "SSH data":
+				continue // these words appear in the rules that forbid them
+			}
+			t.Errorf("%s: %s", filepath.Join(rel...), m)
+		}
+	}
+}

@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/swingstate/oarfish/backend/internal/audit"
+	"github.com/swingstate/oarfish/backend/internal/auth"
 )
 
 // Option configures NewHandler.
@@ -18,7 +21,10 @@ type config struct {
 	metrics *metricsConfig
 	// streamsDone is closed when the server shuts down, so that open event
 	// streams end and Shutdown does not wait for them.
-	streamsDone <-chan struct{}
+	streamsDone  <-chan struct{}
+	auth         *auth.Manager
+	audit        *audit.Log
+	allowedHosts []string
 }
 
 // WithDevice enables GET /api/v1/device, backed by src.
@@ -26,8 +32,11 @@ func WithDevice(src DeviceSource) Option {
 	return func(c *config) { c.device = src }
 }
 
-// NewHandler returns the HTTP handler serving /healthz, the read-only API
-// under /api/ and the given frontend assets.
+// NewHandler returns the HTTP handler serving /healthz, the API under /api/
+// and the given frontend assets. Every request gets a correlation ID and the
+// security headers, and is refused unless its Host header names the device by
+// a loopback name (DNS rebinding, ADR 0009 E3). /healthz and the frontend files
+// are public; the API is behind the session rules of apiHandler.
 func NewHandler(assets fs.FS, opts ...Option) http.Handler {
 	var cfg config
 	for _, o := range opts {
@@ -39,7 +48,7 @@ func NewHandler(assets fs.FS, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /", staticHandler(assets))
 	api := apiHandler(cfg)
-	return &handler{closeStreams: closeStreams, Handler: securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return &handler{closeStreams: closeStreams, Handler: withCorrelation(securityHeaders(hostGuard(cfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// /api/ is routed by prefix, not by the mux, so that every method and
 		// every unknown path under it gets the same typed JSON error.
 		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
@@ -47,7 +56,7 @@ func NewHandler(assets fs.FS, opts ...Option) http.Handler {
 			return
 		}
 		mux.ServeHTTP(w, r)
-	}))}
+	}))))}
 }
 
 // handler is the http.Handler NewHandler returns. New registers CloseStreams

@@ -1,3 +1,5 @@
+import { handleUnauthorized } from './session';
+
 export interface DeviceCapability {
   id: string;
   available: boolean;
@@ -48,8 +50,10 @@ export async function fetchDevice(
   try {
     const res = await fetchFn('/api/v1/device', {
       cache: 'no-store',
+      credentials: 'same-origin',
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (await handleUnauthorized(res)) return { ok: false };
     if (!res.ok) return { ok: false };
     const body: unknown = await res.json();
     if (!isDevice(body)) return { ok: false };

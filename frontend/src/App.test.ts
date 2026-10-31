@@ -4,6 +4,7 @@ import App from './App.svelte';
 import { FakeEventSource } from './lib/eventsource.fake';
 import { t } from './lib/i18n';
 import { piMetrics } from './lib/metrics.fixtures';
+import { signedIn } from './lib/session.fixtures';
 
 beforeEach(() => {
   FakeEventSource.reset();
@@ -19,7 +20,9 @@ async function stubApi() {
   const device = await import('./lib/device.fixtures');
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (url: string) => new Response(JSON.stringify(url === '/api/v1/metrics' ? piMetrics : device.piZero2W))),
+    vi.fn(async (url: string) =>
+      new Response(JSON.stringify(url === '/api/v1/session' ? signedIn : url === '/api/v1/metrics' ? piMetrics : device.piZero2W)),
+    ),
   );
 }
 
@@ -27,7 +30,7 @@ describe('App', () => {
   it('opens on Home and replaces the old status view', async () => {
     await stubApi();
     render(App);
-    expect(screen.getByRole('heading', { level: 1, name: t.homeTitle })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: t.homeTitle })).toBeTruthy();
     expect(await screen.findByTestId('hostname')).toBeTruthy();
     expect(screen.queryByText('Oarfish-Dienst')).toBeNull();
   });
@@ -36,7 +39,7 @@ describe('App', () => {
     await stubApi();
     render(App);
 
-    const nav = screen.getByRole('navigation', { name: t.navLabel });
+    const nav = await screen.findByRole('navigation', { name: t.navLabel });
     expect(nav).toBeTruthy();
     expect(screen.getByRole('link', { name: t.navHome }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: t.navDevice }).getAttribute('aria-current')).toBeNull();
@@ -57,9 +60,12 @@ describe('App', () => {
 
   it('opens the device page directly from the address', async () => {
     location.hash = '#/device';
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => (url === '/api/v1/session' ? new Response(JSON.stringify(signedIn)) : Promise.reject(new TypeError('offline')))),
+    );
     render(App);
-    expect(screen.getByRole('heading', { level: 1, name: t.deviceTitle })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: t.deviceTitle })).toBeTruthy();
     expect(FakeEventSource.instances).toHaveLength(0); // the device page needs no stream
   });
 });
