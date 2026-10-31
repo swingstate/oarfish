@@ -23,7 +23,7 @@ Oarfish still listens on loopback only (D-C48): nothing here opens the device to
 13. [Measurements and checks on the device](#measurements-and-checks-on-the-device)
 14. [Verification status](#verification-status)
 15. [Requirement to test](#requirement-to-test)
-16. [Interpretations and open points](#interpretations-and-open-points)
+16. [Amendments to ADR 0009 and open points](#amendments-to-adr-0009-and-open-points)
 
 ## What changes for a device
 
@@ -164,7 +164,7 @@ The order of the checks for a request: Host, route, method, then for state-chang
 
 ## CSRF, origin and Host
 
-Every request: the host part of `Host` (port ignored, so `ssh -L 9000:127.0.0.1:8484` works) must be `localhost`, a literal loopback address (`127.0.0.1`, `[::1]`, the rest of `127.0.0.0/8`) or a name from the allow-list (`server.WithAllowedHosts`, empty in G5.1, for D-D10). Otherwise `403 host_rejected`. This stops DNS rebinding. Note that the listen guard still refuses `localhost` as a *listen* address (D-C29); the Host check is about what the browser sends.
+Every request: the host part of `Host` (port ignored, so `ssh -L 9000:127.0.0.1:8484` works) must be `localhost`, a literal loopback address (`127.0.0.1`, `[::1]`, the rest of `127.0.0.0/8`) or a name from the allow-list (`server.WithAllowedHosts`, empty in G5.1, for D-D10; D-C50). Otherwise `403 host_rejected`. This stops DNS rebinding. Note that the listen guard still refuses `localhost` as a *listen* address (D-C29); the Host check is about what the browser sends.
 
 Every state-changing method (anything but `GET`, `HEAD`, `OPTIONS`) passes three layers (E3):
 
@@ -199,7 +199,7 @@ Everything the service writes is below its state directory (D-C47), because `Pro
 
 | Path | Mode | Content |
 |---|---|---|
-| `/var/lib/oarfish/` | 0700 (`StateDirectoryMode=0700`; the installer creates it as 0750 and systemd sets the unit's mode when the service starts, expected, to be confirmed with `stat` on the device) | state directory, owner `oarfish` |
+| `/var/lib/oarfish/` | 0700 (`StateDirectoryMode=0700`; the installer creates it as 0750 and systemd sets the unit's mode when the service starts, expected, to be confirmed with `stat` on the device; open item D-D11) | state directory, owner `oarfish` |
 | `/var/lib/oarfish/auth/` | 0700 | created at every start if missing |
 | `/var/lib/oarfish/auth/account.json` | 0600 | `{"schema_version":1,"username":...,"password_hash":"$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>","created_at":...}`; written atomically (temporary file in the same directory, `fsync`, rename, `fsync` of the directory) |
 | `/var/lib/oarfish/setup-token` | 0600 | only while no account exists |
@@ -231,7 +231,7 @@ At start every one of these that exists is checked (ORB-SEC-005): a directory or
 Every field is checked against its closed set or pattern before it is written; there is no free-form text and no map, so request data cannot reach the file. An event outside the sets is dropped and counted.
 
 - **What is recorded.** Setup, every successful login, every logout, every password change and failed change. Failed logins and failed setup-token attempts (`login_failed`, also when rate limited) and rejected requests (`request_rejected`: Host, Origin or CSRF failures on API routes) are **aggregated**: the first event of a kind opens a one-minute window, and the window is written as one entry with its count. A kind is the combination of action, target and result, all from the closed sets, so at most a few entries per minute exist however many attempts there are. A policy error on the setup form is not recorded (it is a typo, not an attempt).
-- **Writing.** Entries are buffered in memory (at most 64 KiB) and written 30 s after the first unwritten entry, before a rotation and when the service stops (`SIGTERM`, `SIGINT`: the audit log is closed after the HTTP server). There is no `fsync` per entry: the last seconds can be lost on a power failure (accepted in E7). The flush timer and the aggregation timer exist only while there is something to write.
+- **Writing.** Entries are buffered in memory (at most 64 KiB) and written 30 s after the first unwritten entry, before a rotation and when the service stops (`SIGTERM`, `SIGINT`: the audit log is closed after the HTTP server). There is no `fsync` per entry: on a power failure up to 30 s of ordinary entries and up to about 90 s of an aggregated entry (60 s window plus 30 s flush) can be lost (accepted in E7 and D-C52). The flush timer and the aggregation timer exist only while there is something to write.
 - **Rotation.** Before a line would make the file larger than 1 MiB, `audit.jsonl` becomes `.1`, `.1` becomes `.2`, `.2` becomes `.3` and the old `.3` is gone: at most 4 files, 4 MiB (ORB-STO-007, 10.5).
 - **Failure.** A failed write does not stop the service and does not block a request; it is counted and the journal gets the plain message `audit: writing the audit file failed (N failed writes since start)`, without any entry data.
 - **Write load (estimate, not measured):** about 200 to 250 bytes per entry; a few logins a day write well below 10 KB per day. Measured on the device with the AT-022 method below.
@@ -244,7 +244,7 @@ Request logs: the service writes no per-request log at all. Its journal lines ar
 - **Argon2id** from `golang.org/x/crypto/argon2` (E1), PHC string `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>` with a 16-byte random salt and a 32-byte key. The parameters are constants in `backend/internal/auth/password.go`. A stored hash with other parameters verifies and is re-hashed with the current ones at the next login (atomic write).
 - **Parser bounds.** The PHC parser accepts exactly the canonical form, version 19, `m <= 64 MiB`, `1 <= t <= 10`, `1 <= p <= 4`, salt 8 to 64 bytes, key 16 to 64 bytes, at most 256 characters; a tampered account file cannot make a login allocate more. It is fuzzed (`FuzzParsePHC`, `make fuzz`, 5 s in CI). The fuzzer found that Go's base64 decoder skips `\r` and `\n` even in strict mode; the parser now accepts only the base64 alphabet, and the input is kept as a seed.
 - **One hash at a time** (a semaphore of size 1); waiting requests are bounded by the rate limit. After each hash `runtime/debug.FreeOSMemory()` returns the 19 MiB block to the operating system. Effect measured on a developer Mac (Apple M5, not the target): heap kept by the idle process after the last hash 0.05 MiB with it, 19.26 MiB without; about 33 ms per verification there. The Mac's resident size does not show the release (macOS keeps released pages counted until it needs them: the dev binary went from 13 MB idle to 35 MB after the first hash and stayed there). On Linux Go releases with `MADV_DONTNEED`, so the resident size should fall back; `TestHashMemoryIsReturnedToTheOS` checks that on the Linux CI runner (no race detector) and logs the numbers. First CI run (GitHub-hosted ubuntu-24.04, linux/amd64, not the target): `VmRSS` 5,372 kB before, 6,396 kB after four hashes with the production parameters, `VmHWM` 25,620 kB. This matters for the 35 MB idle budget (ORB-NFR-001) and is checked on the device in step 5 below. The cost on the Pi is unknown until the benchmark below runs (ADR estimate 100 to 400 ms, target below about 500 ms).
-- **The dependency.** `golang.org/x/crypto v0.58.0` (released tag) is the first Go module; `golang.org/x/sys v0.49.0` comes with it. Only the package `argon2` is imported. It uses `golang.org/x/crypto/blake2b` (BLAKE2b is part of the Argon2 definition) and, on amd64 only, `golang.org/x/sys/cpu`; the linux/arm64 release binary contains `argon2` and `blake2b` and not `x/sys/cpu`. `TestArchitectureOnlyArgon2FromXCrypto` fails on any other third-party import and walks argon2's own imports in the module cache; CI also lists the non-standard packages of the linux/arm64 build and runs `go mod verify`. No vendoring: `go.sum` pins the module hashes, the release build already uses `GOFLAGS=-mod=readonly`, and the reproducibility check builds twice with the module cache. The licence (BSD 3-Clause, identical for both modules) is in `THIRD_PARTY_NOTICES.txt`, copied from the module's `LICENSE`.
+- **The dependency (D-C49).** `golang.org/x/crypto v0.58.0` (released tag) is the first Go module; `golang.org/x/sys v0.49.0` comes with it. Only the package `argon2` is imported. It uses `golang.org/x/crypto/blake2b` (BLAKE2b is part of the Argon2 definition) and, on amd64 only, `golang.org/x/sys/cpu`; the linux/arm64 release binary contains `argon2` and `blake2b` and not `x/sys/cpu`. `TestArchitectureOnlyArgon2FromXCrypto` fails on any other third-party import and walks argon2's own imports in the module cache; CI also lists the non-standard packages of the linux/arm64 build and runs `go mod verify`. No vendoring: `go.sum` pins the module hashes, the release build already uses `GOFLAGS=-mod=readonly`, and the reproducibility check builds twice with the module cache. The licence (BSD 3-Clause, identical for both modules) is in `THIRD_PARTY_NOTICES.txt`, copied from the module's `LICENSE`.
 
 ## Measurements and checks on the device
 
@@ -460,12 +460,12 @@ With no browser tab open and nobody signed in for at least an hour (no session, 
 | E6 same answer and work for a wrong user name and a wrong password | `TestLoginFailuresLookTheSame`, `TestDummyHashHasTheCurrentCost`, `Auth.test.ts "gives the same sentence for a wrong user name and a wrong password"` |
 | Layering: auth and audit below the server, no program | `TestArchitectureAuthAndAuditAreBelowTheServer`, `TestArchitectureNoProductCodeRunsAProgram`, `TestArchitectureTestHelpersAreOnlyImportedByTests` |
 
-## Interpretations and open points
+## Amendments to ADR 0009 and open points
 
-These are listed for review; none changes a decision of ADR 0009.
+The project owner confirmed four deviations of the implementation from ADR 0009. They are recorded as decisions D-C49 to D-C52 in `docs/DECISIONS.md` and as amendments A1 to A4 in the ADR, whose original decisions stay as written. One point is still open (D-D11).
 
-- **Host check accepts all of `127.0.0.0/8`.** E3 names `127.0.0.1`, `[::1]` and `localhost`. The check accepts every literal loopback address, because the listen guard accepts `127.0.0.0/8` too and a literal loopback address cannot be rebound.
-- **The password change goes through the login limiter.** E6 names login and setup; the current-password check of a password change costs the same hash, so it shares the limiter.
-- **`blake2b`.** E1 says that only `argon2` and `x/sys/cpu` are used; `argon2` itself also uses `golang.org/x/crypto/blake2b`. The check allows exactly that closure.
-- **Aggregation key.** "At most one entry per minute" is kept per kind (action, target, result), so a minute with both wrong passwords and rate-limited attempts gives two entries.
-- **The state directory mode.** The installer still creates `/var/lib/oarfish` as 0750; `StateDirectoryMode=0700` in the unit decides the mode at every service start under a real systemd (to be confirmed with `stat`, step 2).
+- **Third-party code in the binary (D-C49, ADR 0009 A1).** E1 said that only `argon2` and `x/sys/cpu` are used. The rule is now `golang.org/x/crypto/argon2` and what argon2 itself needs: `golang.org/x/crypto/blake2b` and, on amd64 only, `golang.org/x/sys/cpu`. The check allows exactly that closure.
+- **Host check (D-C50, ADR 0009 A2).** E3 names `127.0.0.1`, `[::1]` and `localhost`. The check accepts `localhost`, every literal loopback address (`127.0.0.0/8` and `[::1]`) and the allow-list, which is empty in G5.1. This matches the listen guard (D-C29), and a literal loopback address cannot be rebound.
+- **The password change goes through the login limiter (D-C51, ADR 0009 A3).** E6 names login and setup; the current-password check of a password change costs the same hash, so it shares the limiter with the same count, backoff and attempts per minute.
+- **Aggregation key (D-C52, ADR 0009 A4).** The one-minute aggregation is kept per kind (action, target, result), so a minute with both wrong passwords and rate-limited attempts gives two entries. The accepted loss on a power failure is up to 30 s for ordinary entries and up to about 90 s for an aggregated one.
+- **The state directory mode (open item D-D11, not a decision).** The installer still creates `/var/lib/oarfish` as 0750; `StateDirectoryMode=0700` in the unit is expected to decide the mode at every service start under a real systemd. Whether systemd tightens the existing directory on an update from `v0.1.0-alpha.5` is to be confirmed with `stat` on the device (step 2); whether the installer then aligns to 0700 is decided after that evidence.
