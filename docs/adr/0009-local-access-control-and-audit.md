@@ -2,6 +2,7 @@
 
 - Status: **Accepted** (2026-10-28, accepted by the project owner)
 - Date: 2026-10-28
+- Amended: 2026-10-31 by amendments A1 to A4 (D-C49 to D-C52)
 - Gate: G5.1 (design stop; G5.1 itself is not started)
 
 ## Context
@@ -20,7 +21,7 @@ Nothing in this ADR is verified on hardware.
 
 ## Decisions
 
-**E1. Password hash: Argon2id, stored as a PHC string.** The hash is Argon2id from `golang.org/x/crypto/argon2`. This is the first third-party Go dependency of the project (`docs/DEVELOPMENT.md` currently says "standard library only"). The module version is pinned in `go.mod` and locked in `go.sum` by the G5.1 change. Only the packages `argon2` and, transitively, `golang.org/x/sys/cpu` are used; `golang.org/x/crypto` is not otherwise imported, and a test or a documented check in G5.1 keeps it that way. `THIRD_PARTY_NOTICES.txt` gets the licence text of the module, since the code ends up in the binary.
+**E1. Password hash: Argon2id, stored as a PHC string.** The hash is Argon2id from `golang.org/x/crypto/argon2`. This is the first third-party Go dependency of the project (`docs/DEVELOPMENT.md` currently says "standard library only"). The module version is pinned in `go.mod` and locked in `go.sum` by the G5.1 change. Only the packages `argon2` and, transitively, `golang.org/x/sys/cpu` are used; `golang.org/x/crypto` is not otherwise imported, and a test or a documented check in G5.1 keeps it that way. `THIRD_PARTY_NOTICES.txt` gets the licence text of the module, since the code ends up in the binary. (amended, see A1)
 
 The stored value is a PHC string (`$argon2id$v=19$m=...,t=...,p=...$salt$hash`), so parameters can change later without a migration: a login with an old parameter set verifies and may re-hash with the current one.
 
@@ -42,7 +43,7 @@ CSRF protection has three layers, applied to every state-changing method (anythi
 2. **Per-session token** in the header `X-Oarfish-CSRF`. The server creates it with the session and returns it from login and session-status responses. The UI keeps it in memory only, never in `localStorage`, `sessionStorage` or a cookie readable by script.
 3. **`Content-Type: application/json` only**, so a cross-site HTML form cannot produce a valid request.
 
-A **Host header check** protects against DNS rebinding: the host part of `Host` must be a loopback name or address (`127.0.0.1`, `[::1]`, `localhost`) or a name the administrator configured. The port is ignored, because an SSH tunnel may use another local port (INSTALL.md describes `-L 9000:127.0.0.1:8484`) and that must keep working. Note that the listen guard still refuses `localhost` as a *listen* host (D-C29); the Host check concerns what a browser sends, not what the process binds.
+A **Host header check** protects against DNS rebinding: the host part of `Host` must be a loopback name or address (`127.0.0.1`, `[::1]`, `localhost`) or a name the administrator configured. The port is ignored, because an SSH tunnel may use another local port (INSTALL.md describes `-L 9000:127.0.0.1:8484`) and that must keep working. Note that the listen guard still refuses `localhost` as a *listen* host (D-C29); the Host check concerns what a browser sends, not what the process binds. (see A2)
 
 **E4. Account storage.** One local administrator: a username and the PHC hash, in `/var/lib/oarfish/auth/account.json`. The directory is `0700`, the file `0600`. A write is atomic: write a temporary file in the same directory, `fsync`, rename over the target, `fsync` the directory. Password rules: **minimum 12 and maximum 128 characters**, no composition rules, optionally a small embedded list of common passwords to refuse; the request body for login, setup and password change is limited to **1 KiB**. A password change requires the current password, invalidates every other session, and is audited.
 
@@ -52,11 +53,11 @@ The installer's next-step text will name the command `sudo cat /var/lib/oarfish/
 
 **Lost password:** stop the service, delete `/var/lib/oarfish/auth/account.json` as root, start the service; it is in setup mode again. There is no new command-line interface for it. Deleting the account file does not touch the audit file.
 
-**E6. Rate limiting.** One global limiter, because per-IP limits are useless here: behind an SSH tunnel or a reverse proxy every client appears as loopback. After the **5th consecutive failure** the delay grows exponentially up to **15 minutes**; in addition at most **10 login attempts per minute** are processed overall. There is **no hard account lockout**, because it would let anyone who reaches the port lock the administrator out (denial of service). A wrong user name and a wrong password produce the same response and the same timing class (the hash is computed against a fixed dummy hash when the user does not exist).
+**E6. Rate limiting.** One global limiter, because per-IP limits are useless here: behind an SSH tunnel or a reverse proxy every client appears as loopback. After the **5th consecutive failure** the delay grows exponentially up to **15 minutes**; in addition at most **10 login attempts per minute** are processed overall. There is **no hard account lockout**, because it would let anyone who reaches the port lock the administrator out (denial of service). A wrong user name and a wrong password produce the same response and the same timing class (the hash is computed against a fixed dummy hash when the user does not exist). (see A3)
 
 **E7. Audit.** An own append-only JSON-lines file, `/var/lib/oarfish/audit/audit.jsonl`, mode `0600`. Rotation at **1 MiB** per file, **4 files**, so the hard cap is **4 MiB**. An entry has fixed, typed fields only: time, user, plugin (empty in the core), action, target, result, correlation ID (spec 6.11, ORB-SEC-006). There are no free-form maps, so a secret cannot be put into an entry by accident.
 
-Failed logins are aggregated: at most one entry per minute with a counter. The file is flushed every **30 s** and on rotation, not on every entry. The accepted trade-off: the last seconds of audit entries may be lost on a power failure.
+Failed logins are aggregated: at most one entry per minute with a counter. The file is flushed every **30 s** and on rotation, not on every entry. The accepted trade-off: the last seconds of audit entries may be lost on a power failure. (see A4)
 
 The server creates a **correlation ID** for each request (64 bits, hexadecimal) and ignores any value from the client. It is returned in the header `X-Correlation-ID` and in typed errors (spec 8.7). Request logs never contain bodies, cookies or query strings. Redaction tests are mandatory (AT-023, ORB-SEC-007).
 
@@ -93,6 +94,18 @@ This opens item **D-D10**: no gate owns LAN access and HTTPS/TLS. It needs its o
 - **The audit file can lose the last seconds** on a power failure (E7).
 - **Loss of the setup token file** is harmless: the service creates a new token at the next start.
 - **Not decided here:** HTTPS and LAN access (D-D10), multiple users and roles, two-factor authentication, password reset by e-mail, the privilege broker (G7), the update helper (G6).
+
+## Amendments after the G5.1 implementation
+
+The project owner confirmed four deviations that the G5.1 implementation made from the decisions above. The decisions E1, E3, E6 and E7 are not rewritten; each amendment states the old wording, the new rule and the decision that records it in `docs/DECISIONS.md`.
+
+**A1. Third-party code in the binary (amends E1; D-C49).** E1 said that only the packages `argon2` and, transitively, `golang.org/x/sys/cpu` are used. The rule is now: the third-party code in the binary is `golang.org/x/crypto/argon2` and what argon2 itself needs, which is `golang.org/x/crypto/blake2b` (part of the Argon2 definition) and, on amd64 only, `golang.org/x/sys/cpu`. `go.mod` requires exactly `golang.org/x/crypto` and `golang.org/x/sys`, and no other package of those modules is imported; `TestArchitectureOnlyArgon2FromXCrypto` and the CI package listing enforce it.
+
+**A2. Host check (amends E3; D-C50).** E3 named `127.0.0.1`, `[::1]` and `localhost` as the loopback names. The rule is now: the Host check accepts `localhost`, any literal loopback IP address (`127.0.0.0/8` and `[::1]`) and names from an allow-list that is empty in G5.1 (`server.WithAllowedHosts`, for D-D10). The port is still ignored. This matches the listen guard (D-C29), and a literal loopback address cannot be rebound.
+
+**A3. Password change and the rate limit (amends E6; D-C51).** E6 named login and setup as the users of the limiter. The rule is now: the check of the current password in a password change goes through the same global limiter (same consecutive-failure count, same backoff, same 10 attempts per minute), because it costs the same Argon2id hash.
+
+**A4. Audit aggregation per kind (amends E7; D-C52).** E7 said that failed logins are aggregated to at most one entry per minute with a counter. The rule is now: failed logins and the other aggregated actions are aggregated per kind, that is per combination of action, target and result, in one-minute windows. Each kind gets at most one entry with a counter per minute, so one minute can contain several entries (for example `invalid_credentials` and `rate_limited`). The number of kinds is fixed by the closed sets. The accepted loss on a power failure is therefore up to 30 s for ordinary entries and up to about 90 s for an aggregated one (60 s window plus 30 s flush).
 
 ## Forward compatibility with HTTPS
 
