@@ -644,6 +644,7 @@ Updating a sample changes text and attributes in place: no element is added or r
 - **The dark theme in Chrome and Firefox.** Not reported; only Safari's dark theme was looked at on the device.
 - **A screen reader.** Only structure is tested (roles, names, native elements).
 - **Keyboard use in Safari.**
+- **The known-gaps changes** (alerts card marked stale, old values marked after a hidden tab is shown, neutral icon, content next to the sidebar, "MiB" in the profile text) were checked in jsdom tests and in headless Chrome on one Mac only. They have not been checked in Safari, Firefox or on the device yet.
 - **The lost-connection display** of the new UI on the device.
 - **Idle CPU and `VmRSS` of `v0.1.0-alpha.5`.** Not re-measured.
 - **Four simultaneous clients.**
