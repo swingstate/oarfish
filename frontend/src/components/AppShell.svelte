@@ -147,9 +147,10 @@
     outline: none;
   }
 
+  /* Next to the sidebar, at most --content-max wide. On a wide window the free space is at the right edge,
+     not between the navigation and the content. */
   .content {
     max-width: var(--content-max);
-    margin-inline: auto;
   }
 
   /* Below 60rem the sidebar becomes a top bar: the brand, then the entries in a row that wraps. */

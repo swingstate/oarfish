@@ -77,6 +77,12 @@ describe('UI texts follow the text rules', () => {
     });
   }
 
+  it('uses binary units, never MB, GB or KB, in either language and either group', () => {
+    for (const dict of [de, en]) {
+      for (const [key, value] of Object.entries(dict)) expect(value, key).not.toMatch(/\d\s*[KMGT]B\b/);
+    }
+  });
+
   it('de: one word for one thing', () => {
     const all = Object.values(deUi).join('\n');
     expect(all).not.toMatch(/\bRAM\b|Hauptspeicher/); // Arbeitsspeicher

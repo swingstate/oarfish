@@ -60,8 +60,9 @@ describe('design tokens (ORB-NFR-011, WCAG 2.2 AA)', () => {
       expect(alpha).toBeGreaterThan(0.5);
       expect(alpha).toBeLessThan(1);
       for (const p of stalePairs) {
-        const bg = colour(theme, p.bg);
-        const ratio = contrast(over(colour(theme, p.fg), bg, alpha), bg);
+        // The whole layer is drawn at `alpha` over its surface: text and its own background both blend with it.
+        const surface = colour(theme, p.on ?? p.bg);
+        const ratio = contrast(over(colour(theme, p.fg), surface, alpha), over(colour(theme, p.bg), surface, alpha));
         expect(ratio, `${p.fg} dimmed on ${p.bg} (${p.use})`).toBeGreaterThanOrEqual(p.min);
       }
     });

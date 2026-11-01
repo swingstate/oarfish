@@ -318,7 +318,7 @@ export const enApi: { [K in keyof typeof deApi]: string } = {
   'limitation.capability_missing_procfs': 'procfs is missing',
   'limitation.capability_missing_sysfs': 'sysfs is missing',
   'limitation.capability_missing_systemd': 'systemd is not the running init system',
-  'limitation.memory_512mb': 'Only 512 MB of memory',
+  'limitation.memory_512mb': 'Only about 512 MiB of memory',
   'limitation.evidence_install_only':
     'So far only the installation has been tested on real hardware',
   'capability.procfs': 'Process information (procfs)',

@@ -8,6 +8,8 @@ export interface Pair {
   min: 4.5 | 3;
   /** Where the pair is used. */
   use: string;
+  /** Dimmed pairs only: the surface the dimmed layer sits on, when it is not `bg` itself (a tinted alert on a card). */
+  on?: string;
 }
 
 const roles = ['success', 'information', 'warning', 'critical', 'neutral'] as const;
@@ -52,4 +54,9 @@ export const stalePairs: Pair[] = [
   { fg: 'text-secondary', bg: 'surface', min: 4.5, use: 'stale label' },
   { fg: 'accent', bg: 'surface', min: 3, use: 'stale sparkline' },
   { fg: 'border-strong', bg: 'surface', min: 3, use: 'stale meter outline' },
+  // The alerts card is dimmed like the others (Home, connection lost): tinted items on the card surface.
+  ...(['critical', 'warning', 'information'] as const).flatMap((r): Pair[] => [
+    { fg: 'text', bg: `${r}-bg`, on: 'surface', min: 4.5, use: `stale ${r} alert body text` },
+    { fg: `${r}-fg`, bg: `${r}-bg`, on: 'surface', min: 4.5, use: `stale ${r} alert title and icon` },
+  ]),
 ];

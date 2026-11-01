@@ -5,6 +5,7 @@ import Home from './Home.svelte';
 import { FakeEventSource } from '../lib/eventsource.fake';
 import { installFakes, metricsWith, openHome, snapshotAt, stubMetrics, textOf } from '../lib/harness.fake';
 import { t } from '../lib/i18n';
+import { iconPaths } from '../lib/icons';
 import {
   criticalTemperatureAlert,
   genericMetrics,
@@ -21,6 +22,7 @@ afterEach(() => {
 
 const open = (body = piMetrics) => openHome(() => render(Home), body);
 const indicator = () => screen.getByTestId('connection-indicator');
+const alertsCard = () => document.querySelector('section[aria-labelledby="alerts-heading"]') as HTMLElement;
 
 describe('Home states', () => {
   it('state loading: shows the page header, a loading text and the connecting indicator before any value', () => {
@@ -50,10 +52,11 @@ describe('Home states', () => {
     expect(screen.getByTestId('home').getAttribute('data-stale')).toBe('true');
     const cards = document.querySelectorAll('section.card');
     expect(cards.length).toBeGreaterThanOrEqual(6);
-    for (const card of Array.from(cards).filter((c) => c.getAttribute('aria-labelledby') !== 'alerts-heading')) {
+    for (const card of Array.from(cards)) {
       expect(card.getAttribute('data-stale')).toBe('true');
       expect(within(card as HTMLElement).getByText(t.staleBadge)).toBeTruthy();
     }
+    expect(alertsCard().getAttribute('data-stale')).toBe('true'); // the alerts card too, by the same mechanism
     expect(textOf('hostname')).toBe('oarfish-test'); // the old values are still readable
   });
 
@@ -321,6 +324,175 @@ describe('Home wording of stale and lost states', () => {
       await vi.advanceTimersByTimeAsync(7000);
       expect(textOf('rx-wlan0')).toBe(t.unavailableValue);
       expect(screen.getByTestId('home').textContent).not.toContain(t.netRateWaiting);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// Closing the known gaps of the G5 review (docs/UI.md, "Where stale values could read as a current claim").
+describe('Home stale marking: alerts card, return from a hidden tab, no all-clear icon', () => {
+  const setHidden = (hidden: boolean) => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: hidden });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+  afterEach(() => setHidden(false));
+
+  const staleCards = () => Array.from(document.querySelectorAll('section.card')).filter((c) => c.getAttribute('data-stale') === 'true');
+  const badgeIn = (el: Element) => within(el as HTMLElement).queryByText(t.staleBadge);
+  const noneIcon = () => Array.from(alertsCard().querySelectorAll('.none svg path')).map((p) => p.getAttribute('d'));
+  const stripStale = () => screen.getByRole('group', { name: t.summaryHeading }).getAttribute('data-stale');
+  const threeAlerts = { schema_version: 1, alerts: [criticalTemperatureAlert, relevantStorageAlert, genericModeAlert] };
+
+  it('gap 1: the alerts card is dimmed and says Veraltet when the connection is lost, alerts included', async () => {
+    const es = await open();
+    es.send('alerts', threeAlerts);
+    await waitFor(() => expect(document.querySelectorAll('.alert-group')).toHaveLength(3));
+    expect(alertsCard().getAttribute('data-stale')).toBe('false');
+    expect(badgeIn(alertsCard())).toBeNull();
+
+    es.dropAndRetry();
+    await waitFor(() => expect(alertsCard().getAttribute('data-stale')).toBe('true'));
+    expect(badgeIn(alertsCard())).not.toBeNull();
+    expect(document.querySelectorAll('.alert-group')).toHaveLength(3); // the alerts stay readable
+    expect(staleCards()).toHaveLength(document.querySelectorAll('section.card').length);
+
+    es.open();
+    es.send('metrics', snapshotAt(2));
+    await waitFor(() => expect(alertsCard().getAttribute('data-stale')).toBe('false'));
+    expect(badgeIn(alertsCard())).toBeNull();
+  });
+
+  it('gap 1: an open but silent stream marks the alerts card as well', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      stubMetrics(piMetrics);
+      render(Home);
+      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      FakeEventSource.last.open();
+      FakeEventSource.last.send('metrics', snapshotAt(2));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(alertsCard().getAttribute('data-stale')).toBe('false');
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(alertsCard().getAttribute('data-stale')).toBe('true');
+      expect(badgeIn(alertsCard())).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gap 3: the empty list shows the all-clear icon only while live; old values get a neutral one', async () => {
+    const es = await open();
+    expect(noneIcon()).toEqual(iconPaths.success);
+    es.dropAndRetry();
+    await waitFor(() => expect(screen.getByText(t.alertsNoneStale)).toBeTruthy());
+    expect(noneIcon()).toEqual(iconPaths.clock);
+    expect(noneIcon()).not.toEqual(iconPaths.success);
+    expect(alertsCard().querySelector('.none.old')).not.toBeNull();
+    es.open();
+    es.send('metrics', snapshotAt(2));
+    await waitFor(() => expect(screen.getByText(t.alertsNone)).toBeTruthy());
+    expect(noneIcon()).toEqual(iconPaths.success);
+  });
+
+  it('gap 2: a tab shown again marks every card, the strip and the alerts card until a value arrives', async () => {
+    const es = await open();
+    es.send('metrics', snapshotAt(2));
+    await waitFor(() => expect(staleCards()).toHaveLength(0));
+
+    setHidden(true);
+    await waitFor(() => expect(indicator().getAttribute('data-state')).toBe('paused'));
+    expect(es.closed).toBe(true);
+
+    setHidden(false);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    const again = FakeEventSource.last;
+    // Opening: the old values are marked from the first frame, and say nothing about the present.
+    expect(indicator().getAttribute('data-state')).toBe('connecting');
+    expect(staleCards()).toHaveLength(document.querySelectorAll('section.card').length);
+    expect(badgeIn(alertsCard())).not.toBeNull();
+    expect(stripStale()).toBe('true');
+    expect(screen.getByTestId('home').getAttribute('data-stale')).toBe('true');
+    expect(screen.getByText(t.alertsNoneStale)).toBeTruthy();
+    expect(noneIcon()).toEqual(iconPaths.clock);
+    expect(textOf('rx-wlan0')).not.toBe(t.netRateWaiting);
+    // No notice about a lost connection: nothing is lost, the stream is opening ("Verbindet …").
+    expect(screen.queryByTestId('connection-notice')).toBeNull();
+
+    // Open, but no value yet: still old.
+    again.open();
+    await waitFor(() => expect(indicator().getAttribute('data-state')).toBe('live'));
+    expect(staleCards()).toHaveLength(document.querySelectorAll('section.card').length);
+    expect(screen.getByText(t.alertsNoneStale)).toBeTruthy();
+    expect(screen.queryByText(t.alertsNone)).toBeNull();
+
+    // The first value: back to live, nothing marked.
+    again.send('metrics', snapshotAt(4));
+    await waitFor(() => expect(staleCards()).toHaveLength(0));
+    expect(stripStale()).toBe('false');
+    expect(screen.queryByText(t.staleBadge)).toBeNull();
+    expect(screen.getByText(t.alertsNone)).toBeTruthy();
+    expect(noneIcon()).toEqual(iconPaths.success);
+  });
+
+  it('gap 2: alerts that existed before the pause stay readable and are marked old', async () => {
+    const es = await open();
+    es.send('alerts', threeAlerts);
+    await waitFor(() => expect(document.querySelectorAll('.alert-group')).toHaveLength(3));
+    setHidden(true);
+    setHidden(false);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(document.querySelectorAll('.alert-group')).toHaveLength(3);
+    expect(alertsCard().getAttribute('data-stale')).toBe('true');
+    expect(badgeIn(alertsCard())).not.toBeNull();
+  });
+
+  it('gap 2: a tab that was opened hidden is marked when it is shown, even though its first reading was fresh', async () => {
+    setHidden(true);
+    stubMetrics(piMetrics);
+    render(Home);
+    await screen.findByTestId('home'); // the one-shot request answered while hidden
+    expect(indicator().getAttribute('data-state')).toBe('paused');
+    expect(FakeEventSource.instances).toHaveLength(0); // no stream while hidden
+    setHidden(false);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(staleCards()).toHaveLength(document.querySelectorAll('section.card').length);
+    FakeEventSource.last.open();
+    FakeEventSource.last.send('metrics', snapshotAt(2));
+    await waitFor(() => expect(staleCards()).toHaveLength(0));
+  });
+
+  it('first load: the fresh one-shot reading is not marked while the stream is still connecting', async () => {
+    stubMetrics(piMetrics);
+    render(Home);
+    await screen.findByTestId('home');
+    expect(indicator().getAttribute('data-state')).toBe('connecting');
+    expect(staleCards()).toHaveLength(0);
+    expect(screen.queryByText(t.staleBadge)).toBeNull();
+  });
+
+  it('a hidden tab starts no request and no timer (ORB-DASH-006)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    try {
+      const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(piMetrics)));
+      vi.stubGlobal('fetch', fetchMock);
+      render(Home);
+      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      FakeEventSource.last.open();
+      FakeEventSource.last.send('metrics', snapshotAt(2));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBeGreaterThan(0); // the silence timer of the open stream
+
+      setHidden(true);
+      await vi.advanceTimersByTimeAsync(0);
+      const requests = fetchMock.mock.calls.length;
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(fetchMock.mock.calls.length).toBe(requests);
+      expect(FakeEventSource.instances).toHaveLength(1);
+      expect(FakeEventSource.last.closed).toBe(true);
+      expect(indicator().getAttribute('data-state')).toBe('paused');
     } finally {
       vi.useRealTimers();
     }
