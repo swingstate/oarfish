@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/svelte';
 import { createRawSnippet, type Snippet } from 'svelte';
@@ -13,6 +15,7 @@ import PageHeader from './PageHeader.svelte';
 import Sparkline from './Sparkline.svelte';
 import SummaryStrip from './SummaryStrip.svelte';
 import { t } from '../lib/i18n';
+import { iconPaths } from '../lib/icons';
 import { criticalTemperatureAlert, genericModeAlert } from '../lib/metrics.fixtures';
 import type { StreamState } from '../lib/stream';
 import type { NavItem } from '../lib/ui';
@@ -126,6 +129,19 @@ describe('components', () => {
     expect(container.querySelectorAll('li')).toHaveLength(2);
   });
 
+  it('AlertList: an empty list from old values has no all-clear mark and a neutral icon', () => {
+    const iconOf = (container: HTMLElement) => Array.from(container.querySelectorAll('.none svg path')).map((p) => p.getAttribute('d'));
+    const { container, rerender } = render(AlertList, { alerts: [], stale: false });
+    expect(iconOf(container)).toEqual(iconPaths.success);
+    expect(container.querySelector('.none')!.classList.contains('old')).toBe(false);
+    rerender({ alerts: [], stale: true });
+    expect(screen.getByText(t.alertsNoneStale)).toBeTruthy();
+    expect(iconOf(container)).toEqual(iconPaths.clock);
+    expect(iconOf(container)).not.toEqual(iconPaths.success);
+    expect(container.querySelector('.none')!.classList.contains('old')).toBe(true);
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(1);
+  });
+
   it('PageHeader: the one h1, with an optional aside', () => {
     render(PageHeader, { title: 'Seite', aside: text('Rechts') });
     expect(screen.getByRole('heading', { level: 1, name: 'Seite' })).toBeTruthy();
@@ -167,5 +183,23 @@ describe('AppShell', () => {
     expect(document.activeElement).toBe(screen.getByRole('main'));
     expect(location.hash).toBe('#/b');
     location.hash = '';
+  });
+});
+
+// jsdom does not lay out. The browser check at 360, 1280, 1920 and 2560 px (docs/UI.md, "Layout rules") is a
+// headless Chrome script outside the repository; this pins the rule it checks.
+describe('AppShell layout rule', () => {
+  const css = readFileSync(join(import.meta.dirname, 'AppShell.svelte'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = (selector: string) => new RegExp(`(?:^|\\n)\\s*${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+
+  it('puts the content next to the sidebar, bounded by --content-max, never centred', () => {
+    const content = rule('.content');
+    expect(content).toMatch(/max-width:\s*var\(--content-max\)/);
+    expect(content).not.toMatch(/margin(-inline(-start)?)?\s*:[^;]*auto/);
+    expect(content).not.toMatch(/(?:justify-self|place-self)\s*:\s*center/);
+  });
+
+  it('has no centring of the content anywhere in the shell', () => {
+    expect(css).not.toMatch(/margin(-inline)?\s*:\s*(0\s+)?auto/);
   });
 });

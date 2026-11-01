@@ -40,6 +40,8 @@
   let rates = $state<Record<string, Rate>>({});
   let conn = $state<StreamState>('connecting');
   let loadFailed = $state(false);
+  // The tab was hidden and no value has arrived since: what is shown is from before the pause.
+  let afterPause = $state(false);
 
   // Not reactive: bookkeeping that decides which data wins.
   let lastAt = 0;
@@ -47,9 +49,13 @@
   let historyFromStream = false;
   let loadingDevice = false;
 
-  const stale = $derived(snapshot !== null && (conn === 'stale' || conn === 'reconnecting'));
-  // A statement about the present ("no alerts", "measuring") is only made while the stream is live.
-  const live = $derived(conn === 'live');
+  // The stream is open but silent, or broken.
+  const troubled = $derived(snapshot !== null && (conn === 'stale' || conn === 'reconnecting'));
+  // Old values are marked: the connection is troubled, or the tab was shown again and the stream has not
+  // delivered a value yet (it is still opening, or open and about to send its first sample).
+  const stale = $derived(troubled || (snapshot !== null && afterPause));
+  // A statement about the present ("no alerts", "measuring") is only made while the stream is live and fresh.
+  const live = $derived(conn === 'live' && !afterPause);
 
   function applySnapshot(s: Snapshot, fromStream: boolean): void {
     const at = Date.parse(s.collected_at);
@@ -83,13 +89,18 @@
     const m = result.metrics;
     device = m.device;
     applySnapshot(m, false);
+    // The one-shot request is a fresh reading, unless the tab is hidden: then it will be old when the tab returns.
+    if (conn !== 'paused') afterPause = false;
     if (!alertsFromStream) alerts = m.alerts;
     if (!historyFromStream) setHistory(m.history);
   }
 
   onMount(() => {
     const stream = new MetricsStream({
-      onSnapshot: (s) => applySnapshot(s, true),
+      onSnapshot: (s) => {
+        afterPause = false;
+        applySnapshot(s, true);
+      },
       onAlerts: (a) => {
         alertsFromStream = true;
         alerts = a;
@@ -100,6 +111,9 @@
       },
       onState: (s) => {
         conn = s;
+        // Set when the tab is hidden (the visibility event itself, no timer): when it is shown again, the
+        // old values are marked from the first frame on, until a value arrives.
+        if (s === 'paused') afterPause = true;
         // The device summary only comes with the one-shot request; try again if it failed.
         if (s === 'live' && device === null) void load();
       },
@@ -171,7 +185,7 @@
 {:else}
   {@const s = snapshot}
   <div class="stack">
-    {#if stale}
+    {#if troubled}
       <Notice tone="warning" data-state={conn} data-testid="connection-notice">
         <p>{conn === 'reconnecting' ? t.connLost : t.connStale}</p>
         {#if lastUpdate}<p class="secondary">{fmt('connLastUpdate', { time: lastUpdate })}</p>{/if}
@@ -181,7 +195,7 @@
     <div class="stack home" data-stale={stale} data-testid="home">
       <SummaryStrip items={summary(s, device)} label={t.summaryHeading} {stale} />
 
-      <Card id="alerts" title={t.alertsHeading} wide>
+      <Card id="alerts" title={t.alertsHeading} wide {stale}>
         <AlertList {alerts} stale={!live} />
       </Card>
 

@@ -19,7 +19,8 @@
 -->
 <div class="alert-list" aria-live="polite" aria-relevant="additions text">
   {#if alerts.length === 0}
-    <p class="none"><Icon name="success" /><span>{stale ? t.alertsNoneStale : t.alertsNone}</span></p>
+    <!-- Old values: no all-clear mark. A neutral clock says "as of the last reading". -->
+    <p class="none" class:old={stale}><Icon name={stale ? 'clock' : 'success'} /><span>{stale ? t.alertsNoneStale : t.alertsNone}</span></p>
   {:else}
     {#each alertLevels as level (level)}
       {@const items = alerts.filter((a) => a.level === level)}
@@ -53,6 +54,14 @@
 
   .none :global(.icon) {
     color: var(--color-success-border);
+  }
+
+  .none.old {
+    color: var(--color-text-secondary);
+  }
+
+  .none.old :global(.icon) {
+    color: var(--color-text-secondary);
   }
 
   h3 {

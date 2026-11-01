@@ -31,6 +31,7 @@ describe('Gerät page', () => {
     expect(screen.getByTestId('tier').textContent).toBe(t['tier.compatible']);
     expect(screen.getByText(t['support.compatible.profile_not_verified'])).toBeTruthy();
     expect(screen.getByText(t['limitation.memory_512mb'])).toBeTruthy();
+    expect(t['limitation.memory_512mb']).toBe('Nur etwa 512 MiB Arbeitsspeicher'); // binary unit like the rest of the UI
     expect(screen.getByText(t['limitation.evidence_install_only'])).toBeTruthy();
     // It is never presented as verified, and it is not generic mode.
     expect(screen.queryByText(t['tier.verified'])).toBeNull();
