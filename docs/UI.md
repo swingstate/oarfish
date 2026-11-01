@@ -203,11 +203,11 @@ All components are Svelte 5 with TypeScript and no dependency. They hold no UI t
 | `FormField` | Label, optional help, input and the field's own error, tied together with `for`, `aria-describedby` and `aria-invalid`. | `id`, `label`, `value` (bindable), `type` (`text`, `password`), `autocomplete`, `help`, `error`, `disabled`, `input` (bindable element) | Always `autocapitalize="off"` and `spellcheck="false"`. An error adds a 2 px critical border and the error text below the field, never colour alone. |
 | `FormMessage` | The message area of a form. | `tone`, `testid` | `role="alert"` for `critical` (announced at once), `role="status"` otherwise. A new error is a new node, so the same sentence is announced again. |
 | `PageHeader` | The one `h1` of a page and an optional small aside. | `title`, `aside` | Wraps on a narrow screen. |
-| `Card` | A labelled section with a heading (`<id>-heading`), an icon and a body. | `id`, `title`, `icon`, `stale`, `wide` | `stale`: the body is dimmed to `--opacity-stale` (contrast is tested at that opacity) and the header shows the Veraltet badge. |
+| `Card` | A labelled section with a heading (`<id>-heading`), an icon and a body. | `id`, `title`, `icon`, `stale`, `wide` | `stale`: the body is dimmed to `--opacity-stale` (contrast is tested at that opacity, including the tinted alerts) and the header shows the Veraltet badge. Every card of Home, the alerts card included, uses it. |
 | `SummaryStrip` | The row at the top of Home: host name, board, operating system, uptime, support status. A group, not a section. | `items`, `label`, `stale` | The host name is cut to one line with the full text as `title`; other values wrap. A missing value is a neutral placeholder. |
 | `Badge` | A short status word. | `tone` (`neutral`, `success`, `information`, `warning`, `critical`), `icon` | The text is the meaning; the icon and colour only support it. |
 | `Notice` | A sentence or two that explains a state, with an icon. Not a live region. | `tone` | Used for the lost-connection explanation and the support explanation. |
-| `AlertList` | The alerts, grouped by level with a count per level. The only live region (`aria-live="polite"`). | `alerts` | No alerts: one calm line. |
+| `AlertList` | The alerts, grouped by level with a count per level. The only live region (`aria-live="polite"`). | `alerts`, `stale` | No alerts: one calm line. With `stale` the line says what was true at the last reading, in secondary text with a neutral clock icon instead of the green check. |
 | `AlertItem` | One alert: level icon, short title (if the rule has one), then cause, impact and next step in columns. | `alert` | Columns stack on a narrow card. The level is told by icon shape, heading text and colour. |
 | `Meter` | A usage bar. A native `progress` element with an accessible name. | `value`, `label`, `level` (`ok`, `relevant`, `critical`) | `ok` is the accent; the other two use warning and critical, like the storage alerts. The fill does not animate. |
 | `Sparkline` | A small inline-SVG line of the last minutes. | `values`, `min`, `max`, `label` | An image with a text alternative. Fewer than two values: the text "Noch kein Verlauf". It is redrawn only when new data arrives. |
@@ -220,7 +220,8 @@ Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `w
 
 ## Layout rules and breakpoints
 
-- **Shell.** At 60rem and wider: a 14rem sidebar (brand, navigation) and the content area, which is centred and at most 80rem wide. Below 60rem: a top bar with the brand and the navigation entries in a row that wraps, and the content below. The top bar scrolls away; nothing is `sticky` in the narrow layout, so a focused element is never hidden behind it (WCAG 2.4.11). The wide sidebar does not overlap content.
+- **Shell.** At 60rem and wider: a 14rem sidebar (brand, navigation) and the content area, which starts next to the sidebar and is at most 80rem wide (`--content-max`). Below 60rem: a top bar with the brand and the navigation entries in a row that wraps, and the content below. The top bar scrolls away; nothing is `sticky` in the narrow layout, so a focused element is never hidden behind it (WCAG 2.4.11). The wide sidebar does not overlap content.
+- **Wide windows.** The content sits next to the sidebar and is not centred. Navigation and page belong together, so a fixed 24 px gap keeps the eye path short at every width, and the unused space collects at the right window edge where nothing is missed. The maximum width keeps the cards and the text lines readable. Checked in headless Chrome at 360, 1280, 1920 and 2560 CSS pixels in light and dark (gap between sidebar and content 24 px from 1280 px up, before: 208 px at 1920 and 528 px at 2560; no horizontal scroll). Screenshots: [`design/known-gaps/`](design/known-gaps/). `components.test.ts` "AppShell layout rule" pins the rule in the source.
 - **Cards.** An intrinsic grid: as many columns as fit, each at least 20rem (or the whole width when that is less). A wide card spans the row. No other breakpoint.
 - **Label and value.** `KeyValueList` is a wrapping row, not a grid with fixed columns. Label and value sit side by side when they fit; when they do not, the value moves below the label. Neither is ever squeezed into a thin column. Long words break (`overflow-wrap: anywhere`) rather than overflow.
 - **Grids inside grids** always declare `minmax(0, 1fr)` tracks, so a long unbreakable name can never widen a card.
@@ -238,12 +239,13 @@ Each state is designed and has a test (`pages/Home.states.test.ts`, `pages/Home.
 |---|---|---|
 | Loading (first paint) | Page header, an `EmptyState` with "Werte werden geladen …", the indicator "Verbindet …". | `Home.states.test.ts` "state loading" |
 | Live | Indicator "Live", values in place, no notice, no Veraltet. | "state live" |
-| Connection lost | The last values stay, dimmed; every card and the strip say "Veraltet"; a notice says what happened and when the last update was. | "state connection lost" |
+| Connection lost | The last values stay, dimmed; every card (the alerts card too) and the strip say "Veraltet"; a notice says what happened and when the last update was. | "state connection lost", "gap 1" tests |
 | Reconnecting | Indicator "Verbindet neu …". Without any data yet the page says "Verbindung wird aufgebaut …". Network rates show the last value (dimmed) or "Nicht verfügbar", never "wird ermittelt …". | "state reconnecting", "state reconnecting without data" |
 | Open but silent | Indicator "Keine neuen Werte" and a notice, after 7 seconds without a value. | "state open but silent" |
 | Paused | Indicator "Pausiert" (the tab was hidden; no stream is open). | "state paused" |
+| Tab shown again | The old values are marked "Veraltet" (every card, the alerts card, the strip) from the first frame on, with the indicator "Verbindet …" and no lost-connection notice, until the first new value arrives. The alert list then says only what was true at the last reading. | "gap 2" tests |
 | Load error | `EmptyState` with the error, a hint and a retry button. | "state load error" |
-| No alerts | One calm line with a check icon, inside the live region. While live it says "Keine Hinweise. Alles in Ordnung.". While the values are stale, the connection is lost or reconnecting, it says only "Beim letzten Abruf gab es keine Hinweise." | "state no alerts", "empty alert list" in `Home.states.test.ts` |
+| No alerts | One calm line inside the live region. While live it says "Keine Hinweise. Alles in Ordnung." with the green check icon. While the values are stale, the connection is lost or reconnecting, or the stream has not delivered a value since the tab was shown, it says only "Beim letzten Abruf gab es keine Hinweise." with a neutral clock icon in secondary text. | "state no alerts", "empty alert list", "gap 3" in `Home.states.test.ts` |
 | One alert per level | Three groups with counts; each alert with icon, short title, cause, impact and next step. | "state one alert per level" |
 | No sensors, no storage, no interfaces | One plain line in the card. | "state no sensors, no storage, no interfaces" |
 | Unknown values | A neutral placeholder ("Unbekannt", "Nicht verfügbar"), never an empty field, `null` or `NaN`. | "state unknown values" |
@@ -280,8 +282,9 @@ Where stale values could read as a current claim (checked for the wording fix; o
 | Link badge "Verbunden" and addresses | Inside a dimmed card that says "Veraltet" | Marked by the card, unchanged |
 | Meters, values, sparklines | Same, and the sparkline text says "zuletzt" | Marked by the card, unchanged |
 | Summary strip | Dimmed, "Veraltet" badge | Marked, unchanged |
-| Alerts that exist | Shown as they were at the last reading. The alerts card is not dimmed and has no Veraltet badge | Open: marking it needs a component change |
-| Tab shown again after a pause | Old values show without Veraltet until the stream opens ("Verbindet …"); the two texts above are already cautious there | Open: needs a change in the stale logic |
+| Alerts that exist | Shown as they were at the last reading, in the alerts card, which is dimmed and marked Veraltet like the others | Fixed (known-gaps task) |
+| Tab shown again after a pause | Old values are marked Veraltet from the first frame until the first new value arrives | Fixed (known-gaps task) |
+| No-alerts icon | Neutral clock instead of the green check while stale | Fixed (known-gaps task) |
 
 The alert rules themselves (including the rule "no interface has a link") are unchanged and described in [`DASHBOARD.md`](DASHBOARD.md#alerts). The UI shows no alert for a single interface without a link.
 
@@ -495,7 +498,7 @@ For the state and label texts (`deUi`, German and English). `i18n.test.ts` check
 
 Target: WCAG 2.2 AA (ORB-NFR-011). What is tested and what is not is in [Verification status](#verification-status).
 
-- **Contrast.** Text 4.5:1, UI components and graphics 3:1, in both themes. `tokens.test.ts` computes the ratio of every pair in `styles/contrast-pairs.ts` (56 pairs, including small labels, badges, the disabled look, the focus ring, meter fills on their track, and every semantic role) and fails below the minimum. It also checks the dimmed stale values at their real opacity. The table is below.
+- **Contrast.** Text 4.5:1, UI components and graphics 3:1, in both themes. `tokens.test.ts` computes the ratio of every pair in `styles/contrast-pairs.ts` (56 pairs, including small labels, badges, the disabled look, the focus ring, meter fills on their track, and every semantic role) and fails below the minimum. It also checks the dimmed stale values at their real opacity, including the tinted alert items on a card (body text 8.9 to 10.2, title and icon 5.8 to 7.7 at 0.85, both themes). The table is below.
 - **Colour is never the only signal.** Alert level: icon shape, group heading, colour. Link state: badge text. Stale: the word Veraltet. Current page: `aria-current`, tint and bar. Meter: the value is written next to it.
 - **Focus.** One visible ring (`--focus-ring-*`) with 3:1 against every background. No sticky element covers a focused element.
 - **Target size.** Buttons, navigation entries, `summary` and links are at least 24 by 24 CSS pixels (`--target-min`).
@@ -601,7 +604,7 @@ Do not add an entry for a function that does not exist yet (specification 7.1, "
 
 ## Reference screenshots
 
-[`docs/design/`](design/) holds screenshots made with headless Chrome from synthetic data only (host name `oarfish-test`, documentation address ranges). They show the current look; they are not a specification. Light and dark: `home-alerts` (one alert per level), `home-calm` (no alerts), `home-lost` (connection lost), `device`, and `home-narrow` (390 CSS pixels).
+[`docs/design/`](design/) holds screenshots made with headless Chrome from synthetic data only (host name `oarfish-test`, documentation address ranges). They show the current look; they are not a specification. Light and dark: `home-alerts` (one alert per level), `home-calm` (no alerts), `home-lost` (connection lost, alerts card marked since the known-gaps task), `device`, and `home-narrow` (390 CSS pixels). [`design/known-gaps/`](design/known-gaps/) holds before and after images of the known-gaps task: the alerts card when the connection is lost (`alerts-lost-card`, `calm-lost-card`), a tab shown again (`resume`) and the shell at 360, 1280, 1920 and 2560 px (`layout-<width>`; before images only for 1920 and 2560, the two widths that changed).
 
 ![Home with alerts, light](design/home-alerts-light.png)
 
@@ -609,14 +612,14 @@ Do not add an entry for a function that does not exist yet (specification 7.1, "
 
 Initial frontend, `gzip -9` per file (the budget in ORB-NFR-006 is 750,000 bytes):
 
-| | Before the UI foundation | After the UI foundation | After Gate G5.1 |
-|---|---|---|---|
-| `index.html` | 263 | 265 | 266 |
-| CSS | 1,806 | 4,522 | 5,003 |
-| JavaScript | 27,122 | 36,258 | 43,195 |
-| **Total** | **29,191** | **41,045** | **48,464** |
+| | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task |
+|---|---|---|---|---|
+| `index.html` | 263 | 265 | 266 | 263 |
+| CSS | 1,806 | 4,522 | 5,003 | 5,013 |
+| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 |
+| **Total** | **29,191** | **41,045** | **48,464** | **48,559** |
 
-The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added.
+The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way).
 
 Updating a sample changes text and attributes in place: no element is added or removed and the cards stay the same nodes (`Home.update.test.ts`). The sparkline path is derived from its values and changes only when a sample arrives. No CSS animation exists.
 
@@ -624,7 +627,7 @@ Updating a sample changes text and attributes in place: no element is added or r
 
 **Verified by tests (jsdom):** token completeness and both-theme contrast of 56 pairs plus the dimmed stale values; every state above; data-driven rendering with synthetic names and an unknown kind; the navigation list; landmarks, headings, the skip link, native elements, the single live region; the text rules; in-place updates; no external request and no web font in the sources; and this file's drift guard.
 
-**Verified in headless Chrome on one Mac, by a script that is not in the repository:** the layout checks and the screenshots described above; that the page loads and is styled under the server's `Content-Security-Policy` (`default-src 'self'`, no inline style attribute exists); and the Tab order (skip link, brand, navigation, links, `summary` elements) with a visible 2 px focus ring on each stop, in both themes.
+**Verified in headless Chrome on one Mac, by a script that is not in the repository:** the layout checks and the screenshots described above (and, for the known-gaps task, a mock server with synthetic data: the alerts card and the tab shown again with a stream that is still opening, and the shell at 360, 1280, 1920 and 2560 px in both themes); that the page loads and is styled under the server's `Content-Security-Policy` (`default-src 'self'`, no inline style attribute exists); and the Tab order (skip link, brand, navigation, links, `summary` elements) with a visible 2 px focus ring on each stop, in both themes.
 
 **Verified on one device, once:** user-run on 2026-10-28 on a Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120), Raspberry Pi OS (Debian 13 trixie, arm64), kernel `6.18.50+rpt-rpi-v8`, release `v0.1.0-alpha.5`, commit `c86d15929ce0431b43a19dffe1c447844cac5451`, in-place upgrade from `v0.1.0-alpha.4`. Method and details: [`INSTALL.md`](INSTALL.md#ui-foundation-v010-alpha5). As reported by the owner:
 
@@ -655,8 +658,6 @@ Updating a sample changes text and attributes in place: no element is added or r
 
 Known and not scheduled. None of these is planned for a gate yet.
 
-- The alerts card is not dimmed or marked as stale when the connection is lost. The banner above the cards says it.
-- After a hidden tab becomes visible again, old values show without the stale marking until the stream is open.
-- The green check icon also appears next to the text "Beim letzten Abruf gab es keine Hinweise."
-- In wide windows a large gap remains between the sidebar and the content (the token `--content-max`).
-- The Gerät page says "Nur 512 MB Arbeitsspeicher" from the profile text, while the rest of the UI uses MiB.
+- The five UI gaps of the G5 review (alerts card not marked stale, no marking after a hidden tab is shown, green check next to the stale no-alerts text, the gap between sidebar and content on wide windows, "512 MB" in the profile text) are closed by the known-gaps task; see [Where stale values could read as a current claim](#access-states-gate-g51) and [Layout rules](#layout-rules-and-breakpoints).
+- On a very wide window (2560 px) the free space is a wide empty area right of the content. That is the price of keeping the content next to the sidebar; it was not judged a defect.
+- The `cpu_load` alert can appear and disappear around its threshold. That is alert logic in the backend, not part of the UI, and is left for a separate proposal.

@@ -263,7 +263,7 @@ Navigation has two entries, "Status" (the existing health view) and "Gerät" (`#
 
 | State | What the page shows |
 |---|---|
-| Compatible (Pi Zero 2 W + Raspberry Pi OS) | tier "Kompatibel" in the positive colour, its explanation (not fully tested on real hardware), limitations (512 MB, only the install was tested) |
+| Compatible (Pi Zero 2 W + Raspberry Pi OS) | tier "Kompatibel" in the positive colour, its explanation (not fully tested on real hardware), limitations (about 512 MiB, only the install was tested) |
 | Generic | tier "Generisch" in the warning colour and the notice "Generischer Modus" with the explanation; unknown values labelled "Unbekannt"; no board-specific action |
 | Unsupported | tier "Nicht unterstützt" in the error colour and a notice with a diagnostic hint (for example, install a 64-bit ARM system) |
 | API unreachable | an error message and a "reload" button |
