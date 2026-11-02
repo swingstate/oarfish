@@ -2,7 +2,7 @@
 
 - Status: **Accepted** (2026-10-28, accepted by the project owner)
 - Date: 2026-10-28
-- Amended: 2026-10-31 by amendments A1 to A4 (D-C49 to D-C52); amendment A5 adds the confirmation of the hash parameters on the reference device
+- Amended: 2026-10-31 by amendments A1 to A4 (D-C49 to D-C52); amendment A5 adds the confirmation of the hash parameters on the reference device; amendment A6 (2026-11-02, D-C61, accepted together with [ADR 0010](0010-update-helper.md)) adds the update actions to the audit sets
 - Gate: G5.1 (design stop; G5.1 itself is not started)
 
 ## Context
@@ -108,6 +108,14 @@ The project owner confirmed four deviations that the G5.1 implementation made fr
 **A4. Audit aggregation per kind (amends E7; D-C52).** E7 said that failed logins are aggregated to at most one entry per minute with a counter. The rule is now: failed logins and the other aggregated actions are aggregated per kind, that is per combination of action, target and result, in one-minute windows. Each kind gets at most one entry with a counter per minute, so one minute can contain several entries (for example `invalid_credentials` and `rate_limited`). The number of kinds is fixed by the closed sets. The accepted loss on a power failure is therefore up to 30 s for ordinary entries and up to about 90 s for an aggregated one (60 s window plus 30 s flush).
 
 **A5. Hash parameters confirmed on the reference device (confirms E1; no decision changes).** E1 started with m = 19 MiB, t = 2, p = 1, an estimate of 100 to 400 ms per login and a target below about 500 ms, and said the benchmark on the Raspberry Pi Zero 2 W confirms or adjusts them. The benchmark was run on the reference device (one Raspberry Pi Zero 2 W Rev 1.0, Debian 13 (trixie) arm64, kernel `6.18.50+rpt-rpi-v8`, service version `0.1.0-alpha.6`; Go benchmark, 10 iterations): **442.9 ms per verification** with `FreeOSMemory` after the hash and 418.4 ms without it. That is below the target and above the estimate, so the estimate was too low and the parameters stay as they are. `FreeOSMemory` is needed for the idle budget: with it the process retained 0 MiB (`VmHWM` 25020 kB, `VmRSS` afterwards 5792 kB); without it 20.34 MiB (`VmHWM` and `VmRSS` 46168 kB). A single reading of one device; the numbers are in `docs/AUTH.md`. The reference device remains at the support status Compatible.
+
+**A6. Update actions in the audit sets (amends E7; D-C61; accepted together with ADR 0010).** E7 said that action, target and result are closed sets or patterns and listed the actions of G5.1. The update helper of G6 (ADR 0010) needs more. The rule is now: the sets gain the following values, and nothing else changes in E7 (fixed typed fields, no free-form text, server-made correlation ID, the aggregation of A4, the flush rules).
+
+- **Actions:** `update_started` (the administrator confirmed an update; user = the account name) and `update_finished` (the result of the update, written when the service reads an unacknowledged last result from the helper, usually after the restart that the update caused; user `-`, because the service keeps nothing across a restart; it carries the correlation ID of the matching `update_started`). Neither is aggregated.
+- **Target pattern:** `update/<version>`, where `<version>` matches `^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$` and has at most 64 characters (the version regex of ADR 0010, U2). The pattern is checked like the correlation ID; a value that does not match is dropped and counted, as E7 says for values outside the sets.
+- **Result values added** to `success`, `wrong_password`, `rate_limited` and `error`, which already exist: the error codes and outcomes of the update helper, `busy`, `signature_invalid`, `checksum_mismatch`, `manifest_invalid`, `downgrade_refused`, `already_installed`, `requirements_not_met`, `helper_too_old`, `installer_required`, `confirmation_required`, `key_changed`, `unit_rejected`, `components_damaged`, `stage_expired`, `no_space`, `current_unhealthy`, `cooldown`, `io_error`, `rolled_back`, `components_rolled_back`, `rollback_failed`, `aborted`, and `unavailable` (the helper could not be reached). The helper codes `bad_request`, `not_found` and `internal` are recorded as the existing `error`.
+
+Nothing in the audit file may contain a password, a token, a host name or an address; the new values add none. The write load of two to three entries per update is an estimate of about 750 bytes (ADR 0010, U8), not a measurement. The code change belongs to step G6.7 of ADR 0010; this amendment is text only and the audit package is not changed by it.
 
 ## Forward compatibility with HTTPS
 
