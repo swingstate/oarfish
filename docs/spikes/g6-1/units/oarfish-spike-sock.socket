@@ -1,0 +1,13 @@
+# G6.1 spike, throwaway (V1): a socket unit that the sandboxed runner restarts.
+[Unit]
+Description=Oarfish G6.1 spike: restart target socket (V1)
+
+[Socket]
+ListenStream=/run/oarfish-spike-update/v1.sock
+SocketUser=root
+SocketGroup=oarfish
+SocketMode=0660
+DirectoryMode=0755
+Accept=no
+Backlog=8
+RemoveOnStop=yes

@@ -1,0 +1,12 @@
+# G6.1 spike, throwaway (V8): records the clock at boot. Parallel to the boot, no
+# ordering against anything, bounded by TimeoutStartSec.
+[Unit]
+Description=Oarfish G6.1 spike: clock record at boot (V8)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe v8-boot
+TimeoutStartSec=20
+
+[Install]
+WantedBy=multi-user.target

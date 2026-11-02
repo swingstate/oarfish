@@ -1,0 +1,9 @@
+# G6.1 spike, throwaway (V1): a plain service that the sandboxed runner restarts.
+[Unit]
+Description=Oarfish G6.1 spike: restart target (V1)
+
+[Service]
+Type=exec
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe idle
+TimeoutStartSec=30
+TimeoutStopSec=10

@@ -1,0 +1,13 @@
+# G6.1 spike, throwaway (V2): the IP address filter of the helper sandbox. The
+# target address is read at run time from a file that the runbook block writes
+# and removes; it is not part of any repository file.
+[Unit]
+Description=Oarfish G6.1 spike: IPAddressDeny/IPAddressAllow filter (V2)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe v2-ip
+StandardOutput=append:/var/lib/oarfish-spike-update/out/ip.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@

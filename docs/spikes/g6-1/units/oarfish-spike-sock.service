@@ -1,0 +1,9 @@
+# G6.1 spike, throwaway (V1): the service behind oarfish-spike-sock.socket. Never connected to.
+[Unit]
+Description=Oarfish G6.1 spike: service of the restart target socket (V1)
+
+[Service]
+Type=exec
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe idle
+TimeoutStartSec=30
+TimeoutStopSec=10

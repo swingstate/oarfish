@@ -1,0 +1,13 @@
+# G6.1 spike, throwaway (V11): the recover unit of ADR 0010, U1/U10, with spike names.
+# Not enabled, no WantedBy, no relation to any production unit.
+[Unit]
+Description=Oarfish G6.1 spike: recover unit started by OnFailure (V11)
+Before=oarfish-spike-h11.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oarfish-spike/h11/known-good/oarfish-spike-h11 recover
+StandardOutput=append:/var/lib/oarfish-spike-update/out/recover.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@

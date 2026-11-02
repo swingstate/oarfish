@@ -1,0 +1,8 @@
+# G6.1 spike, throwaway (V1): ends in the failed state so that reset-failed has work to do.
+[Unit]
+Description=Oarfish G6.1 spike: failing unit for reset-failed (V1)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/false
+TimeoutStartSec=30

@@ -1,0 +1,12 @@
+# G6.1 spike, throwaway (V1): the sandbox of the helper unit (ADR 0010, U10) copied
+# verbatim from fragments/helper-sandbox.inc, running the fixed probe command "v1".
+[Unit]
+Description=Oarfish G6.1 spike: systemctl from the helper sandbox (V1)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe v1
+StandardOutput=append:/var/lib/oarfish-spike-update/out/v1.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@

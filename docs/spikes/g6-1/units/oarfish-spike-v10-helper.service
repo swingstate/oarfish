@@ -1,0 +1,13 @@
+# G6.1 spike, throwaway (V10): helper sandbox with the binary reached through
+# /usr/libexec/oarfish-spike-helper -> /opt/oarfish-spike/components/active/... (a link to a link).
+# ReadWritePaths is limited to /opt/oarfish-spike by the fragment.
+[Unit]
+Description=Oarfish G6.1 spike: helper binary through a link, write attempts (V10)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/oarfish-spike-helper v10-helper
+StandardOutput=append:/var/lib/oarfish-spike-update/out/v10-helper.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@

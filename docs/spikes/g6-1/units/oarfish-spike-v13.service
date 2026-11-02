@@ -1,0 +1,16 @@
+# G6.1 spike, throwaway (V13): serves one connection, then restarts its own socket
+# unit as the last action (socket_restart_pending of ADR 0010, U15 rule 4).
+[Unit]
+Description=Oarfish G6.1 spike: service behind the V13 socket
+StartLimitIntervalSec=10
+StartLimitBurst=3
+
+[Service]
+Type=exec
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe v13-serve
+Restart=on-failure
+RestartSec=1
+StandardOutput=append:/var/lib/oarfish-spike-update/out/v13.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@

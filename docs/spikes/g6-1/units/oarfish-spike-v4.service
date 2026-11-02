@@ -1,0 +1,18 @@
+# G6.1 spike, throwaway (V4): the sandbox of install/oarfish.service (user, group,
+# UMask and the hardening block, verbatim in fragments/service-sandbox.inc) around
+# the fixed probe command "v4". The state, cache and runtime directories of the
+# production unit are NOT used: the production directories must not be touched.
+# A directory with the spike prefix stands in for CacheDirectory=oarfish.
+[Unit]
+Description=Oarfish G6.1 spike: Go DNS and TLS under the service sandbox (V4)
+
+[Service]
+Type=oneshot
+User=oarfish
+Group=oarfish
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe v4
+CacheDirectory=oarfish-spike-cache
+StandardOutput=journal
+StandardError=inherit
+TimeoutStartSec=30
+@@SERVICE_SANDBOX@@

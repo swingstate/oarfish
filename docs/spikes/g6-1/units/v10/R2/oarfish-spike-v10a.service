@@ -1,0 +1,12 @@
+# G6.1 spike, throwaway (V10): release R2 of the linked unit v10a.
+[Unit]
+Description=Oarfish G6.1 spike: linked unit v10a, release R2
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe v10-run v10a R2
+TimeoutStartSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+# G6.1 spike, throwaway (V6): the restart lines of install/oarfish.service (Type,
+# Restart, RestartSec, TimeoutStopSec) and a command that exits at once. No start
+# limit line: the manager defaults apply, as they do to the production unit.
+[Unit]
+Description=Oarfish G6.1 spike: crash loop with the restart settings of the production unit (V6)
+
+[Service]
+Type=simple
+ExecStart=/bin/false
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+TimeoutStartSec=30

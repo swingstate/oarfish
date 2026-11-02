@@ -1,0 +1,11 @@
+# G6.1 spike, throwaway (V12): clock_gettime(CLOCK_BOOTTIME) under the full helper sandbox.
+[Unit]
+Description=Oarfish G6.1 spike: CLOCK_BOOTTIME under SystemCallFilter (V12)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe v12
+StandardOutput=append:/var/lib/oarfish-spike-update/out/v12.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@

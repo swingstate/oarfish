@@ -1,0 +1,14 @@
+# G6.1 spike, throwaway (V2): helper-like service started by the socket. It reads
+# SO_PEERCRED of every connection and compares the uid with the user oarfish.
+[Unit]
+Description=Oarfish G6.1 spike: service behind the V2 socket
+
+[Service]
+Type=exec
+ExecStart=/opt/oarfish-spike/probe/oarfish-spike-probe v2-serve
+Restart=on-failure
+RestartSec=1
+StandardOutput=append:/var/lib/oarfish-spike-update/out/v2.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@

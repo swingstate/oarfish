@@ -1,0 +1,13 @@
+# G6.1 spike, throwaway (V2): socket text of ADR 0010, U10, with the spike path.
+[Unit]
+Description=Oarfish G6.1 spike: socket activation and peer credentials (V2)
+
+[Socket]
+ListenStream=/run/oarfish-spike-update/v2.sock
+SocketUser=root
+SocketGroup=oarfish
+SocketMode=0660
+DirectoryMode=0755
+Accept=no
+Backlog=8
+RemoveOnStop=yes

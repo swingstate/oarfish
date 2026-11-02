@@ -1,0 +1,20 @@
+# G6.1 spike, throwaway (V11): the lines of the helper service in ADR 0010, U10,
+# with spike names. One deliberate difference: RuntimeMaxSec=10 instead of 900.
+# The binary is reached through a link (ADR 0010, U5), its behaviour is set by the
+# file "mode" next to it.
+[Unit]
+Description=Oarfish G6.1 spike: helper-like service for exit code 75, start limit, OnFailure (V11)
+OnFailure=oarfish-spike-recover.service
+StartLimitIntervalSec=10
+StartLimitBurst=3
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/oarfish-spike-h11 h11
+Restart=on-failure
+RestartSec=1
+RuntimeMaxSec=10
+StandardOutput=append:/var/lib/oarfish-spike-update/out/h11.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@
