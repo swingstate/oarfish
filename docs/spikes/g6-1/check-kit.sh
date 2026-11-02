@@ -89,7 +89,7 @@ for u in "$here"/units/*.service "$here"/units/v10/R*/*.service; do
   case $v in '' | *[!0-9]*) bad "$(basename "$u"): no numeric TimeoutStartSec" ;; *) if [ "$v" -le 30 ]; then :; else bad "$(basename "$u"): TimeoutStartSec above 30"; fi ;; esac
 done
 ok "every service unit has TimeoutStartSec of at most 30"
-if grep -l '^WantedBy=' "$here"/units/*.service "$here"/units/v10/R*/*.service | sed 's#.*/##' | sort -u | tr '\n' ' ' | grep -qE '^(oarfish-spike-v8-boot\.service oarfish-spike-v10a\.service oarfish-spike-v10b\.service|oarfish-spike-v10a\.service oarfish-spike-v10b\.service oarfish-spike-v8-boot\.service|oarfish-spike-v10a\.service oarfish-spike-v10b\.service oarfish-spike-v8-boot\.service) $'; then ok "only v8-boot, v10a and v10b are installable (enabled for the reboot)"; else bad "unexpected [Install] sections"; fi
+if grep -l '^WantedBy=' "$here"/units/*.service "$here"/units/v10/R*/*.service | sed 's#.*/##' | sort -u | tr '\n' ' ' | grep -qE '^oarfish-spike-v10a\.service oarfish-spike-v10b\.service oarfish-spike-v10c\.service oarfish-spike-v10d\.service oarfish-spike-v8-boot\.service $'; then ok "only v8-boot and v10a to v10d are installable (enabled for the reboot)"; else bad "unexpected [Install] sections"; fi
 
 # 5. production names in the scripts only in read-only commands
 bad_lines=$(grep -nE 'oarfish\.service|/opt/oarfish([^-]|$)|/etc/oarfish|/var/lib/oarfish([^-]|$)|/var/cache/oarfish([^-]|$)|/run/oarfish([^-]|$)' "$here/spike.sh" "$here/probe.go" |

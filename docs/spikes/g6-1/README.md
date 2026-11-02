@@ -10,7 +10,7 @@ Not in this step (the ADR table gives them to later steps): V5 (G6.5), V7 (G6.9)
 
 - The reference Pi also runs the production service (`oarfish.service`, alpha.6). The kit never touches, restarts, edits, orders itself against or depends on `oarfish.service`, `/opt/oarfish`, `/etc/oarfish` or `/var/lib/oarfish`. It only **reads** them, in the preflight, the postflight, the post-reboot block and the cleanup, to show that they did not change.
 - Every artifact on the device carries the prefix `oarfish-spike`: units, `/opt/oarfish-spike`, `/var/lib/oarfish-spike-update`, `/run/oarfish-spike-update`, `/var/cache/oarfish-spike-cache`, `/usr/libexec/oarfish-spike-*`, drop-in directories and the report files in `/var/tmp`.
-- Spike units have `TimeoutStartSec` of at most 30 seconds, no `Requires=` on anything, and no ordering against a production unit. Three units are enabled for the reboot (`oarfish-spike-v8-boot`, `oarfish-spike-v10a`, `oarfish-spike-v10b`); they run in parallel to the boot and cannot hold it up for more than their timeout.
+- Spike units have `TimeoutStartSec` of at most 30 seconds, no `Requires=` on anything, and no ordering against a production unit. Up to five units are enabled for the reboot (`oarfish-spike-v8-boot`, `oarfish-spike-v10a` to `oarfish-spike-v10d`); they run in parallel to the boot and cannot hold it up for more than their timeout.
 - There is no block that runs a command given by the caller. The probe program has fixed subcommands; the only programs it starts are `/usr/bin/systemctl` and `/usr/bin/timedatectl` with fixed argument lists.
 - The GitHub block (V3) is anonymous. No credential of any kind is sent or stored. At most 20 requests per run.
 - The scripts filter host names, user names, IP addresses, MAC addresses, serial numbers, machine and boot ids and the paths and query strings of URLs out of their own output (placeholders `DEVICE`, `USER`, `ADDRESS`, `MAC`, `SERIAL`). Look at the output yourself before you paste it; the findings step scrubs it again.
@@ -81,6 +81,7 @@ Only if needed, never as part of the normal run:
 | Block | Label | Command | When |
 |---|---|---|---|
 | B05x | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v1x` | Only if B05 shows that a call failed. **Exploration, not a recommendation, nothing is adopted:** relaxes one sandbox line at a time in a drop-in (never `CapabilityBoundingSet=`, never a capability) and prints the exit codes of the four calls. |
+| B12x | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v10x` | Added after the V10 result of B12. **Exploration, not adopted:** two more linked units (enabled with `systemctl enable`, and with a relative link in the wants directory); the release directory that the wants link points to is removed, as the retention of ADR 0010 U5 would do. Enables two more units for the reboot; run it before B16/B17. Also reads the memory controller state. |
 | B14x | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v11x` | Only after the owner has seen the hang result of B14. **Exploration, not adopted:** the hang scenario with `StartLimitIntervalSec=120`. |
 
 ### Stop points while running
@@ -96,7 +97,7 @@ B16 should be run right before B17, and B18 right after the Pi is back.
 
 ### If the Pi does not return after B17
 
-This is not expected: the three enabled spike units are oneshot units with a timeout of at most 30 seconds, ordered against nothing. If it happens anyway, remove the enablement links from the SD card on another machine (a Linux machine, because the root partition is ext4). Power the Pi off, put the card in, mount the larger (root) partition at `ROOT`, then:
+This is not expected: the enabled spike units are oneshot units with a timeout of at most 30 seconds, ordered against nothing. If it happens anyway, remove the enablement links from the SD card on another machine (a Linux machine, because the root partition is ext4). Power the Pi off, put the card in, mount the larger (root) partition at `ROOT`, then:
 
 ```sh
 sudo rm -f ROOT/etc/systemd/system/multi-user.target.wants/oarfish-spike-*
@@ -111,7 +112,7 @@ Unmount, put the card back, boot. The remaining spike files can be removed with 
 - **B08** counts against the anonymous GitHub limit of the Pi's address (60 per hour, shared with every device behind it): at most 20 requests per run, normally 15. Do not repeat it within the hour.
 - **B10** deliberately starts a crash loop of a throwaway unit for 45 seconds and stops it again.
 - **B13 and B14** start and stop throwaway units in rapid succession and let `OnFailure=` start the throwaway recover unit; the logs are in `/var/lib/oarfish-spike-update`.
-- **B11, B12** enable throwaway units for the reboot. B20 removes them.
+- **B11, B12, B12x** enable throwaway units for the reboot. B20 removes them.
 
 ## What the kit has and has not been checked with
 

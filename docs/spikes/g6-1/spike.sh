@@ -763,6 +763,71 @@ do_v10() {
   say "next: the reboot block"
 }
 
+v10x_reset() {
+  systemctl stop oarfish-spike-v10c.service oarfish-spike-v10d.service >/dev/null 2>&1
+  systemctl disable oarfish-spike-v10c.service oarfish-spike-v10d.service >/dev/null 2>&1
+  rm -rf "$UNITDIR/oarfish-spike-v10c.service" "$UNITDIR/oarfish-spike-v10d.service" \
+    "$UNITDIR/multi-user.target.wants/oarfish-spike-v10c.service" "$UNITDIR/multi-user.target.wants/oarfish-spike-v10d.service" \
+    "$OPT/currentx" "$OPT/releasesx" "$STATE/v10-v10c.log" "$STATE/v10-v10d.log"
+  systemctl daemon-reload
+}
+
+v10x_view() { # v10x_view LABEL
+  for vx_n in v10c v10d; do
+    printf '%s %s: is-enabled=%s LoadState=%s ActiveState=%s UnitFileState=%s Description=%s\n' "$1" "$vx_n" \
+      "$(systemctl is-enabled oarfish-spike-$vx_n.service 2>&1)" "$(sprop oarfish-spike-$vx_n.service LoadState)" \
+      "$(sprop oarfish-spike-$vx_n.service ActiveState)" "$(sprop oarfish-spike-$vx_n.service UnitFileState)" \
+      "$(sprop oarfish-spike-$vx_n.service Description)"
+  done
+}
+
+do_v10x() {
+  need_installed
+  note "EXPLORATION, not adopted: what happens to an enabled linked unit when the release directory its wants link points to is removed (the retention of ADR 0010 U5)."
+  note "v10c is enabled with systemctl enable (as in V10 way 1); v10d gets a relative link in the wants directory that points at the unit in /etc/systemd/system."
+  note "Both units start again at the next reboot: run the reboot block afterwards."
+  hdr "start from a clean state"
+  v10x_reset
+  hdr "layout: units link -> currentx -> releasesx/RX"
+  mkdir -p "$OPT/releasesx/RX" "$OPT/releasesx/RY"
+  cp "$KIT"/units/v10/RX/*.service "$OPT/releasesx/RX/"
+  cp "$KIT"/units/v10/RY/*.service "$OPT/releasesx/RY/"
+  chmod 0644 "$OPT"/releasesx/RX/*.service "$OPT"/releasesx/RY/*.service
+  link_switch "$OPT/currentx" releasesx/RX
+  cmd ln -s "$OPT/currentx/oarfish-spike-v10c.service" "$UNITDIR/oarfish-spike-v10c.service"
+  cmd ln -s "$OPT/currentx/oarfish-spike-v10d.service" "$UNITDIR/oarfish-spike-v10d.service"
+  cmd systemctl daemon-reload
+  hdr "enable: v10c with systemctl enable, v10d with a relative link in the wants directory"
+  cmd systemctl enable oarfish-spike-v10c.service
+  cmd ln -s ../oarfish-spike-v10d.service "$UNITDIR/multi-user.target.wants/oarfish-spike-v10d.service"
+  cmd systemctl daemon-reload
+  cmdsh "ls -l $UNITDIR/multi-user.target.wants/ | grep oarfish-spike-v10[cd]"
+  v10x_view enabled
+  cmd systemctl start oarfish-spike-v10c.service oarfish-spike-v10d.service
+  cmdsh "cat $STATE/v10-v10c.log $STATE/v10-v10d.log"
+  hdr "switch currentx to RY, daemon-reload, restart"
+  link_switch "$OPT/currentx" releasesx/RY
+  cmd systemctl daemon-reload
+  cmd systemctl restart oarfish-spike-v10c.service oarfish-spike-v10d.service
+  v10x_view switched
+  cmdsh "tail -n 1 $STATE/v10-v10c.log; tail -n 1 $STATE/v10-v10d.log"
+  hdr "remove releasesx/RX as retention would, then daemon-reload"
+  cmd rm -rf "$OPT/releasesx/RX"
+  cmdsh "ls -l $UNITDIR/multi-user.target.wants/ | grep oarfish-spike-v10[cd]"
+  cmdsh "find -L $UNITDIR/multi-user.target.wants -maxdepth 1 -name 'oarfish-spike-v10*' -type l"
+  cmd systemctl daemon-reload
+  v10x_view after-removal
+  cmdsh "systemctl list-dependencies --plain --no-pager multi-user.target | grep oarfish-spike-v10"
+  cmd systemd-analyze verify "$UNITDIR/oarfish-spike-v10c.service"
+  cmd systemd-analyze verify "$UNITDIR/oarfish-spike-v10d.service"
+  hdr "additional observation: memory controller and the MemoryMax= line of the helper sandbox"
+  cmdsh "cat /sys/fs/cgroup/cgroup.controllers; cat /sys/fs/cgroup/cgroup.subtree_control"
+  cmdsh "tr ' ' '\\n' </proc/cmdline | grep -i cgroup; true"
+  cmdsh "systemctl show oarfish-spike-v10-helper.service -p MemoryMax -p MemoryAccounting -p TasksMax -p TasksAccounting"
+  cmdsh "journalctl -b -o cat --no-pager --no-hostname -g 'memory' | grep -iE 'controller|cgroup|MemoryMax' | tail -n 5"
+  say "next: the postflight block, then the reboot block; v10c and v10d must start at boot"
+}
+
 # ---- V11 ---------------------------------------------------------------------
 
 h11_setup() {
@@ -1001,7 +1066,8 @@ do_post_reboot() {
   cmd systemctl is-system-running
   cmdsh "systemctl --failed --no-pager --no-legend"
   hdr "V10 after the reboot: the linked units started at boot"
-  for pr_n in v10a v10b; do
+  for pr_n in v10a v10b v10c v10d; do
+    [ -f "$STATE/v10-$pr_n.log" ] || continue
     say "oarfish-spike-$pr_n.service: is-active=$(systemctl is-active oarfish-spike-$pr_n.service 2>&1) is-enabled=$(systemctl is-enabled oarfish-spike-$pr_n.service 2>&1) ActiveEnterTimestampMonotonic=$(sprop oarfish-spike-$pr_n.service ActiveEnterTimestampMonotonic)"
     say "oarfish-spike-$pr_n.service: FragmentPath=$(sprop oarfish-spike-$pr_n.service FragmentPath) Environment=$(sprop oarfish-spike-$pr_n.service Environment)"
     cmdsh "cat $STATE/v10-$pr_n.log"
@@ -1087,7 +1153,7 @@ usage() {
   cat >&2 <<'USAGE'
 usage: sudo sh spike.sh BLOCK [ARGUMENT]
 blocks: kitcheck preflight facts install v1 v2 ADDRESS:PORT v3 v4 v12 v6 v8 v10 v11a v11b v13 postflight reboot post-reboot cleanup-dry cleanup
-only if needed: v1x v11x
+only if needed: v1x v10x v11x
 USAGE
   exit 2
 }
@@ -1097,7 +1163,7 @@ main() {
   m_block=$1
   shift
   case $m_block in
-    kitcheck | preflight | facts | install | v1 | v1x | v2 | v3 | v4 | v6 | v8 | v10 | v11a | v11b | v11x | v12 | v13 | postflight | reboot | post-reboot | cleanup-dry | cleanup) ;;
+    kitcheck | preflight | facts | install | v1 | v1x | v2 | v3 | v4 | v6 | v8 | v10 | v10x | v11a | v11b | v11x | v12 | v13 | postflight | reboot | post-reboot | cleanup-dry | cleanup) ;;
     *) usage ;;
   esac
   [ "$(id -u)" = 0 ] || die "run as root: sudo sh $0 $m_block"
