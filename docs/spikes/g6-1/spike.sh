@@ -216,13 +216,17 @@ prod_compare() { # prod_compare: compare the production service with the preflig
     pc_n=$(grep "^$pc_k=" "$pc_a")
     if [ "$pc_b" = "$pc_n" ]; then say "STABLE   $pc_b (unchanged)"; else say "CHANGED  before: $pc_b  after: $pc_n"; pc_bad=1; fi
   done
-  if diff "$SNAPLIST" "$pc_l" >/dev/null 2>&1; then
-    say "STABLE   listing of /opt/oarfish (unchanged, $(wc -l <"$pc_l") lines)"
+  # The entry ".." of the recursive listing is /opt itself: creating the spike directory there changes it.
+  grep -v ' \.\.$' "$SNAPLIST" >"$pc_l.b"
+  grep -v ' \.\.$' "$pc_l" >"$pc_l.a"
+  if diff "$pc_l.b" "$pc_l.a" >/dev/null 2>&1; then
+    say "STABLE   listing of /opt/oarfish (unchanged, $(wc -l <"$pc_l.a") lines, the entry for /opt itself left out)"
   else
     say "CHANGED  listing of /opt/oarfish differs:"
-    diff "$SNAPLIST" "$pc_l" | sed 's/^/| /'
+    diff "$pc_l.b" "$pc_l.a" | sed 's/^/| /'
     pc_bad=1
   fi
+  rm -f "$pc_l.a" "$pc_l.b"
   for pc_k in MainPID NRestarts ActiveEnterTimestampMonotonic Result boot_marker; do
     pc_b=$(grep "^$pc_k=" "$SNAP")
     pc_n=$(grep "^$pc_k=" "$pc_a")
