@@ -988,17 +988,28 @@ do_v11x() {
 
 do_v13() {
   need_installed
+  v13_u=oarfish-spike-v13
+  v13_sock=v13.sock
+  if [ "${1:-}" = nb ]; then
+    v13_u=oarfish-spike-v13nb
+    v13_sock=v13nb.sock
+    note "EXPLORATION, not adopted: the service restarts its socket with 'systemctl restart --no-block'."
+    [ -f "$UNITDIR/$v13_u.socket" ] || die "the unit $v13_u.socket is not installed: copy the new kit and run the install block again"
+  fi
   T13=$REPORT_DIR/oarfish-spike-v13-tmp
   rm -rf "$T13"
   mkdir -p "$T13"
-  systemctl stop oarfish-spike-v13.socket oarfish-spike-v13.service >/dev/null 2>&1
-  systemctl reset-failed oarfish-spike-v13.socket oarfish-spike-v13.service >/dev/null 2>&1
-  rm -f "$STATE/v13.log" "$OUTDIR/v13.txt"
-  cmd systemctl start oarfish-spike-v13.socket
-  s13=$RUNDIR/v13.sock
+  systemctl stop "$v13_u.socket" "$v13_u.service" >/dev/null 2>&1
+  systemctl reset-failed "$v13_u.socket" "$v13_u.service" >/dev/null 2>&1
+  rm -f "$STATE/v13.log" "$OUTDIR/v13.txt" "$OUTDIR/v13nb.txt"
+  v13_since=$(date '+%Y-%m-%d %H:%M:%S')
+  cmd systemctl start "$v13_u.socket"
+  s13=$RUNDIR/$v13_sock
   hdr "before"
-  say "$(unit_state oarfish-spike-v13.service)"
-  say "oarfish-spike-v13.socket: ActiveState=$(sprop oarfish-spike-v13.socket ActiveState) SubState=$(sprop oarfish-spike-v13.socket SubState)"
+  say "$(unit_state "$v13_u.service")"
+  say "$v13_u.socket: ActiveState=$(sprop "$v13_u.socket" ActiveState) SubState=$(sprop "$v13_u.socket" SubState)"
+  cmdsh "systemctl show $v13_u.service -p Requires -p Wants -p After -p TriggeredBy -p Triggers | cut -c 1-300"
+  cmdsh "systemctl show $v13_u.socket -p Triggers -p Before -p Conflicts -p RequiredBy -p WantedBy | cut -c 1-300"
   hdr "clients: A is served (3 s of work), C connects while A is served (waits in the backlog), E connects right after A's reply"
   "$PROBE" v13-client "$s13" A >"$T13/A" 2>&1 &
   v13_a=$!
@@ -1019,23 +1030,77 @@ do_v13() {
   done
   hdr "after the first service run has ended"
   sleep 6
-  say "$(unit_state oarfish-spike-v13.service)"
-  say "oarfish-spike-v13.socket: ActiveState=$(sprop oarfish-spike-v13.socket ActiveState) SubState=$(sprop oarfish-spike-v13.socket SubState)"
+  say "$(unit_state "$v13_u.service")"
+  say "$v13_u.socket: ActiveState=$(sprop "$v13_u.socket" ActiveState) SubState=$(sprop "$v13_u.socket" SubState)"
   cmdsh "stat -c '%A %U %G %n' $s13"
   hdr "client D connects now: the socket must start the service again"
   "$PROBE" v13-client "$s13" D >"$T13/D" 2>&1
   sed 's/^/| /' "$T13/D"
   sleep 6
   hdr "final state of both units"
-  say "$(unit_state oarfish-spike-v13.service)"
-  say "oarfish-spike-v13.socket: ActiveState=$(sprop oarfish-spike-v13.socket ActiveState) SubState=$(sprop oarfish-spike-v13.socket SubState) Result=$(sprop oarfish-spike-v13.socket Result)"
+  say "$(unit_state "$v13_u.service")"
+  say "$v13_u.socket: ActiveState=$(sprop "$v13_u.socket" ActiveState) SubState=$(sprop "$v13_u.socket" SubState) Result=$(sprop "$v13_u.socket" Result)"
   hdr "event log of the service (t = seconds since boot)"
   sed 's/^/| /' "$STATE/v13.log"
   hdr "probe output of the service"
-  sed 's/^/| /' "$OUTDIR/v13.txt" 2>/dev/null
-  systemctl stop oarfish-spike-v13.socket oarfish-spike-v13.service >/dev/null 2>&1
+  sed 's/^/| /' "$OUTDIR/v13.txt" "$OUTDIR/v13nb.txt" 2>/dev/null
+  hdr "journal of both units during the test"
+  journalctl --sync >/dev/null 2>&1
+  journalctl -u "$v13_u.socket" -u "$v13_u.service" --since "$v13_since" -o short-monotonic --no-pager --no-hostname 2>&1 | tail -n 40 | sed 's/^/| /'
+  systemctl stop "$v13_u.socket" "$v13_u.service" >/dev/null 2>&1
   rm -rf "$T13"
   note "units stopped"
+}
+
+do_v11y() {
+  need_installed
+  h11_setup
+  note "EXPLORATION, not adopted. Run only after the owner has seen the V11 result of the v11a and v11b blocks."
+  note "Part 1 removes the ordering Before= from the recover unit, as ADR 0010 U1 has it (it orders the recover unit against the socket and the main service, not against the helper service)."
+  note "Part 2 declares exit code 75 a clean exit that still forces the restart: SuccessExitStatus=75 and RestartForceExitStatus=75."
+  mkdir -p "$UNITDIR/oarfish-spike-recover.service.d"
+  printf '[Unit]\nBefore=\n' >"$UNITDIR/oarfish-spike-recover.service.d/explore.conf"
+  systemctl daemon-reload
+  cmdsh "systemctl show oarfish-spike-recover.service -p Before"
+  h11_mode c-a1 'update75 1 c-a2'
+  h11_mode c-a2 ok
+  h11_scenario "X1 (part 1): one update, recover unit without Before=" 30
+  h11_mode c-a1 'update75 0 c-a2'
+  h11_mode c-a2 'update75 0 c-a3'
+  h11_mode c-a3 'update75 0 c-a4'
+  h11_mode c-a4 ok
+  h11_scenario "X2 (part 1): three updates in a row, recover unit without Before=" 30
+  mkdir -p "$UNITDIR/oarfish-spike-h11.service.d"
+  printf '[Service]\nSuccessExitStatus=75\nRestartForceExitStatus=75\n' >"$UNITDIR/oarfish-spike-h11.service.d/explore.conf"
+  systemctl daemon-reload
+  cmdsh "systemctl show oarfish-spike-h11.service -p SuccessExitStatus -p RestartForceExitStatus -p Restart"
+  h11_mode c-a1 'update75 1 c-a2'
+  h11_mode c-a2 ok
+  h11_scenario "X3 (part 2): one update" 30
+  h11_mode c-a1 'update75 0 c-a2'
+  h11_mode c-a2 'update75 0 c-a3'
+  h11_mode c-a3 ok
+  h11_scenario "X4 (part 2): two updates in a row, no delay (3 starts)" 30
+  h11_mode c-a1 'update75 0 c-a2'
+  h11_mode c-a2 'update75 0 c-a3'
+  h11_mode c-a3 'update75 0 c-a4'
+  h11_mode c-a4 ok
+  h11_scenario "X5 (part 2): three updates in a row, no delay (4 starts within about 4 s)" 30
+  h11_mode c-a1 'update75 4 c-a2'
+  h11_mode c-a2 'update75 4 c-a3'
+  h11_mode c-a3 'update75 4 c-a4'
+  h11_mode c-a4 ok
+  h11_scenario "X6 (part 2): three updates in a row, 4 s of work in each" 45
+  h11_mode c-a1 crash
+  h11_scenario "X7 (part 2): a new binary that exits with 1 must still reach OnFailure" 30
+  h11_mode c-a1 hang
+  h11_scenario "X8 (part 2): a new binary that hangs must still reach OnFailure (RuntimeMaxSec=10)" 40
+  systemctl stop oarfish-spike-h11.service >/dev/null 2>&1
+  rm -rf "$UNITDIR/oarfish-spike-recover.service.d" "$UNITDIR/oarfish-spike-h11.service.d"
+  systemctl daemon-reload
+  systemctl reset-failed oarfish-spike-h11.service oarfish-spike-recover.service >/dev/null 2>&1
+  link_switch "$OPT/h11/active" components/c-good
+  note "drop-ins removed, active points to c-good again"
 }
 
 # ---- production check, reboot, post-reboot -------------------------------------
@@ -1153,7 +1218,7 @@ usage() {
   cat >&2 <<'USAGE'
 usage: sudo sh spike.sh BLOCK [ARGUMENT]
 blocks: kitcheck preflight facts install v1 v2 ADDRESS:PORT v3 v4 v12 v6 v8 v10 v11a v11b v13 postflight reboot post-reboot cleanup-dry cleanup
-only if needed: v1x v10x v11x
+only if needed: v1x v10x v11x v11y "v13 nb"
 USAGE
   exit 2
 }
@@ -1163,7 +1228,7 @@ main() {
   m_block=$1
   shift
   case $m_block in
-    kitcheck | preflight | facts | install | v1 | v1x | v2 | v3 | v4 | v6 | v8 | v10 | v10x | v11a | v11b | v11x | v12 | v13 | postflight | reboot | post-reboot | cleanup-dry | cleanup) ;;
+    kitcheck | preflight | facts | install | v1 | v1x | v2 | v3 | v4 | v6 | v8 | v10 | v10x | v11a | v11b | v11x | v11y | v12 | v13 | postflight | reboot | post-reboot | cleanup-dry | cleanup) ;;
     *) usage ;;
   esac
   [ "$(id -u)" = 0 ] || die "run as root: sudo sh $0 $m_block"

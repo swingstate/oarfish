@@ -770,7 +770,14 @@ func cmdV12() int {
 
 // ---- V13 ----
 
-func cmdV13Serve() int {
+// cmdV13Serve serves one connection and then restarts its own socket unit as
+// the last action. With noblock the restart is queued and the call returns at
+// once (systemctl restart --no-block), which is an exploration of V13.
+func cmdV13Serve(noblock bool) int {
+	unit := "oarfish-spike-v13.socket"
+	if noblock {
+		unit = "oarfish-spike-v13nb.socket"
+	}
 	ul, err := activatedListener()
 	if err != nil {
 		say("listener: %s", err)
@@ -791,8 +798,13 @@ func cmdV13Serve() int {
 	fmt.Fprintf(c, "done label=%s\n", label)
 	logTo("v13.log", "replied", "label="+label)
 	// The accepted connection stays open during the restart on purpose.
-	rc := runSystemctl("restart", "oarfish-spike-v13.socket")
-	logTo("v13.log", "socket-restarted", fmt.Sprintf("rc=%d", rc))
+	var rc int
+	if noblock {
+		rc = runSystemctl("restart", "--no-block", unit)
+	} else {
+		rc = runSystemctl("restart", unit)
+	}
+	logTo("v13.log", "socket-restarted", fmt.Sprintf("rc=%d", rc), fmt.Sprintf("noblock=%v", noblock))
 	c.Close()
 	logTo("v13.log", "service-exit")
 	return 0
@@ -883,7 +895,7 @@ func cmdSelftest() int {
 }
 
 func usage() int {
-	fmt.Fprintln(os.Stderr, "usage: oarfish-spike-probe <info|selftest|idle|v1|v2-serve|v2-connect PATH LABEL|v2-ip [HOST:PORT]|v4|v8-boot|v10-run NAME RELEASE|v10-helper|h11|recover|v12|v13-serve|v13-client PATH LABEL>")
+	fmt.Fprintln(os.Stderr, "usage: oarfish-spike-probe <info|selftest|idle|v1|v2-serve|v2-connect PATH LABEL|v2-ip [HOST:PORT]|v4|v8-boot|v10-run NAME RELEASE|v10-helper|h11|recover|v12|v13-serve|v13-serve-nb|v13-client PATH LABEL>")
 	return 2
 }
 
@@ -930,7 +942,9 @@ func main() {
 	case "v12":
 		rc = cmdV12()
 	case "v13-serve":
-		rc = cmdV13Serve()
+		rc = cmdV13Serve(false)
+	case "v13-serve-nb":
+		rc = cmdV13Serve(true)
 	case "v13-client":
 		if !need(2) {
 			os.Exit(usage())
