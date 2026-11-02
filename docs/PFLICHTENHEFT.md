@@ -2,9 +2,9 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.3.4
+- Dokumentversion: 0.3.5
 - Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G4 abgenommen)
-- Stand: 28. Oktober 2026
+- Stand: 2. November 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
@@ -562,7 +562,7 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-CICD-004 | CI muss mindestens `linux/arm64` erzeugen. | MUSS | Artefakt startet in ARM64-Smoke-Test oder Fixture. |
 | ORB-CICD-005 | GitHub Actions darf nicht direkt auf den Pi deployen. | MUSS | Kein SSH-Key, Pi-Host oder Tailscale-Deploypfad im Workflow. |
 | ORB-REL-001 | Ein versionierter Tag muss einen Release-Workflow auslösen können. | MUSS | Release enthält Binary, Manifest, Checksums und Signatur. |
-| ORB-REL-002 | Release-Artefakte müssen Commit, Version, Architektur, Mindestanforderungen und SHA-256 ausweisen. | MUSS | Manifest ist maschinenlesbar und geprüft. |
+| ORB-REL-002 | Release-Artefakte müssen Commit, Version, Architektur, Mindestanforderungen und SHA-256 ausweisen. | MUSS | Manifest ist maschinenlesbar und geprüft. Im MVP prüft der Updater Architektur, Betriebssystem, Libc, die Mindestversion der installierten Version (`requirements.min_installed_version`) und das Protokoll des Update Helpers (`requirements.helper_protocol`); Kernel- und Speicherminima folgen nach einer Messung (ADR 0010). |
 | ORB-REL-003 | Release-Artefakte müssen kryptografisch signiert werden. | MUSS | Installer und Updater lehnen ungültige Signaturen ab. |
 | ORB-INS-001 | Erstinstallation muss über ein kleines, lesbares Installationsskript möglich sein. | MUSS | Frisches Raspberry Pi OS Lite 64-bit wird erfolgreich eingerichtet. |
 | ORB-INS-002 | Installer muss OS, Architektur, systemd, freien Speicher und benötigte Basistools prüfen. | MUSS | Ungeeignete Systeme werden ohne Teilerfolg abgelehnt. |
@@ -639,7 +639,7 @@ Eine Funktion gilt erst dann als fertig, wenn:
 | System Adapters | systemd, journald, procfs, sysfs, APT, Netzwerk und Storage. |
 | Board Profile Registry | SoC- und Boardprofile, Supportstatus und Capability Mapping. |
 | Privilege Broker | Eng begrenzte, typisierte privilegierte Operationen. |
-| Update Manager | Release-Erkennung, Download, Verifikation, Staging und Status. |
+| Update Manager (unprivilegiert) | Release-Erkennung, Download in den Cache, Vorabprüfung und Status. |
 | Update Helper | Root-eigene, eng begrenzte Aktivierung und Rollback. |
 | Plugin Host | Lifecycle, Manifestprüfung, UI-Beiträge und Capability-Bindung. |
 | First-Party-Plugins | Tailscale, Containers und Oarfish Assist. |
@@ -653,7 +653,8 @@ Eine Funktion gilt erst dann als fertig, wenn:
 | `/opt/oarfish/current` | Atomarer Symlink auf aktives Release. |
 | `/etc/oarfish/config.json` | Validierte Hauptkonfiguration. |
 | `/etc/oarfish/secrets/` | Restriktiv geschützte Secrets, die der Betreiber bereitstellt; der Dienst liest sie nur. |
-| `/var/lib/oarfish/` | Pluginzustand, Profile, Updatezustand und kleine persistente Daten, auch alle vom Dienst geschriebenen Geheimnisse und Zustände (Administratorkonto, Setup-Token, Auditdatei), weil der Dienst unter `/etc` nicht schreiben kann (`ProtectSystem=strict`). |
+| `/var/lib/oarfish/` | Pluginzustand, Profile und kleine persistente Daten, auch alle vom Dienst geschriebenen Geheimnisse und Zustände (Administratorkonto, Setup-Token, Auditdatei), weil der Dienst unter `/etc` nicht schreiben kann (`ProtectSystem=strict`). |
+| `/var/lib/oarfish-update/` | Root-eigener Zustand des Update Helpers (D-C58, ADR 0010); der unprivilegierte Dienst kann ihn nicht ändern. |
 | `/var/cache/oarfish/` | Wiederherstellbare Caches und Release-Downloads. |
 | `/run/oarfish/` | Sockets, Locks und ephemere Zustände. |
 | `/usr/libexec/oarfish-update-helper` | Eng begrenzter privilegierter Update Helper. |
@@ -718,7 +719,10 @@ Der Update Helper ist separat und darf ausschließlich:
 - Release-Verzeichnisse unter `/opt/oarfish/releases` verwalten,
 - den `current`-Symlink atomar umschalten,
 - `oarfish.service` neu starten,
-- einen Rollback auf eine bekannte gesunde Version ausführen.
+- einen Rollback auf eine bekannte gesunde Version ausführen,
+- den eigenen Zustand führen,
+- den Zustand von `oarfish.service` lesen,
+- die eigene Binärdatei und die zugehörigen Unit-Dateien aus einem signierten Oarfish-Release nach den Regeln von ADR 0010 (U15) austauschen.
 
 ### 8.7 API- und Ereignismodell
 
@@ -843,6 +847,7 @@ Nach Bestätigung:
 - `stable` ist der Defaultkanal.
 - `beta` kann später explizit aktiviert werden.
 - Ein Downgrade ist nur über einen klaren Recovery-Workflow erlaubt.
+- Solange nur Prereleases existieren: Ein Gerät mit einer Prerelease-Version sieht Prereleases und stabile Releases, ein Gerät mit einer stabilen Version nur stabile Releases, bis eine explizite Beta-Einstellung existiert (D-C59, ADR 0010).
 - Plugins und Boardprofile besitzen eigene Versionen, müssen aber mit dem Core kompatibel sein.
 
 ### 9.7 Repository-Sichtbarkeit und Downloadzugriff
@@ -870,7 +875,7 @@ Ein privater Releasekanal mit dauerhaftem GitHub-Token auf dem Pi ist nicht die 
 3. LLM-Ausgabe ist nicht vertrauenswürdig.
 4. Logs, Containerinhalte und externe Texte sind nicht vertrauenswürdig.
 5. Boardprofil ist Datenquelle, kein ausführbarer Code.
-6. Privilegierte Änderung erfolgt ausschließlich über den Broker.
+6. Privilegierte Änderung erfolgt ausschließlich über den Broker oder, für Oarfish-Releases und die eigenen Komponenten, über den Update Helper.
 7. Update Helper und normaler Oarfish-Webprozess sind strikt voneinander getrennt.
 
 ### 10.2 Plugin-Berechtigungen
@@ -1006,7 +1011,7 @@ Berechtigungen müssen eng, verständlich und widerrufbar sein. Eine Capability 
 
 ### 13.1 Health und Diagnose
 
-- `/healthz`: Prozess lebt und Kerninitialisierung ist abgeschlossen.
+- `/healthz`: Prozess lebt und Kerninitialisierung ist abgeschlossen. Die Antwort darf die Oarfish-Version nennen; sie gehört zur Datenklasse "Öffentlich" (10.3) und ist kein Gerätedatum (D-C57).
 - `/readyz`: Konfiguration, Profile und erforderliche lokale Ressourcen sind bereit.
 - `/api/v1/about`: Version, Commit, Builddatum, Architektur, Boardprofil und Plugins.
 - Strukturierte Logs mit Level, Komponente, Plugin und Korrelations-ID.
@@ -1063,7 +1068,8 @@ Claude Code muss vor jeder Arbeit:
 | G4 | Oarfish Core und Board Detection | OS-, Hardware- und Capability-Erkennung, Generic Mode und Geräteseite. | Pi korrekt erkannt, Ubuntu-Adaptergrenze vorhanden. |
 | G5 | Embedded Dashboard | CPU, RAM, Temperatur, Frequenz, Storage, Netzwerk und Alerts. | Reale Daten innerhalb Budgets. |
 | G5.1 | Lokaler Zugriffsschutz und Audit-Grundlage | Erstkonto-Einrichtung (ORB-ONB-002), lokales Administratorkonto mit Anmeldung, Abmeldung und Passwortänderung (ORB-AUTH-001), serverseitig invalidierbare Sitzungen mit sicheren Cookies (ORB-AUTH-002), Rate-Limit für Anmeldeversuche (ORB-AUTH-003), CSRF- und Herkunftsschutz (ORB-SEC-004), restriktive Datei-Rechte (ORB-SEC-005), Audit-Log (ORB-SEC-006) ohne Secrets (ORB-SEC-007). G5.1 bleibt auf Loopback beschränkt; die explizite Konfiguration für nicht-lokale Bindung behandelt der Design-Stopp D-D10 vor dem MVP-Release (D-C48, ADR 0009). Design-Stopp mit ADR zu Passwort-Hashing, Sitzungsspeicher, Audit-Speicher unter Berücksichtigung der microSD-Schreiblast und Erstkonto-Einrichtung. | Zustandsändernde Endpunkte lehnen Anfragen ohne gültige Sitzung und ohne CSRF-Schutz ab; Audit-Einträge enthalten keine Secrets; Anmeldung auf dem Raspberry Pi verifiziert. |
-| G6 | Self-Update | GUI, Update Manager, Signaturprüfung, atomare Aktivierung und Rollback. Update Helper als separater privilegierter Prozess. | Erfolgs- und Fehlerupdate auf Pi verifiziert. |
+| G6 | Self-Update | GUI, Update Manager, Signaturprüfung, atomare Aktivierung und Rollback. Update Helper als separater privilegierter Prozess. Teilschritte G6.0 bis G6.10 nach ADR 0010 (D-C53, D-C63). | Erfolgs- und Fehlerupdate auf Pi verifiziert. G6 ist erst mit G6.10 abgeschlossen. |
+| G6.10 | Austausch von Update Helper und Units durch GUI-Update | Eigene Bestätigung, Prüfung der Unit-Dateien gegen fest einkompilierte Regeln, Rollback des Helpers, Schlüsselregel (D-C54, D-C60, ADR 0010, U15). | Austausch von Update Helper und Units mit dem Produktionsschlüssel auf dem Pi verifiziert; Fehlerfälle nachgewiesen und gekennzeichnet. |
 | G7 | System Core | Dienste, Journal, Prozesse, Reboot und Shutdown. Privilege Broker mit fester Allowlist (ORB-SEC-002). | Sicherer Dienstneustart End-to-End. |
 | G8 | Plugin Runtime | Manifest, Lifecycle, Capability-Modell und Beispielplugin. Capability-Prüfung im Broker (ORB-SEC-003). | Fehlerhaftes Plugin blockiert Core nicht. |
 | G9 | Tailscale Plugin | Setup, Login, Status, Enable/Disable und Audit. | Realer Workflow auf Pi. |
@@ -1073,7 +1079,7 @@ Claude Code muss vor jeder Arbeit:
 | G13 | Hardening und MVP | Security Review, UX, Performance, Dokumentation und Release. | Alle MVP-MUSS-Abnahmen bestanden. |
 | Post-MVP | Weitere SBCs | Armbian, Rockchip und weitere Boardfamilien. | Je Board dokumentierter Supportstatus. |
 
-G6 beginnt erst, wenn G5.1 PASS ist.
+G6 beginnt erst, wenn G5.1 PASS ist. G7 beginnt erst, wenn G6 einschließlich G6.10 abgenommen ist.
 
 ### 14.3 Prompt-Struktur für Claude Code
 
@@ -1202,3 +1208,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.3.2 | 27. Oktober 2026 | Abschnitt 3.2: Andere Raspberry-Pi-Modelle sind Compatible, sobald ein Board- oder Familienprofil existiert; bis dahin Generic mit den erkannten Pi-Fähigkeiten (Entscheidung D-C26, ADR 0007). |
 | 0.3.3 | 27. Oktober 2026 | Abschnitt 14.2: neues Gate G5.1 "Lokaler Zugriffsschutz und Audit-Grundlage" zwischen G5 und G6, G6 setzt G5.1 PASS voraus (D-C27); Update Helper in G6, Privilege Broker in G7, Capability-Prüfung im Broker in G8 (D-C28); bis G5.1 PASS keine nicht-lokale Listen-Adresse (D-C29); Abschnitt 17: D-07 fällig in G5.1; Abschnitt 6.4: Anforderungs-IDs ORB-UPD-001 bis 003 in ORB-OSU-001 bis 003 umbenannt, Abschnitt 6.12 unverändert (D-C30); Kopfzeile: Status und Stand aktualisiert. |
 | 0.3.4 | 28. Oktober 2026 | Abschnitt 8.2: Zeilen `/etc/oarfish/secrets/` und `/var/lib/oarfish/` präzisiert; vom Dienst geschriebene Geheimnisse und Zustände (Konto, Setup-Token, Audit) liegen unter `/var/lib/oarfish`, `/etc/oarfish/secrets/` bleibt für vom Betreiber bereitgestellte, nur gelesene Secrets (D-C47, ADR 0009); Abschnitt 14.2, Zeile G5.1: explizite Konfiguration für nicht-lokale Bindung aus dem Lieferumfang entfernt, G5.1 bleibt auf Loopback beschränkt, die Bindung behandelt der Design-Stopp D-D10 vor dem MVP-Release (D-C48, ADR 0009); Kopfzeile: Stand aktualisiert. |
+| 0.3.5 | 2. November 2026 | Abschnitt 8.1: Update Manager als unprivilegiert gekennzeichnet (Erkennung, Download in den Cache, Vorabprüfung); Abschnitt 8.2: neue Zeile `/var/lib/oarfish-update/` für den root-eigenen Zustand des Update Helpers, "Updatezustand" aus der Zeile `/var/lib/oarfish/` entfernt (D-C58); Abschnitt 8.6: Aufgaben des Update Helpers um eigenen Zustand, Lesen des Dienstzustands und Austausch der eigenen Komponenten ergänzt (D-C54); Abschnitt 9.6: Prerelease-Regel (D-C59); Abschnitt 10.1 Punkt 6: Broker oder Update Helper; Abschnitt 13.1: `/healthz` darf die Version nennen (D-C57); ORB-REL-002: Abnahmespalte nennt die Prüfungen des MVP; Abschnitt 14.2: Zeile G6 um die Teilschritte G6.0 bis G6.10 ergänzt, neue Zeile G6.10, G7 beginnt erst nach G6.10 (D-C63); Kopfzeile: Dokumentversion und Stand aktualisiert (D-C62, ADR 0010). |
