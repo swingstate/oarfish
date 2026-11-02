@@ -253,7 +253,7 @@ The steps below were run by the owner on the reference device and can be repeate
 
 ### Results on the reference device (v0.1.0-alpha.6)
 
-The owner ran the steps below and reported the results. **The reference device** is one Raspberry Pi Zero 2 W Rev 1.0 with Debian 13 (trixie) arm64, kernel `6.18.50+rpt-rpi-v8`, service version `0.1.0-alpha.6` (release commit in [`INSTALL.md`](INSTALL.md#access-control-and-audit-v010-alpha6)). Its support status is Compatible. These are single readings of one device, one image and one moment each; they are not a budget test and not a statement about other boards, other images or other versions. No host or user names, addresses, serial numbers or MAC addresses are recorded.
+The owner ran the steps below on 2026-10-31 to 2026-11-02 and reported the results. **The reference device** is one Raspberry Pi Zero 2 W Rev 1.0 with Debian 13 (trixie) arm64, kernel `6.18.50+rpt-rpi-v8`, service version `0.1.0-alpha.6` (release commit in [`INSTALL.md`](INSTALL.md#access-control-and-audit-v010-alpha6)). Its support status is Compatible. These are single readings of one device, one image and one moment each; they are not a budget test and not a statement about other boards, other images or other versions. No host or user names, addresses, serial numbers or MAC addresses are recorded.
 
 **Upgrade and setup mode (step 1).** In-place upgrade from `v0.1.0-alpha.5` with the release's own `install.sh`: the service starts in setup mode, the session state is `setup_required`, `/api/v1/device` answers `401`, `/healthz` answers `ok`.
 

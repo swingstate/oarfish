@@ -308,7 +308,7 @@ Known gaps of the interface itself are listed in [`UI.md`](UI.md#known-gaps).
 
 ### Access control and audit (`v0.1.0-alpha.6`)
 
-User-run (the owner ran the steps and reported the results); the 24-hour readings span 24 h 41 min. Gate G5.1 closeout evidence: this block records what was seen, and whether G5.1 passes is the owner's decision. The measurements are in [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6); this block gives the install-side result.
+User-run on 2026-10-31 to 2026-11-02 (the owner ran the steps and reported the results); the 24-hour readings span 24 h 41 min. Gate G5.1 closeout evidence: this block records what was seen, and whether G5.1 passes is the owner's decision. The measurements are in [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6); this block gives the install-side result.
 
 | Item | Result |
 |---|---|
