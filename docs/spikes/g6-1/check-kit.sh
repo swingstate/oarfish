@@ -68,8 +68,9 @@ done
 # 4. assemble every unit and check the safety rules
 OARFISH_SPIKE_SOURCE_ONLY=1
 export OARFISH_SPIKE_SOURCE_ONLY
+# shellcheck disable=SC2034 # KIT is used by the sourced spike.sh
 KIT="$here"
-# shellcheck source=spike.sh
+# shellcheck disable=SC1091 # spike.sh is checked on its own
 . "$here/spike.sh"
 mkdir -p "$tmp/units"
 for t in "$here"/units/*.service "$here"/units/*.socket; do assemble_unit "$t" "$tmp/units/$(basename "$t")"; done
