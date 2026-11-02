@@ -2,7 +2,7 @@
 
 - Status: **Accepted** (2026-10-28, accepted by the project owner)
 - Date: 2026-10-28
-- Amended: 2026-10-31 by amendments A1 to A4 (D-C49 to D-C52)
+- Amended: 2026-10-31 by amendments A1 to A4 (D-C49 to D-C52); amendment A5 adds the confirmation of the hash parameters on the reference device
 - Gate: G5.1 (design stop; G5.1 itself is not started)
 
 ## Context
@@ -106,6 +106,8 @@ The project owner confirmed four deviations that the G5.1 implementation made fr
 **A3. Password change and the rate limit (amends E6; D-C51).** E6 named login and setup as the users of the limiter. The rule is now: the check of the current password in a password change goes through the same global limiter (same consecutive-failure count, same backoff, same 10 attempts per minute), because it costs the same Argon2id hash.
 
 **A4. Audit aggregation per kind (amends E7; D-C52).** E7 said that failed logins are aggregated to at most one entry per minute with a counter. The rule is now: failed logins and the other aggregated actions are aggregated per kind, that is per combination of action, target and result, in one-minute windows. Each kind gets at most one entry with a counter per minute, so one minute can contain several entries (for example `invalid_credentials` and `rate_limited`). The number of kinds is fixed by the closed sets. The accepted loss on a power failure is therefore up to 30 s for ordinary entries and up to about 90 s for an aggregated one (60 s window plus 30 s flush).
+
+**A5. Hash parameters confirmed on the reference device (confirms E1; no decision changes).** E1 started with m = 19 MiB, t = 2, p = 1, an estimate of 100 to 400 ms per login and a target below about 500 ms, and said the benchmark on the Raspberry Pi Zero 2 W confirms or adjusts them. The benchmark was run on the reference device (one Raspberry Pi Zero 2 W Rev 1.0, Debian 13 (trixie) arm64, kernel `6.18.50+rpt-rpi-v8`, service version `0.1.0-alpha.6`; Go benchmark, 10 iterations): **442.9 ms per verification** with `FreeOSMemory` after the hash and 418.4 ms without it. That is below the target and above the estimate, so the estimate was too low and the parameters stay as they are. `FreeOSMemory` is needed for the idle budget: with it the process retained 0 MiB (`VmHWM` 25020 kB, `VmRSS` afterwards 5792 kB); without it 20.34 MiB (`VmHWM` and `VmRSS` 46168 kB). A single reading of one device; the numbers are in `docs/AUTH.md`. The reference device remains at the support status Compatible.
 
 ## Forward compatibility with HTTPS
 

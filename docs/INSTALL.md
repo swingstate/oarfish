@@ -2,7 +2,7 @@
 
 Oarfish runs on a 64-bit ARM Linux device with systemd. You download one script, read it, and run it. The script downloads the release from GitHub, checks the signature, and installs Oarfish as a service. No GitHub account, no token, no Docker, no Node.js, no Python.
 
-**Status (Gates G3, G4 and G5):** this installer, the device detection built into the service and the dashboard have run on **one** real Raspberry Pi Zero 2 W at a time (see [Hardware test results](#hardware-test-results)); neither has been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today shows Home (live values, alerts) and Gerät, a read-only page about what it detected about the board and the system; there is no login and no device management yet (later gates).
+**Status (Gates G3, G4 and G5):** this installer, the device detection built into the service and the dashboard have run on **one** real Raspberry Pi Zero 2 W at a time (see [Hardware test results](#hardware-test-results)); neither has been run on Ubuntu Server or on any other board. What was tested, and what was not, is listed at the end ([What is verified](#what-is-verified-and-what-is-not)). Oarfish today shows Home (live values, alerts) and Gerät, a read-only page about what it detected about the board and the system, behind a local administrator login (Gate G5.1); there is no device management yet (later gates).
 
 **Kurzfassung (Deutsch):** `install.sh` von der Release-Seite laden, lesen, mit `sudo sh install.sh --dry-run` prüfen, dann mit `sudo sh install.sh` installieren. Die Oberfläche läuft nur auf `127.0.0.1:8484` (nur lokal). Von einem anderen Rechner erreichst du sie über einen SSH-Tunnel: `ssh -L 8484:127.0.0.1:8484 BENUTZER@GERAET`, dann im Browser <http://127.0.0.1:8484> öffnen. Deinstallieren: `sudo sh install.sh --uninstall` (Daten bleiben), mit `--purge` werden auch Daten und Benutzer gelöscht.
 
@@ -175,7 +175,7 @@ This is the installer's job for the first installation. Updating from the GUI co
 
 ## Hardware test results
 
-Four tests (G3 and G4 on the same device; G5 and the UI foundation on a Raspberry Pi Zero 2 W Rev 1.0 with the same revision code). Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
+Five tests (G3 and G4 on the same device; G5, the UI foundation and the access control of G5.1 on a Raspberry Pi Zero 2 W Rev 1.0 with the same revision code). Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
 
 ### Gate G3: installer
 
@@ -306,6 +306,35 @@ The same rules as above apply: one device, one image, one moment. No host or use
 
 Known gaps of the interface itself are listed in [`UI.md`](UI.md#known-gaps).
 
+### Access control and audit (`v0.1.0-alpha.6`)
+
+User-run on 2026-10-31 to 2026-11-02 (the owner ran the steps and reported the results); the 24-hour readings span 24 h 41 min. Gate G5.1 closeout evidence: this block records what was seen, and whether G5.1 passes is the owner's decision. The measurements are in [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6); this block gives the install-side result.
+
+| Item | Result |
+|---|---|
+| Device | Raspberry Pi Zero 2 W Rev 1.0 (the reference device; the same device model and revision code as in the blocks above) |
+| OS | Debian GNU/Linux 13 (trixie), arm64 |
+| Kernel | `6.18.50+rpt-rpi-v8` |
+| Tested release | `v0.1.0-alpha.6`, commit `d4300bd2d0e4db7d7051f09f0aa8eb2171acda38` |
+| Method | In-place upgrade from `v0.1.0-alpha.5` with the `install.sh` of the alpha.6 release (the stamped installer). Then the steps of [`AUTH.md`](AUTH.md#measurements-and-checks-on-the-device). |
+| Support status | Compatible (the tier is unchanged). |
+| Upgrade into setup mode | The service started in setup mode after the update: session state `setup_required`, `GET /api/v1/device` answered `401`, `/healthz` answered `ok`. |
+| State directory (D-D11) | `/var/lib/oarfish`, `auth/` and `audit/` were 0700 after the update, so the installer needs no change. `account.json`, `audit.jsonl` and `setup-token` were 0600; the owner was the service user. |
+| Setup and login | Setup with the token worked and the token file was removed afterwards. Login, logout, a wrong password, the rate limit, a password change and a restart behaved as documented in [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6). Lost-password recovery as documented worked. |
+| Idle memory | `VmRSS` 8784 kB after a fresh start; 10960 kB after 24 h 41 min without a restart (`VmHWM` 30004 kB, which includes the password hash). Single readings. |
+| Hash cost | 442.9 ms per verification (Go benchmark on the device, 10 iterations). |
+
+The same rules as above apply: one device, one image, one moment. No host or user names, addresses, serial numbers or MAC addresses are recorded here.
+
+**Not verified on hardware (G5.1 closeout):**
+
+- Screen-reader use and keyboard use of the new pages (Einrichten, Anmelden, Konto).
+- Ubuntu Server, other boards and other Raspberry Pi models.
+- The interface changes of the later UI task (the known-gaps task) in a real browser or on the device.
+- Four simultaneous clients.
+- Behaviour over many days (the longest reading is 24 h 41 min).
+- One audit entry that went missing in one run is unexplained ([`AUTH.md`](AUTH.md#open-observations-from-the-device-run)).
+
 ## Uninstall
 
 ```bash
@@ -365,14 +394,16 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 - Gate G5 (`v0.1.0-alpha.4`): in-place upgrade from `v0.1.0-alpha.3` with the stamped installer; the unchanged unit file's sandbox did not block any file the dashboard reads; dashboard values against the device's own tools (AT-008); idle CPU and `VmRSS` with no browser, with one Safari tab and with the tab hidden; no writes by the process (AT-022); no swap activity (ORB-NFR-007); a service restart with the tab open (the owner reported expected behaviour); Home in Safari through an SSH tunnel. Details in [Gate G5: dashboard](#gate-g5-dashboard).
 - UI foundation (`v0.1.0-alpha.5`): in-place upgrade from `v0.1.0-alpha.4` with the stamped installer (dry run, installation, signature OK, SHA-256 OK, service healthy); Home and "Gerät" in Safari (light and dark), Chrome and Firefox through an SSH tunnel with the layout as intended and the indicator on "Live"; an empty alert list on the idle device (1.5 MiB of 415 MiB in swap raised no alert, none for the Compatible tier); the tunnel interface with operstate `unknown` in neutral grey; keyboard-only use in Chrome or Firefox, as reported by the owner. Details in [UI foundation](#ui-foundation-v010-alpha5).
 
+**Measured on hardware, G5.1 closeout (one device, evidence for the owner's review; this does not decide whether G5.1 passes):** Access control and audit (`v0.1.0-alpha.6`): in-place upgrade from `v0.1.0-alpha.5` with the stamped installer into setup mode; the state directory 0700 after the update; setup, login, logout, the rate limit, a password change, restart behaviour and lost-password recovery; the session cookie in Safari, Chrome and Firefox over `http://127.0.0.1`; the Argon2id cost; memory readings including one after 24 h 41 min; idle CPU; no test password or token in the journal or the audit file; the audit write load over 24 h 41 min. Details in [Access control and audit](#access-control-and-audit-v010-alpha6) and [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6).
+
 **Not verified:**
 
-- **Gate G5 (dashboard), what the hardware runs did not cover**: screen-reader use, keyboard use in Safari, the dark theme in Chrome and Firefox, the lost-connection display of the new UI on the device, idle CPU and `VmRSS` of `v0.1.0-alpha.5`, four simultaneous clients, CPU usage percent and network counters against a second tool, and long-running behaviour. See [`DASHBOARD.md`](DASHBOARD.md#verification-status) and [`UI.md`](UI.md#verification-status).
+- **Gate G5 (dashboard), what the hardware runs did not cover**: screen-reader use, keyboard use in Safari, the dark theme in Chrome and Firefox, the lost-connection display of the new UI on the device, four simultaneous clients, CPU usage percent and network counters against a second tool, and long-running behaviour. (Idle CPU and `VmRSS` were read again with `v0.1.0-alpha.6`.) See [`DASHBOARD.md`](DASHBOARD.md#verification-status) and [`UI.md`](UI.md#verification-status).
 - **Ubuntu Server and any other board or image** have not run on real hardware. Container results are no proof for them. That includes device detection on Ubuntu (fixtures and the architecture test only), other Raspberry Pi models, and USB boot.
 - Uninstall, and running the installer again for the same version, have not been tried on the device (only in the containers and the CI tests). An upgrade from one version to the next was done once on the device (G4 test); a rollback was not.
 - A tampered or damaged download has not been tried on the device (only in the CI tests).
 - The containers have **no systemd**: a small stand-in starts the binary. Only the one device above has run the unit file under a real systemd; other kernels and images may differ.
-- The 512 MB memory budget under load, long-term memory use, and write load on a microSD card are not tested. The idle `VmRSS` readings (7020 kB, 9212 kB and 8480 kB, three different releases; none for `v0.1.0-alpha.5`) are not a budget test.
+- The 512 MB memory budget under load and long-term memory use (beyond 24 h 41 min) are not tested. The write load was read over 24 h 41 min only, with a few events (a rotation of the audit file was never reached). The idle `VmRSS` readings (7020 kB, 9212 kB and 8480 kB for three releases, none for `v0.1.0-alpha.5`, and 8784 kB for `v0.1.0-alpha.6`) are not a budget test.
 - The presence of OpenSSL 3 and the other tools on Ubuntu Server images, and on other versions of Raspberry Pi OS, is assumed from package information. One device had OpenSSL 3.5.7.
 - `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified for `v0.1.0-alpha.2` (2026-10-26) and for `v0.1.0-alpha.6` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.

@@ -2,7 +2,7 @@
 
 Gate G5.1 adds one local administrator account, server-side sessions, CSRF, origin and Host protection, a rate-limited login, a first-start setup with a one-time token, and an own audit file. The design is [ADR 0009](adr/0009-local-access-control-and-audit.md) (decisions E1 to E9, confirmed as D-C45 to D-C48); the requirements are specification 6.11 (ORB-AUTH-001 to -003, ORB-SEC-004 to -007, ORB-SEC-010), ORB-ONB-001 to -003, 8.1, 8.2, 8.7, 8.8, 10.5, ORB-STO-007, ORB-NFR-009 and AT-023. Where this document and the ADR or the specification differ, they win.
 
-**Status: implemented and tested** with Go and jsdom tests and in CI (including an arm64 container under qemu). **Not verified on hardware**: no login has run on a Raspberry Pi yet, the Argon2id cost and the audit write load have not been measured there, and the cookie behaviour has not been seen in a real browser. Every number below that comes from the device side is an **estimate** until the owner reports the measurements of [Measurements and checks on the device](#measurements-and-checks-on-the-device). G5.1 is not PASS before that evidence is reviewed.
+**Status: implemented and tested** with Go and jsdom tests and in CI (including an arm64 container under qemu). **Measured on one device**: the owner ran the checks of [Measurements and checks on the device](#measurements-and-checks-on-the-device) on the reference device (one Raspberry Pi Zero 2 W Rev 1.0, Debian 13 (trixie) arm64, kernel `6.18.50+rpt-rpi-v8`) with `v0.1.0-alpha.6`, and the results are recorded there. Every device number in this document is labelled as measured on the reference device; a number without that label is still an estimate. The reference device stays at the support status Compatible. What is **not** covered is listed under [Verification status](#verification-status), and four open observations are under [Open observations from the device run](#open-observations-from-the-device-run). This document records evidence; whether G5.1 passes is the owner's decision.
 
 Oarfish still listens on loopback only (D-C48): nothing here opens the device to the network. Remote access stays an SSH tunnel until LAN access and HTTPS are designed (D-D10).
 
@@ -24,6 +24,7 @@ Oarfish still listens on loopback only (D-C48): nothing here opens the device to
 14. [Verification status](#verification-status)
 15. [Requirement to test](#requirement-to-test)
 16. [Amendments to ADR 0009 and open points](#amendments-to-adr-0009-and-open-points)
+    - [Open observations from the device run](#open-observations-from-the-device-run)
 
 ## What changes for a device
 
@@ -159,7 +160,7 @@ The order of the checks for a request: Host, route, method, then for state-chang
 - **Lifetimes.** Idle timeout 1 hour, absolute lifetime 12 hours, at most 8 sessions; the ninth login evicts the oldest. Only ordinary requests count as activity; the event stream and the session status request do not.
 - **Expiry** is checked at every access. A sweeper timer, armed for the earliest deadline and only while at least one session exists, ends expired sessions on time, so their event streams close without waiting for a request. With no session there is no timer (idle CPU budget, ORB-NFR-003).
 - **Ending a session** (logout, expiry, eviction, a password change in another session) cancels its context: its event streams send the `session` event and close at once. The sampler stops when the last stream ends.
-- **Cookie.** Name `oarfish_session`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`, no `Max-Age` or `Expires` (a browser session cookie; the server enforces the lifetimes). On a TLS connection (`r.TLS != nil`, only in tests today) the name is `__Host-oarfish_session` and the cookie is `Secure`. `Secure` is never derived from `X-Forwarded-Proto` or any other header. Safari's handling of `Secure` cookies on `http://127.0.0.1`, the reason for this rule, is a design-review assumption that has not been checked yet.
+- **Cookie.** Name `oarfish_session`, `HttpOnly`, `SameSite=Strict`, `Path=/`, no `Domain`, no `Max-Age` or `Expires` (a browser session cookie; the server enforces the lifetimes). On a TLS connection (`r.TLS != nil`, only in tests today) the name is `__Host-oarfish_session` and the cookie is `Secure`. `Secure` is never derived from `X-Forwarded-Proto` or any other header. Safari's handling of `Secure` cookies on `http://127.0.0.1` is the reason for this rule and stays a design-review assumption: it was not tried with a `Secure` cookie. What was seen in Safari, Chrome and Firefox over `http://127.0.0.1` is the cookie without `Secure`, with the attributes above ([results](#results-on-the-reference-device-v010-alpha6)).
 - **The UI** keeps the CSRF token in a module variable of `frontend/src/lib/session.ts`, never in `localStorage`, `sessionStorage`, a readable cookie, the address or a log. Any 401 `unauthenticated`, the stream's `session` event, or a refused stream whose session is gone takes the UI back to the login page with "Die Sitzung ist beendet."; it does not reconnect in a loop ([`UI.md`](UI.md#access-states-gate-g51)).
 
 ## CSRF, origin and Host
@@ -199,7 +200,7 @@ Everything the service writes is below its state directory (D-C47), because `Pro
 
 | Path | Mode | Content |
 |---|---|---|
-| `/var/lib/oarfish/` | 0700 (`StateDirectoryMode=0700`; the installer creates it as 0750 and systemd sets the unit's mode when the service starts, expected, to be confirmed with `stat` on the device; open item D-D11) | state directory, owner `oarfish` |
+| `/var/lib/oarfish/` | 0700 (`StateDirectoryMode=0700`; the installer creates it as 0750 and systemd sets the unit's mode when the service starts; seen as 0700 on the reference device after the update from `v0.1.0-alpha.5`, D-D11 is closed) | state directory, owner `oarfish` |
 | `/var/lib/oarfish/auth/` | 0700 | created at every start if missing |
 | `/var/lib/oarfish/auth/account.json` | 0600 | `{"schema_version":1,"username":...,"password_hash":"$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>","created_at":...}`; written atomically (temporary file in the same directory, `fsync`, rename, `fsync` of the directory) |
 | `/var/lib/oarfish/setup-token` | 0600 | only while no account exists |
@@ -234,7 +235,7 @@ Every field is checked against its closed set or pattern before it is written; t
 - **Writing.** Entries are buffered in memory (at most 64 KiB) and written 30 s after the first unwritten entry, before a rotation and when the service stops (`SIGTERM`, `SIGINT`: the audit log is closed after the HTTP server). There is no `fsync` per entry: on a power failure up to 30 s of ordinary entries and up to about 90 s of an aggregated entry (60 s window plus 30 s flush) can be lost (accepted in E7 and D-C52). The flush timer and the aggregation timer exist only while there is something to write.
 - **Rotation.** Before a line would make the file larger than 1 MiB, `audit.jsonl` becomes `.1`, `.1` becomes `.2`, `.2` becomes `.3` and the old `.3` is gone: at most 4 files, 4 MiB (ORB-STO-007, 10.5).
 - **Failure.** A failed write does not stop the service and does not block a request; it is counted and the journal gets the plain message `audit: writing the audit file failed (N failed writes since start)`, without any entry data.
-- **Write load (estimate, not measured):** about 200 to 250 bytes per entry; a few logins a day write well below 10 KB per day. Measured on the device with the AT-022 method below.
+- **Write load.** Estimate of the ADR (not a measurement): about 200 to 250 bytes per entry; a few logins a day write well below 10 KB per day. Measured on the reference device with the AT-022 method below, over 24 h 41 min without a restart: `audit.jsonl` grew by 344 bytes (two entries). The service's `write_bytes` rose by 8192, two 4 KiB pages, matching two audit flushes ([results](#results-on-the-reference-device-v010-alpha6)). `write_bytes` is therefore no longer 0 at idle as it was before G5.1: every audit flush counts one 4 KiB page, and without events it stays flat (observation 4 in [Open observations](#open-observations-from-the-device-run)).
 - **No UI** reads the audit in G5.1. Read it on the device with `sudo cat /var/lib/oarfish/audit/audit.jsonl`.
 
 Request logs: the service writes no per-request log at all. Its journal lines are the start, the setup-mode note with the token file path, audit write failures and shutdown; none contains a body, a cookie, a query string or a secret.
@@ -243,12 +244,80 @@ Request logs: the service writes no per-request log at all. Its journal lines ar
 
 - **Argon2id** from `golang.org/x/crypto/argon2` (E1), PHC string `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>` with a 16-byte random salt and a 32-byte key. The parameters are constants in `backend/internal/auth/password.go`. A stored hash with other parameters verifies and is re-hashed with the current ones at the next login (atomic write).
 - **Parser bounds.** The PHC parser accepts exactly the canonical form, version 19, `m <= 64 MiB`, `1 <= t <= 10`, `1 <= p <= 4`, salt 8 to 64 bytes, key 16 to 64 bytes, at most 256 characters; a tampered account file cannot make a login allocate more. It is fuzzed (`FuzzParsePHC`, `make fuzz`, 5 s in CI). The fuzzer found that Go's base64 decoder skips `\r` and `\n` even in strict mode; the parser now accepts only the base64 alphabet, and the input is kept as a seed.
-- **One hash at a time** (a semaphore of size 1); waiting requests are bounded by the rate limit. After each hash `runtime/debug.FreeOSMemory()` returns the 19 MiB block to the operating system. Effect measured on a developer Mac (Apple M5, not the target): heap kept by the idle process after the last hash 0.05 MiB with it, 19.26 MiB without; about 33 ms per verification there. The Mac's resident size does not show the release (macOS keeps released pages counted until it needs them: the dev binary went from 13 MB idle to 35 MB after the first hash and stayed there). On Linux Go releases with `MADV_DONTNEED`, so the resident size should fall back; `TestHashMemoryIsReturnedToTheOS` checks that on the Linux CI runner (no race detector) and logs the numbers. First CI run (GitHub-hosted ubuntu-24.04, linux/amd64, not the target): `VmRSS` 5,372 kB before, 6,396 kB after four hashes with the production parameters, `VmHWM` 25,620 kB. This matters for the 35 MB idle budget (ORB-NFR-001) and is checked on the device in step 5 below. The cost on the Pi is unknown until the benchmark below runs (ADR estimate 100 to 400 ms, target below about 500 ms).
+- **One hash at a time** (a semaphore of size 1); waiting requests are bounded by the rate limit. After each hash `runtime/debug.FreeOSMemory()` returns the 19 MiB block to the operating system. Effect measured on a developer Mac (Apple M5, not the target): heap kept by the idle process after the last hash 0.05 MiB with it, 19.26 MiB without; about 33 ms per verification there. The Mac's resident size does not show the release (macOS keeps released pages counted until it needs them: the dev binary went from 13 MB idle to 35 MB after the first hash and stayed there). On Linux Go releases with `MADV_DONTNEED`, so the resident size should fall back; `TestHashMemoryIsReturnedToTheOS` checks that on the Linux CI runner (no race detector) and logs the numbers. First CI run (GitHub-hosted ubuntu-24.04, linux/amd64, not the target): `VmRSS` 5,372 kB before, 6,396 kB after four hashes with the production parameters, `VmHWM` 25,620 kB. This matters for the 35 MB idle budget (ORB-NFR-001). Measured on the reference device (Go benchmark, 10 iterations, production parameters): 442.9 ms per verification with `FreeOSMemory` and 418.4 ms without it. That is below the target of about 500 ms and above the ADR estimate of 100 to 400 ms. Without `FreeOSMemory` the process kept 20.34 MiB after the hash (`VmRSS` 46168 kB); with it, 0 MiB (`VmRSS` 5792 kB afterwards). So the parameters stay, and `FreeOSMemory` is needed for the idle budget. Details in [Results on the reference device](#results-on-the-reference-device-v010-alpha6).
 - **The dependency (D-C49).** `golang.org/x/crypto v0.58.0` (released tag) is the first Go module; `golang.org/x/sys v0.49.0` comes with it. Only the package `argon2` is imported. It uses `golang.org/x/crypto/blake2b` (BLAKE2b is part of the Argon2 definition) and, on amd64 only, `golang.org/x/sys/cpu`; the linux/arm64 release binary contains `argon2` and `blake2b` and not `x/sys/cpu`. `TestArchitectureOnlyArgon2FromXCrypto` fails on any other third-party import and walks argon2's own imports in the module cache; CI also lists the non-standard packages of the linux/arm64 build and runs `go mod verify`. No vendoring: `go.sum` pins the module hashes, the release build already uses `GOFLAGS=-mod=readonly`, and the reproducibility check builds twice with the module cache. The licence (BSD 3-Clause, identical for both modules) is in `THIRD_PARTY_NOTICES.txt`, copied from the module's `LICENSE`.
 
 ## Measurements and checks on the device
 
-Run these on the Raspberry Pi with the G5.1 release installed, one command at a time. `USER` and `DEVICE` are your login and the device's name or address, as in [`INSTALL.md`](INSTALL.md). Do not paste the output of commands that show tokens; the commands below are written so that they do not print them, except the one that reads the setup token for the setup itself. Record device, revision, OS, kernel, release, commit and method with every number (spec 12.4).
+The steps below were run by the owner on the reference device and can be repeated on any other device. Run them on the Raspberry Pi with the G5.1 release installed, one command at a time. `USER` and `DEVICE` are your login and the device's name or address, as in [`INSTALL.md`](INSTALL.md). Do not paste the output of commands that show tokens; the commands below are written so that they do not print them, except the one that reads the setup token for the setup itself. Record device, revision, OS, kernel, release, commit and method with every number (spec 12.4).
+
+### Results on the reference device (v0.1.0-alpha.6)
+
+The owner ran the steps below on 2026-10-31 to 2026-11-02 and reported the results. **The reference device** is one Raspberry Pi Zero 2 W Rev 1.0 with Debian 13 (trixie) arm64, kernel `6.18.50+rpt-rpi-v8`, service version `0.1.0-alpha.6` (release commit in [`INSTALL.md`](INSTALL.md#access-control-and-audit-v010-alpha6)). Its support status is Compatible. These are single readings of one device, one image and one moment each; they are not a budget test and not a statement about other boards, other images or other versions. No host or user names, addresses, serial numbers or MAC addresses are recorded.
+
+**Upgrade and setup mode (step 1).** In-place upgrade from `v0.1.0-alpha.5` with the release's own `install.sh`: the service starts in setup mode, the session state is `setup_required`, `/api/v1/device` answers `401`, `/healthz` answers `ok`.
+
+**File modes (step 2, D-D11).** `/var/lib/oarfish`, `auth/` and `audit/` are 0700; `account.json`, `audit.jsonl` and `setup-token` are 0600; the owner is the service user. The state directory is 0700 after the update, so the installer needs no change (D-D11 is closed).
+
+**Setup and lost password (steps 4 and 10).** Setup with the token works, and the token file is removed after the setup. Lost-password recovery as documented works: stop, remove `account.json`, start gives `setup_required`; a new token is written with mode 0600; the audit file is kept; setup again works.
+
+**Memory (steps 3 and 5).** `VmRSS` and `VmHWM` of the service process, from `/proc/<pid>/status`:
+
+| Moment | `VmRSS` | `VmHWM` |
+|---|---|---|
+| Idle, after a fresh start | 8784 kB | |
+| After the first login | | 29852 kB |
+| Home open | 13324 kB | |
+| Device page, 1 minute later | 13580 kB | |
+| Tab closed, 1 minute later | 12184 kB | |
+| Some minutes later | 11180 kB | |
+| Later still | 8984 kB | |
+| After a restart and several logins, about 25 minutes after the last login | 10976 kB | 31784 kB |
+| After 24 h 41 min without a restart | 10960 kB | 30004 kB |
+
+`VmHWM` is the peak and includes the hash. After a login `VmRSS` stays above the fresh idle value for a while and falls back within minutes (observation 3 below).
+
+**Argon2id cost (step 5).** Parameters m = 19 MiB, t = 2, p = 1. Go benchmark on the device, 10 iterations, `make bench-arm64` binary:
+
+| Benchmark | Time per operation | `VmHWM` | `VmRSS` afterwards | Retained |
+|---|---|---|---|---|
+| `BenchmarkLoginVerify` (with `FreeOSMemory` after the hash) | 442.9 ms | 25020 kB | 5792 kB | 0 MiB |
+| `BenchmarkLoginVerifyWithoutFreeOSMemory` | 418.4 ms | 46168 kB | 46168 kB | 20.34 MiB |
+
+The first line also allocated 19.9 MB per operation. So the hash is below the target of about 500 ms and above the ADR estimate of 100 to 400 ms. The parameters stay (ADR 0009, amendment A5). `FreeOSMemory` is needed for the 35 MB idle budget: without it the process keeps the 19 MiB block.
+
+**Idle CPU (step 11).** 15 ticks of 30000 in 300 s (0.05 percent of one core), no tab open, one session still existing.
+
+**Cookie (step 7).** `oarfish_session` over `http://127.0.0.1` in Safari, Chrome and Firefox: `HttpOnly` set, `Secure` not set, `SameSite=Strict`, `Path=/`, expiry "Session". Identical in all three.
+
+**Behaviour (step 6).**
+
+- Logout shows the login page, also after Back and after a reload.
+- A wrong password gives the generic message "Benutzername oder Passwort ist falsch."
+- After 10 consecutive failures the answer is "Zu viele Versuche. Warten Sie 31 Sekunden und versuchen Sie es dann erneut." (the backoff after the tenth failure is 32 s). 13 refused attempts appear as one `rate_limited` entry with `count` 13. Login works after the wait.
+- A password change with a wrong current password is refused. With the right one it ends all other sessions and keeps the own session. The new password survives a restart.
+- A restart ends all sessions.
+- Shutdown takes under one second, and the audit buffer is written at shutdown: a password change followed by a restart 2 s later left the entry in the file.
+
+**Secrets (step 8).** The test-password prefix, a fragment of a session token and hex strings of 32 or more characters were searched in the journal and in the audit file:
+
+| Search | Journal | Audit file |
+|---|---|---|
+| Test-password prefix | 0 hits | 0 hits |
+| Session token fragment | 0 hits | 0 hits |
+| Hex strings of 32 or more characters | 7 hits, all 40 characters long, all the commit ID in the start line | no hit reported |
+
+Failed logins record the user as `-`.
+
+**Write load over 24 hours (step 9, AT-022).** Baseline 24 h 41 min before the reading, service not restarted:
+
+| Reading | `write_bytes` of the service | `audit.jsonl` |
+|---|---|---|
+| Baseline | 12288 | 3247 bytes |
+| 24 h 41 min later | 20480 | 3591 bytes |
+| Difference | +8192 (two 4 KiB pages, matching two audit flushes) | +344 bytes (two entries) |
+
+The ADR estimate was below 10 KB per day.
 
 ### 1. Upgrade from `v0.1.0-alpha.5` and setup mode
 
@@ -328,7 +397,7 @@ Wait about a minute with no browser tab open on Home (close it or switch to the 
 grep -E 'VmRSS|VmHWM' /proc/$(systemctl show -p MainPID --value oarfish)/status
 ```
 
-`VmHWM` shows the peak including the hash; `VmRSS` should come back near the idle value of step 3, because the hash memory is returned at once.
+`VmHWM` shows the peak including the hash. `VmRSS` stays a few MB above the idle value of step 3 for a while and falls back in steps within minutes (observation 3 below); the hash memory itself is returned at once.
 
 Benchmark (one login-equivalent verification with the production parameters). On your computer, in the repository at the release tag:
 
@@ -388,13 +457,13 @@ sudo grep -c 'SENTINEL' /var/lib/oarfish/audit/audit.jsonl
 sudo journalctl -u oarfish --no-pager | grep -c 'SENTINEL'
 ```
 
-Expected: `0` for both (grep prints 0 and exits with status 1). Also check that no token is in the journal:
+Expected: `0` for both (grep prints 0 and exits with status 1). Also check that no token is in the journal (a 32 or more character hex string):
 
 ```bash
 sudo journalctl -u oarfish --no-pager | grep -cE '[0-9a-f]{32}'
 ```
 
-Expected: `0`. To see what was audited:
+Expected: `0` hits for the first two. The third search finds the commit ID of the release, which the service prints in its start line (40 characters); every other hit would need a look. To see what was audited:
 
 ```bash
 sudo cat /var/lib/oarfish/audit/audit.jsonl
@@ -414,7 +483,7 @@ sudo grep write_bytes /proc/$(systemctl show -p MainPID --value oarfish)/io
 sudo ls -l /var/lib/oarfish/audit
 ```
 
-Report both readings and the time between them. The estimate is below 10 KB per day.
+Report both readings and the time between them. The estimate is below 10 KB per day. `write_bytes` is not 0 at idle any more: each audit flush counts one 4 KiB page, and without events it stays flat.
 
 ### 10. Lost-password recovery
 
@@ -428,13 +497,19 @@ With no browser tab open and nobody signed in for at least an hour (no session, 
 
 **Verified by tests (no network, no root, no hardware):** everything in the table below. Backend: Go tests with `-race`, a fake clock for every timer (sessions, limiter, audit), synthetic credentials, temporary state directories, `httptest` servers (also TLS). Process level: the real binary started by the test with a temporary `STATE_DIRECTORY`, set up over HTTP, stopped with `SIGTERM`. Frontend: jsdom with a fake `fetch` and `EventSource`. CI also runs the release binary under qemu-user (smoke test: setup mode, 401 without a session, the token not in the log) and the installer in arm64 Debian 12 and Ubuntu 24.04 containers (modes of `setup-token`, `auth/` and `audit/`, 401 without an account, the installer's hint).
 
+**Measured on the reference device with `v0.1.0-alpha.6`** (one Raspberry Pi Zero 2 W Rev 1.0, owner-run, single readings; results and numbers in [Results on the reference device](#results-on-the-reference-device-v010-alpha6)): the in-place update from `v0.1.0-alpha.5` into setup mode, the file modes under the real systemd (D-D11), setup with the token, lost-password recovery, login, logout, wrong password, the rate limit, password change, restart and shutdown behaviour, the cookie attributes in Safari, Chrome and Firefox over `http://127.0.0.1`, the Argon2id cost, memory before and after logins and after 24 h 41 min, idle CPU, the search for secrets in the journal and the audit file, and the audit write load over 24 h 41 min. This is evidence for the owner's review. It does not say that G5.1 passes, and the reference device stays Compatible.
+
 **Not verified:**
 
-- **Anything on the Raspberry Pi**: login, logout, password change, the setup in a browser, the Argon2id cost, memory before and after a login, the audit write load, the file modes under the real systemd (`StateDirectoryMode`), the restart behaviour.
-- **Real browsers**: the cookie in Safari, Chrome and Firefox over `http://127.0.0.1` (E3 design-review assumption), the forms' layout, keyboard use and screen readers on the new pages.
-- **The OWASP parameter recommendation** (m = 19 MiB, t = 2, p = 1) was not re-read; it is a design-review assumption of E1.
+- **Screen reader and keyboard use** of the new pages (Einrichten, Anmelden, Konto).
+- **Ubuntu** (Server LTS, or any other OS image), **other boards** and **other Raspberry Pi models**.
+- **The UI changes of the later UI task** (the known-gaps task) in a real browser or on the device.
+- **Four simultaneous clients.**
+- **Behaviour over many days.** The longest reading is 24 h 41 min. The audit file on the device was about 3.6 KB at the last reading, so the rotation at 1 MiB was never reached on a real card.
+- **The OWASP parameter recommendation** (m = 19 MiB, t = 2, p = 1) was not re-read; it is a design-review assumption of E1. The device run shows the cost of these parameters, not that they match the recommendation.
+- **Safari with a `Secure` cookie on `http://127.0.0.1`**, the reason for the cookie rule, was not tried (only the cookie without `Secure` was seen).
 - **TLS** exists only in tests (D-D10).
-- **Long running**: many hours of sessions and audit rotation on a real card.
+- **The cause of one missing audit entry** (observation 1 under [Open observations](#open-observations-from-the-device-run)).
 
 ## Requirement to test
 
@@ -448,10 +523,10 @@ With no browser tab open and nobody signed in for at least an hour (no session, 
 | ORB-AUTH-003 rate-limited login | `TestBackoffDoublesFromOneSecondToFifteenMinutes`, `TestLimiterBackoff`, `TestLimiterHasNoHardLockout`, `TestLimiterTenAttemptsPerMinute`, `TestLoginRateLimitRefusesEvenTheRightPassword`, `TestSetupTokenAttemptsAreRateLimited`, `TestLoginRateLimitOverHTTP`, `Auth.test.ts "shows the wait time when rate limited"` |
 | ORB-SEC-004 CSRF and origin protection | `TestStateChangingRequestsMatrix`, `TestHostHeaderGuard`, `TestAuthRequestBodies`, `session.test.ts "sends JSON and the CSRF header with every state-changing request"` |
 | ORB-SEC-005 restrictive file modes | `TestAccountFileModesAndContent`, `TestStartTightensTooOpenModes`, `TestForeignOwnerIsRefused`, `TestModesAreTightenedAndCreatedRestrictive`, `TestSymlinksAreRefused`, `TestOpenTightensExistingFiles`, `TestCorruptAccountFileRefusesToStart`, `TestMissingOrReadOnlyStateDirectoryRefusesToStart`, `TestMainRefusesToStartWithoutAStateDirectory`, `TestMainRefusesACorruptAccountFile` |
-| ORB-SEC-006 administrative actions audited with time, user, plugin, action, target, result, correlation ID | `TestEntryHasTheFixedFields`, `TestAccountEventsAreAudited`, `TestFailedLoginsAndRejectionsAreAggregated`, `TestCorrelationIDAndNoStore` |
+| ORB-SEC-006 administrative actions audited with time, user, plugin, action, target, result, correlation ID | `TestEntryHasTheFixedFields`, `TestAccountEventsAreAudited`, `TestFailedLoginsAndRejectionsAreAggregated`, `TestCorrelationIDAndNoStore`, `TestAuditDurabilityManyWritersAcrossRotation`, `TestAuditDurabilityCloseRunsConcurrently`, `TestAuditDurabilityEventRightBeforeClose`, `TestAuditDurabilityEventWhileFlushIsWriting`, `TestAuditDurabilityCloseWhileFlushIsWriting`, `TestAuditDurabilityRestartLikeSequence` |
 | ORB-SEC-007 no secrets in audit and logs | `TestRedactionOfSecrets`, `TestInvalidEventsAreDropped`, `TestFailedWriteIsCountedAndReportedWithoutData`, `TestMainSetupThenSIGTERMFlushesTheAudit`, `TestCorruptAccountFileRefusesToStart` |
 | AT-023 secrets not in UI, browser storage, journal or logs | `TestRedactionOfSecrets`, `TestMainSetupThenSIGTERMFlushesTheAudit`, `Auth.test.ts "signs in, keeps the token out of browser storage and the address"`, `session.test.ts "reads the session state and keeps the CSRF token in memory only"` |
-| ORB-NFR-009 minimal microSD write load | `TestFlushTiming`, `TestRotationAndCap`, `TestCloseWritesEverything`, `TestSessionSweeperEndsExpiredSessionsAndOnlyRunsWhileSessionsExist`, `TestRestartEndsAllSessions`, `TestCheckWritableDir` |
+| ORB-NFR-009 minimal microSD write load | `TestFlushTiming`, `TestRotationAndCap`, `TestCloseWritesEverything`, `TestSessionSweeperEndsExpiredSessionsAndOnlyRunsWhileSessionsExist`, `TestRestartEndsAllSessions`, `TestCheckWritableDir`, `TestAuditDurabilityManyWritersAcrossRotation`, `TestAuditDurabilityCloseRunsConcurrently`, `TestAuditDurabilityEventRightBeforeClose`, `TestAuditDurabilityEventWhileFlushIsWriting`, `TestAuditDurabilityCloseWhileFlushIsWriting`, `TestAuditDurabilityRestartLikeSequence` |
 | ORB-STO-007 own logs rotated and bounded | `TestRotationAndCap`, `TestFailedLoginsAndRejectionsAreAggregated` |
 | ORB-NFR-013 atomic writes | `TestWriteAtomic`, `TestAccountFileModesAndContent` |
 | ORB-SEC-010, ORB-ONB-003, D-C48 loopback only | `TestValidateListen`, `TestValidateListenMessageNamesTheOpenDesign`, `TestMainRefusesANonLoopbackListenAddress` |
@@ -462,10 +537,20 @@ With no browser tab open and nobody signed in for at least an hour (no session, 
 
 ## Amendments to ADR 0009 and open points
 
-The project owner confirmed four deviations of the implementation from ADR 0009. They are recorded as decisions D-C49 to D-C52 in `docs/DECISIONS.md` and as amendments A1 to A4 in the ADR, whose original decisions stay as written. One point is still open (D-D11).
+The project owner confirmed four deviations of the implementation from ADR 0009. They are recorded as decisions D-C49 to D-C52 in `docs/DECISIONS.md` and as amendments A1 to A4 in the ADR, whose original decisions stay as written. Amendment A5 records the confirmation of the hash parameters on the reference device. The former open point D-D11 is closed; four observations from the device run are open (below).
 
 - **Third-party code in the binary (D-C49, ADR 0009 A1).** E1 said that only `argon2` and `x/sys/cpu` are used. The rule is now `golang.org/x/crypto/argon2` and what argon2 itself needs: `golang.org/x/crypto/blake2b` and, on amd64 only, `golang.org/x/sys/cpu`. The check allows exactly that closure.
 - **Host check (D-C50, ADR 0009 A2).** E3 names `127.0.0.1`, `[::1]` and `localhost`. The check accepts `localhost`, every literal loopback address (`127.0.0.0/8` and `[::1]`) and the allow-list, which is empty in G5.1. This matches the listen guard (D-C29), and a literal loopback address cannot be rebound.
 - **The password change goes through the login limiter (D-C51, ADR 0009 A3).** E6 names login and setup; the current-password check of a password change costs the same hash, so it shares the limiter with the same count, backoff and attempts per minute.
 - **Aggregation key (D-C52, ADR 0009 A4).** The one-minute aggregation is kept per kind (action, target, result), so a minute with both wrong passwords and rate-limited attempts gives two entries. The accepted loss on a power failure is up to 30 s for ordinary entries and up to about 90 s for an aggregated one.
-- **The state directory mode (open item D-D11, not a decision).** The installer still creates `/var/lib/oarfish` as 0750; `StateDirectoryMode=0700` in the unit is expected to decide the mode at every service start under a real systemd. Whether systemd tightens the existing directory on an update from `v0.1.0-alpha.5` is to be confirmed with `stat` on the device (step 2); whether the installer then aligns to 0700 is decided after that evidence.
+- **The state directory mode (D-D11, closed).** The installer still creates `/var/lib/oarfish` as 0750; `StateDirectoryMode=0700` in the unit decides the mode at every service start under a real systemd. On the reference device the directory was 0700 after the update from `v0.1.0-alpha.5` (step 2), so the installer needs no change.
+- **Hash parameters (ADR 0009, A5).** The parameters m = 19 MiB, t = 2, p = 1 were run on the reference device: 442.9 ms per verification (418.4 ms without `FreeOSMemory`). That is below the target of about 500 ms and above the ADR estimate of 100 to 400 ms, so the parameters stay.
+
+### Open observations from the device run
+
+Four observations from the run on the reference device are open. None is a decision.
+
+1. **One audit entry is unexplained.** On one evening a second successful password change is missing from `audit.jsonl` although the new password was accepted afterwards. No audit warning is in the journal. The file at that time had exactly the 11 lines written by the 30 s flush. A later repeat of the same scenario (a password change, a restart 2 s later) wrote the entry. The case was not reproduced and the cause is unknown. The first attempt to find a cause is the audit durability test (`backend/internal/audit/durability_test.go`, listed under ORB-SEC-006 and ORB-NFR-009): it records many events from several goroutines while timer flushes fire, a flush is writing, the files rotate and `Close` runs, and checks that every recorded event is in the files exactly once. It covers the audit package, not the server's calls into it, and a passing test does not explain the missing entry.
+2. **The audit file is not strictly in time order.** Aggregated entries are written when their one-minute window closes, and carry the time of their first event. A `login_failed` entry with an earlier time can therefore follow a later `login_succeeded` (seen twice on the reference device). This follows from D-C52. Read the audit by the `time` field, not by line position.
+3. **Resident memory falls back within minutes after a login.** After a login `VmRSS` stays 2 to 3 MB above the fresh idle value of 8784 kB for a while and falls back in steps over minutes (13324 kB with Home open, 12184 kB one minute after closing the tab, 11180 kB some minutes later, 8984 kB later still). It does not return to the idle value at once, and it was 10976 kB about 25 minutes after the last login of a series of logins and 10960 kB after 24 h 41 min.
+4. **`write_bytes` of the service is no longer 0 at idle.** Since G5.1 every audit flush counts one 4 KiB page in `write_bytes`; without events it stays flat. Measured: +8192 (two pages) for two flushes in 24 h 41 min. An upper bound **by calculation only, not measured**: at most one flush per 30 s while events keep coming, that is at most 2880 flushes and 11.25 MiB of `write_bytes` per day under a continuous stream of events.
