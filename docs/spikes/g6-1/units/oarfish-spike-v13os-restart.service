@@ -1,0 +1,12 @@
+# G6.1 spike, throwaway (V13, exploration): restarts the socket of oarfish-spike-v13os.service
+# after that service has finished (started by OnSuccess=). Fixed command, no arguments from outside.
+[Unit]
+Description=Oarfish G6.1 spike: restart the V13 exploration socket after its service finished
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart oarfish-spike-v13os.socket
+StandardOutput=append:/var/lib/oarfish-spike-update/out/v13os-restart.txt
+StandardError=inherit
+TimeoutStartSec=30
+@@HELPER_SANDBOX@@

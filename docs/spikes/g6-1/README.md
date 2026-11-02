@@ -40,7 +40,7 @@ sh docs/spikes/g6-1/build-probe.sh
 The build is static `linux/arm64`, made with `go version go1.27.3 darwin/arm64` (`-trimpath -buildvcs=false -ldflags='-s -w -buildid='`, `CGO_ENABLED=0`). The checksum is only reproducible with the same toolchain. Expected output line:
 
 ```text
-sha256: e6a464b78f6756e7c3b067b3a603ea530bb6a8af9f9bb455f7c9088077a1b306
+sha256: 7ec50a6deee18811926d290b31f68b8b00631301a9f18c9399d5019325ffa31c
 ```
 
 **M2 (MacBook, copies the kit).** Copy the kit including the built probe to the Pi. `USER` and `DEVICE` are your login and the device's name or address, as in [`INSTALL.md`](../../INSTALL.md).
@@ -82,7 +82,8 @@ Only if needed, never as part of the normal run:
 |---|---|---|---|
 | B05x | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v1x` | Only if B05 shows that a call failed. **Exploration, not a recommendation, nothing is adopted:** relaxes one sandbox line at a time in a drop-in (never `CapabilityBoundingSet=`, never a capability) and prints the exit codes of the four calls. |
 | B12x | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v10x` | Added after the V10 result of B12. **Exploration, not adopted:** two more linked units (enabled with `systemctl enable`, and with a relative link in the wants directory); the release directory that the wants link points to is removed, as the retention of ADR 0010 U5 would do. Enables two more units for the reboot; run it before B16/B17. Also reads the memory controller state. |
-| B14y | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v11y` | Added after the V11 result of B13 and B14. **Exploration, not adopted:** the recover unit without `Before=` (as the ADR has it), and exit code 75 declared a clean exit that still forces the restart (`SuccessExitStatus=75`, `RestartForceExitStatus=75`); then crash and hang again. About 3 minutes. |
+| B14y | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v11y` | Added after the V11 result of B13 and B14. **Exploration, not adopted:** the recover unit without an ordering against the helper service (as the ADR has it), and exit code 75 declared a clean exit that still forces the restart (`SuccessExitStatus=75`, `RestartForceExitStatus=75`); then crash and hang again. About 3 minutes. |
+| B15y | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v13 os` | Exploration, not adopted: the service only exits; a unit started by `OnSuccess=` restarts the socket after the service has become inactive. |
 | B15x | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v13 nb` | Added after the V13 result of B15. **Exploration, not adopted:** the service restarts its socket with `systemctl restart --no-block`. Needs the install block to be run again with the new kit (new probe, two more units). |
 | B14x | CHANGES THE DEVICE | `sudo sh ~/oarfish-spike-kit/spike.sh v11x` | Only after the owner has seen the hang result of B14. **Exploration, not adopted:** the hang scenario with `StartLimitIntervalSec=120`. |
 

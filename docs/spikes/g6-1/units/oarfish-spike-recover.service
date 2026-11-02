@@ -1,8 +1,9 @@
 # G6.1 spike, throwaway (V11): the recover unit of ADR 0010, U1/U10, with spike names.
-# Not enabled, no WantedBy, no relation to any production unit.
+# Not enabled, no WantedBy, no relation to any production unit. No Before= against the helper
+# service: ADR 0010 U1 orders the recover unit against the socket and the main service only.
+# (A first version had Before=oarfish-spike-h11.service; it delayed the restart and is gone.)
 [Unit]
 Description=Oarfish G6.1 spike: recover unit started by OnFailure (V11)
-Before=oarfish-spike-h11.service
 
 [Service]
 Type=oneshot
