@@ -17,6 +17,7 @@ backend/                     Go module github.com/swingstate/oarfish/backend
   internal/platform/         read-only detection: source, hardware, operating_system, capabilities, profiles, detector (docs/DETECTION.md)
   internal/web/              go:embed of the built frontend (dist/)
   internal/trustkey/        the release public key (a go:embed copy of release/oarfish-release.pub) and the minisign key parser; imported by the update helper
+  internal/relverify/       release verification (ADR 0010 U4, U5, G6.4): signature, checksums, manifest, versions, tar inspection. Standard library plus trustkey; not imported by any binary yet (below)
   internal/version/          Version and Commit, injected with -ldflags
 frontend/                    Svelte 5 + TypeScript + Vite
   src/                       App.svelte (session gate and navigation), pages/ (Home, Gerät, Einrichten, Anmelden, Konto), lib/ (metrics, stream, device and session clients, locales/de.ts + en.ts)
@@ -130,6 +131,31 @@ The names follow `state.json` and the manifest of ADR 0010. Members may only be 
 **The units** (`install/oarfish-update-helper.socket`, `.service` and `oarfish-update-recover.service`) have the texts of ADR 0010 U10 as amended by A1, plus a `[Unit]` description, `Documentation=` and an `[Install]` section for the socket (`WantedBy=sockets.target`) and the recover unit (`WantedBy=multi-user.target`), which the ADR text implies without printing. The helper has no `Requires=`, `BindsTo=`, `PartOf=` or ordering against `oarfish.service`, and no `Environment=`. The recover unit alone is ordered `Before=` the socket and `oarfish.service`. `scripts/check-units.sh` pins the required lines and forbids the rest; CI also runs `systemd-analyze verify` against a temporary root and prints `systemd-analyze security --offline` for information, with no threshold.
 
 **Build.** `scripts/build-helper.sh` builds the helper for linux/arm64 with the flags of the main binary and can check that two builds from an empty cache are identical. CI reports its size next to the bundle sizes; it has no budget of its own; since G6.3b its bytes count in the bundle budget.
+
+## The release verification package (Gate G6, step G6.4)
+
+`backend/internal/relverify` verifies a release the way ADR 0010 U4 and U5 describe. The update helper (G6.5) and the service (G6.7) will both import it, so that the advisory check in the service and the binding check in the helper cannot drift apart. **In G6.4 nothing imports it:** it is not linked into the service or the helper, the binary sizes and the bundle hashes are unchanged, and no behaviour on a device changes. Nothing in it is verified on hardware; it is tested on CI runners and on a development machine only.
+
+What it does, in the order a caller uses it:
+
+| Step | Function | Rule |
+|---|---|---|
+| 1 | `VerifySignature` | line 2 of `checksums.txt.sig` is exactly 74 bytes: `Ed`, the 8-byte id of the embedded key, a 64-byte Ed25519 signature over the exact bytes of `checksums.txt`, checked with `crypto/ed25519`; the prehashed `ED` and a different key id are refused; the trusted comment is ignored; the container must be exactly four lines, at most 64 KiB |
+| 2 | `ParseChecksums` | the `sha256sum` format that `bundlegen checksums` writes, strictly: 64 lowercase hexadecimal digits, two spaces, a plain file name, every name once, the bundle and `manifest.json` each exactly once |
+| 3 | `ParseManifest`, `Manifest.Check` | the manifest fields of `bundlegen`, the constants and formats of U4, the optional `min_installed_version`, `helper_protocol` and `components`, `contents` of exactly the legacy or the components shape with the modes 0644 and 0755; unknown fields are ignored (the consumer on the device), a missing or invalid known field fails |
+| 1 to 3 | `VerifyMetadata`, `Release.CheckBundle` | the above in the order of U4, plus the manifest hash against the signed list, the bundle hash and size against the signed values |
+| 4 | `ParseVersion`, `Compare`, `CheckNewer`, `Eligible`, `Latest`, `CheckMinInstalled`, `CheckHelperProtocol`, `CheckUpgrade` | the version syntax of `valid_version` in the installer plus the 64-character and no-`..` bounds of the protocol; SemVer 2.0 precedence; strictly newer (`already_installed`, `downgrade_refused`); the prerelease rule Q7; `requirements_not_met`; `helper_too_old` |
+| 5 | `Inspect` | streams the gzip tarball: one top-level directory, regular files from the allow-list only, each in `contents` with the same size and SHA-256, ELF64 little-endian machine 0xB7 for the two programs, 128 MiB in total, a decompression limit, one gzip member and nothing after it; hands every verified file to a `Sink` and never writes a file itself |
+
+**Properties.** Standard library and `internal/trustkey` only (a test checks the imports for linux/arm64, linux/amd64 and the host, and the direct imports against a list). Every function is pure: no network, clock, environment or file access. Input is bounded, nothing panics on malformed input (five fuzz targets), there is no goroutine and no package-level variable (tests check the source). Errors are one type with a code from the closed list of ADR 0010 U2 and a fixed text; the detail for the log is a string literal, so it never contains file content or a name taken from a file (a test checks every call).
+
+**Where it differs from `bundlegen check`.** `bundlegen check` is the producer side and decodes the manifest strictly, unknown fields included. `relverify` is the consumer and ignores unknown fields, so additive manifest changes stay compatible (U4). It is stricter in two places: it refuses a repeated manifest key and a key that differs from a known field only in letter case, which `encoding/json` would accept.
+
+**What the Sink contract means for the helper (G6.5).** `Inspect` can only decide about a file after its last byte and about the bundle after its last entry. `Finish` is called only for a file whose size and hash matched, never after a failure. After any error from `Inspect` the caller must treat everything the sink wrote as unusable and remove the whole staging directory (U7, row 2 does the same after a crash). A caller that wants nothing written for a bad bundle calls `Inspect` twice, first with a nil sink.
+
+**Error code gaps.** U2 has no code for a malformed bundle. A violation of the extraction rules is `manifest_invalid`, a size or hash that differs is `checksum_mismatch`, a program that is not an arm64 ELF executable is `requirements_not_met`, a failing reader or sink is `io_error`.
+
+Tests: `docs/DEVELOPMENT.md`, "Release verification code and its tests (Gate G6, step G6.4)".
 
 ## Build and CI
 
