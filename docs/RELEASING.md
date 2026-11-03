@@ -6,7 +6,7 @@ How a version tag becomes a signed GitHub Release (Gate G2) that includes the in
 
 | File | Purpose |
 |---|---|
-| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded), `oarfish.service`, `LICENSE` and `THIRD_PARTY_NOTICES.txt` (licence texts of the Svelte runtime, the Vite helper snippet, the Go runtime and, since G5.1, `golang.org/x/crypto`, which are compiled into the binary and whose licences require the notice to travel with it) |
+| `oarfish_<version>_linux_arm64.tar.gz` | Bundle: `oarfish_<version>_linux_arm64/oarfish` (static binary, frontend embedded), `oarfish.service`, since G6.3b also the update helper `oarfish-update-helper` and the units `oarfish-update-helper.socket`, `oarfish-update-helper.service` and `oarfish-update-recover.service` (see "Bundle shapes"), `LICENSE` and `THIRD_PARTY_NOTICES.txt` (licence texts of the Svelte runtime, the Vite helper snippet, the Go runtime and, since G5.1, `golang.org/x/crypto`, which are compiled into the binary and whose licences require the notice to travel with it) |
 | `install.sh` | The installer ([`INSTALL.md`](INSTALL.md)): `install/install.sh` with the release version written into one line (below). Listed in `checksums.txt`, so the signature covers it |
 | `manifest.json` | Machine-readable metadata (see below) |
 | `checksums.txt` | SHA-256 of the bundle, `install.sh`, `manifest.json` and the SBOMs, in `sha256sum` format |
@@ -19,16 +19,16 @@ The bundle contains `oarfish`, `oarfish.service` (the systemd unit the installer
 
 `manifest.json` fields: `schema_version`, `name`, `version`, `tag`, `prerelease`, `commit` (40 hex), `build_date` (RFC 3339, equal to the commit timestamp so the file is reproducible), `os`, `architecture`, `requirements` (`os`, `architecture`, `cpu`, `libc`, `runtime_dependencies`), `bundle` (`file`, `sha256`, `size`) and `contents` (path, mode, size, SHA-256 of every file in the tarball). Kernel and memory minimums are not included yet because they have not been measured on a device (ORB-REL-002 is met for architecture, OS and libc only). Three optional fields are added by ADR 0010 and described in the next section; a manifest without them is exactly the manifest above.
 
-## Bundle shapes (ADR 0010, step G6.2)
+## Bundle shapes (ADR 0010, steps G6.2 and G6.3b)
 
 The release tooling knows two bundle shapes. `bundlegen check` accepts exactly these two and nothing in between.
 
 | Shape | Tarball entries (root directory `oarfish_<version>_linux_arm64/`) | Manifest |
 |---|---|---|
-| **Legacy** (the default) | the root directory and the four files above: `LICENSE` 0644, `THIRD_PARTY_NOTICES.txt` 0644, `oarfish` 0755, `oarfish.service` 0644 | no `components` object |
-| **Components** | the five entries of the legacy shape plus exactly four more: `oarfish-update-helper` 0755 (an ARM64 ELF executable) and the units `oarfish-update-helper.service`, `oarfish-update-helper.socket` and `oarfish-update-recover.service`, each 0644 | the object `components` is present, and `contents` lists the four new files like every other file |
+| **Legacy** (explicit opt-out only) | the root directory and the four files above: `LICENSE` 0644, `THIRD_PARTY_NOTICES.txt` 0644, `oarfish` 0755, `oarfish.service` 0644 | no `components` object |
+| **Components** (the default since G6.3b) | the five entries of the legacy shape plus exactly four more: `oarfish-update-helper` 0755 (an ARM64 ELF executable) and the units `oarfish-update-helper.service`, `oarfish-update-helper.socket` and `oarfish-update-recover.service`, each 0644 | the object `components` is present, and `contents` lists the four new files like every other file |
 
-**The release workflow still builds the legacy shape, and it does until G6.3.** Neither `ci.yml` nor `release.yml` sets anything that selects the components shape, `install/install.sh` still requires exactly five entries and cannot install a components bundle, and no helper or unit file exists in the repository yet. The legacy bundle and manifest are byte-identical to what the tooling produced before G6.2; `scripts/bundlegen/testdata/legacy/` holds the reference output of the tool before the change and a test compares against it. The tooling for the components shape is therefore exercised by tests with fake files only; it is not evidence that a helper works.
+**Since G6.3b the default output of `scripts/release-bundle.sh` is the components shape, and so is what `ci.yml` and `release.yml` build** (neither workflow was changed: they call the script without arguments). `install/install.sh` installs both shapes and accepts exactly these two ([`INSTALL.md`](INSTALL.md#the-update-helper-layout-g63b-not-yet-verified-on-a-device)). The helper in the bundle is still the stub of G6.3a; it answers the specified subcommands and does nothing else. The legacy shape stays reachable only through the explicit opt-out `OARFISH_BUNDLE_SHAPE=legacy` (for tests and comparison); with it, `VERSION=0.0.0-g63a` and `COMMIT=ef7441cb5615a0ae35f846c4a38866a9f8dc6ec4` produce the same tarball and manifest as G6.3a (sha256 of the tarball `f7d76eeceb5afe600e958d71904691e1deb415c2207500c093e96dbe44b8dce4`, of the manifest `b83a74bf2db3932a50d2b7e81b64ed5c1280719faf360ec083300190773b48f9`; `install.sh` differs, as the installer changed). `scripts/bundlegen/testdata/legacy/` still holds the reference output of the tool before G6.2 and a test compares against it. The components bundle is exercised by the installer tests with fake files and by the CI jobs below; none of it is evidence that a helper works on a device.
 
 Additive manifest fields (all optional, all absent from a legacy manifest, `schema_version` stays 1; the readers on the device (the update helper and the service, later steps) ignore fields they do not know, while `bundlegen check` rejects them):
 
@@ -48,9 +48,19 @@ Building the components shape. `bundlegen bundle` takes the four files, the prot
 | `-components-protocol N` | `components.protocol` |
 | `-components-key-id HEX16` | `components.key_id` |
 | `-min-installed-version V`, `-requires-helper-protocol N` | Optional, independent of the set above: `requirements.min_installed_version` and `requirements.helper_protocol` (both are valid in either shape) |
-| `check -expect-key-id HEX16` | `bundlegen check` requires `components.key_id` to equal this value; a release without `components` then fails. Nothing passes the flag yet: no script or workflow is wired to it |
+| `check -expect-key-id HEX16` | `bundlegen check` requires `components.key_id` to equal this value; a release without `components` then fails. `scripts/release-bundle.sh` passes it in the default shape (below) |
 
-`scripts/release-bundle.sh` passes these through only when the caller sets environment variables: `OARFISH_COMPONENTS_DIR` (a directory that holds the four files under their names), `OARFISH_COMPONENTS_PROTOCOL`, `OARFISH_COMPONENTS_KEY_ID`, and, independently, `OARFISH_MIN_INSTALLED_VERSION` and `OARFISH_REQUIRES_HELPER_PROTOCOL`. Unset, nothing changes.
+`scripts/release-bundle.sh` selects the shape:
+
+| Setting | Result |
+|---|---|
+| nothing set (the default) | **Components shape.** The script builds the helper with `scripts/build-helper.sh` (the same `VERSION` and `COMMIT`, so it is reproducible), takes the three helper units and the recover unit from `install/`, sets `components.protocol` to 1 and derives `components.key_id` from `release/oarfish-release.pub` with the method of `scripts/check-helper-key.sh` (the 16 digits of the first line, in lower case; `11f1c52777090bfc` for the release key). After the build it runs `bundlegen check -expect-key-id` with that value on a throwaway copy of the three files with a generated `checksums.txt`; a different key id fails the build. This is where the key id is checked: the installer does not compare it with its own (the installer tests use a throwaway installer key while the helper embeds the release key). |
+| `OARFISH_BUNDLE_SHAPE=legacy` | The legacy bundle, byte for byte as before ADR 0010. Cannot be combined with `OARFISH_COMPONENTS_*`. |
+| `OARFISH_COMPONENTS_DIR`, `OARFISH_COMPONENTS_PROTOCOL`, `OARFISH_COMPONENTS_KEY_ID` (any of them) | Their G6.2 meaning, all or nothing (a partial set is refused by `bundlegen`); nothing is built or derived by the script and no key id check runs. |
+| `OARFISH_MIN_INSTALLED_VERSION`, `OARFISH_REQUIRES_HELPER_PROTOCOL` | Independent of the above; both are valid in either shape. |
+| any other value of `OARFISH_BUNDLE_SHAPE` | An error. |
+
+The release workflow's dry run (and `release.yml`) therefore builds, signs with the throwaway or production key as before, and verifies the components shape; the size budget (35,000,000 bytes) applies to the bundle with the helper in it. Reproducibility is checked on the components bundle by `scripts/check-reproducible.sh`. The first components bundle measured for this change was 4,361,895 bytes against 3,008,364 bytes for the legacy bundle of the same commit (the helper stub is 3,342,496 bytes uncompressed).
 
 `bundlegen check` rejects, in addition to everything it rejected before: a missing or extra tarball entry in either shape, a wrong mode, a helper that is not an ARM64 ELF (the installer's header check: 64-bit, little-endian, machine `0xB7`), `components` without the files or the files without `components`, a malformed `key_id`, a protocol below 1, `requirements.helper_protocol` greater than `components.protocol`, an invalid or too new `min_installed_version`, a path listed or stored twice, and any difference between `contents` and the tarball. It also rejects unknown manifest fields, as before G6.2: it validates the manifest the release tooling wrote, so every field must be one this tool knows. This is not the rule for the readers on the device, which ignore unknown fields so that additive changes stay compatible (ADR 0010, U4). The main binary is still not checked for its ELF header by `bundlegen`; the installer does that.
 
