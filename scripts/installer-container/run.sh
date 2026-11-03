@@ -50,7 +50,7 @@ if [ -f /work/legacy-install.sh ]; then
   HAVE_LEGACY=1
   echo "== legacy installation first (alpha-style), then the main release over it"
   OARFISH_RELEASE_BASE_URL=file:///work/legacy-release sh /work/legacy-install.sh > /tmp/legacy.out 2>&1 || { cat /tmp/legacy.out; fail "the legacy installation failed"; }
-  [ -f "$R/etc/systemd/system/oarfish.service" ] && [ ! -L "$R/etc/systemd/system/oarfish.service" ] || fail "the legacy unit is not a regular file"
+  if [ ! -f "$R/etc/systemd/system/oarfish.service" ] || [ -L "$R/etc/systemd/system/oarfish.service" ]; then fail "the legacy unit is not a regular file"; fi
   if [ -e "$R/opt/oarfish/components" ] || [ -e "$R/var/lib/oarfish-update" ] || [ -L "$R/etc/systemd/system/oarfish-update-helper.socket" ]; then fail "a legacy installation created the update helper layout"; fi
   ok "a legacy-shape release installs as before: a regular unit file, no helper layout, no lock directory"
   mkdir -p "$R/etc/systemd/system/oarfish.service.d" "$R/etc/systemd/system/multi-user.target.wants"
@@ -75,6 +75,8 @@ ok "installed binary runs and reports $VER"
 # The service was started with the arguments of the unit's ExecStart (see the stub);
 # the address to check comes from the same line, not from a copy of it here.
 UNIT="$R/etc/systemd/system/oarfish.service"
+# In a components installation the unit is a link whose absolute target resolves only below $R: read it through current.
+if [ -L "$UNIT" ]; then UNIT="$R/opt/oarfish/current/oarfish.service"; fi
 cmp -s "$UNIT" "$R/opt/oarfish/releases/$VER/oarfish.service" || fail "installed unit differs from the release's unit"
 grep -q '^ExecStart=/opt/oarfish/current/oarfish ' "$UNIT" || fail "unexpected ExecStart in the unit"
 listen="$(sed -n 's/^ExecStart=.* -listen \([^ ]*\).*$/\1/p' "$UNIT")"
@@ -162,7 +164,7 @@ if [ "$SHAPE" = components ]; then
   # The helper stub is a real arm64 program here (the whole container is emulated).
   H="$R/opt/oarfish/components/active/oarfish-update-helper"
   rc=0; "$H" recover >/tmp/h1.out 2>&1 || rc=$?
-  [ "$rc" = 0 ] && [ ! -s /tmp/h1.out ] || fail "helper recover exited $rc: $(cat /tmp/h1.out)"
+  if [ "$rc" != 0 ] || [ -s /tmp/h1.out ]; then fail "helper recover exited $rc: $(cat /tmp/h1.out)"; fi
   rc=0; "$H" serve >/tmp/h2.out 2>&1 </dev/null || rc=$?
   [ "$rc" = 1 ] || fail "helper serve without socket activation exited $rc, expected 1"
   ok "the installed helper stub runs: recover exits 0, serve without socket activation exits 1"

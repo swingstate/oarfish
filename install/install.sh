@@ -605,8 +605,9 @@ preflight_components() {
     pth=$COMP_DIR/$l
     if [ -L "$pth" ]; then
       id=$(readlink "$pth")
-      valid_version "$id" && [ -d "$COMP_DIR/$id" ] && [ ! -L "$COMP_DIR/$id" ] \
-        || die "$pth points to '$id', which is not a component directory. Nothing was changed."
+      if ! valid_version "$id" || [ ! -d "$COMP_DIR/$id" ] || [ -L "$COMP_DIR/$id" ]; then
+        die "$pth points to '$id', which is not a component directory. Nothing was changed."
+      fi
       if [ "$l" = active ]; then ACTIVE_ID=$id; else KNOWN_ID=$id; fi
     elif [ -e "$pth" ]; then
       die "$pth exists and is not a symbolic link. Nothing was changed."
