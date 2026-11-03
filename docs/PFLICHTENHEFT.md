@@ -2,9 +2,9 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.3.5
+- Dokumentversion: 0.3.6
 - Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G4 abgenommen)
-- Stand: 2. November 2026
+- Stand: 3. November 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
@@ -651,14 +651,18 @@ Eine Funktion gilt erst dann als fertig, wenn:
 |---|---|
 | `/opt/oarfish/releases/<version>` | Versionierte, unveränderliche Releases. |
 | `/opt/oarfish/current` | Atomarer Symlink auf aktives Release. |
+| `/opt/oarfish/components/<id>/` | Unveränderliche Komponentensätze des Update Helpers: Binärdatei und Unit-Dateien des Helpers; `<id>` ist die Version des Releases, das genau diese Bytes zuerst geliefert hat (ADR 0010, U5, U15). |
+| `/opt/oarfish/components/active`, `/opt/oarfish/components/known-good` | Atomare Symlinks auf je einen Komponentensatz: `active` für Binärdatei sowie Socket- und Dienst-Unit des Helpers, `known-good` für die Recover-Unit und deren Binärdatei. Beide sind unabhängig von `current` (ADR 0010, U15). |
 | `/etc/oarfish/config.json` | Validierte Hauptkonfiguration. |
 | `/etc/oarfish/secrets/` | Restriktiv geschützte Secrets, die der Betreiber bereitstellt; der Dienst liest sie nur. |
 | `/var/lib/oarfish/` | Pluginzustand, Profile und kleine persistente Daten, auch alle vom Dienst geschriebenen Geheimnisse und Zustände (Administratorkonto, Setup-Token, Auditdatei), weil der Dienst unter `/etc` nicht schreiben kann (`ProtectSystem=strict`). |
 | `/var/lib/oarfish-update/` | Root-eigener Zustand des Update Helpers (D-C58, ADR 0010); der unprivilegierte Dienst kann ihn nicht ändern. |
 | `/var/cache/oarfish/` | Wiederherstellbare Caches und Release-Downloads. |
 | `/run/oarfish/` | Sockets, Locks und ephemere Zustände. |
-| `/usr/libexec/oarfish-update-helper` | Eng begrenzter privilegierter Update Helper. |
-| journald | Strukturierte Laufzeit- und Auditlogs mit Rotation. |
+| `/usr/libexec/oarfish-update-helper` | Eng begrenzter privilegierter Update Helper; Symlink auf `/opt/oarfish/components/active/oarfish-update-helper`, vom Installer einmal angelegt. |
+| `/etc/systemd/system/` (Unit-Links) | Unit-Dateien von Oarfish und Update Helper als Symlinks in die Baumstruktur unter `/opt/oarfish`: `oarfish.service` auf `/opt/oarfish/current/oarfish.service`, die Units des Helpers auf `components/active` beziehungsweise `components/known-good`. Der Installer legt sie und die Wants-Links an; der Update Helper ändert sie nicht (ADR 0010, U5, A5). |
+| `/run/oarfish-update/` | Socket des Update Helpers (`helper.sock`); root-eigenes Verzeichnis, damit der unprivilegierte Dienst den Socket weder ersetzen noch löschen kann (ADR 0010, U2). |
+| journald | Strukturierte Laufzeit- und Auditlogs mit Rotation. Das Journal kann flüchtig sein: auf Raspberry Pi OS Lite liegt es im Arbeitsspeicher (`Storage=volatile`, an einem Gerät beobachtet) und überlebt keinen Neustart. Dauerhafte Nachweise eines Updates sind der Zustand des Update Helpers und der Auditeintrag des Dienstes (ADR 0010, U8). |
 
 ### 8.3 Hardware- und OS-Abstraktion
 
@@ -1209,3 +1213,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.3.3 | 27. Oktober 2026 | Abschnitt 14.2: neues Gate G5.1 "Lokaler Zugriffsschutz und Audit-Grundlage" zwischen G5 und G6, G6 setzt G5.1 PASS voraus (D-C27); Update Helper in G6, Privilege Broker in G7, Capability-Prüfung im Broker in G8 (D-C28); bis G5.1 PASS keine nicht-lokale Listen-Adresse (D-C29); Abschnitt 17: D-07 fällig in G5.1; Abschnitt 6.4: Anforderungs-IDs ORB-UPD-001 bis 003 in ORB-OSU-001 bis 003 umbenannt, Abschnitt 6.12 unverändert (D-C30); Kopfzeile: Status und Stand aktualisiert. |
 | 0.3.4 | 28. Oktober 2026 | Abschnitt 8.2: Zeilen `/etc/oarfish/secrets/` und `/var/lib/oarfish/` präzisiert; vom Dienst geschriebene Geheimnisse und Zustände (Konto, Setup-Token, Audit) liegen unter `/var/lib/oarfish`, `/etc/oarfish/secrets/` bleibt für vom Betreiber bereitgestellte, nur gelesene Secrets (D-C47, ADR 0009); Abschnitt 14.2, Zeile G5.1: explizite Konfiguration für nicht-lokale Bindung aus dem Lieferumfang entfernt, G5.1 bleibt auf Loopback beschränkt, die Bindung behandelt der Design-Stopp D-D10 vor dem MVP-Release (D-C48, ADR 0009); Kopfzeile: Stand aktualisiert. |
 | 0.3.5 | 2. November 2026 | Abschnitt 8.1: Update Manager als unprivilegiert gekennzeichnet (Erkennung, Download in den Cache, Vorabprüfung); Abschnitt 8.2: neue Zeile `/var/lib/oarfish-update/` für den root-eigenen Zustand des Update Helpers, "Updatezustand" aus der Zeile `/var/lib/oarfish/` entfernt (D-C58); Abschnitt 8.6: Aufgaben des Update Helpers um eigenen Zustand, Lesen des Dienstzustands und Austausch der eigenen Komponenten ergänzt (D-C54); Abschnitt 9.6: Prerelease-Regel (D-C59); Abschnitt 10.1 Punkt 6: Broker oder Update Helper; Abschnitt 13.1: `/healthz` darf die Version nennen (D-C57); ORB-REL-002: Abnahmespalte nennt die Prüfungen des MVP; Abschnitt 14.2: Zeile G6 um die Teilschritte G6.0 bis G6.10 ergänzt, neue Zeile G6.10, G7 beginnt erst nach G6.10 (D-C63); Kopfzeile: Dokumentversion und Stand aktualisiert (D-C62, ADR 0010). |
+| 0.3.6 | 3. November 2026 | Abschnitt 8.2: Komponentenbaum des Update Helpers ergänzt (`/opt/oarfish/components/<id>/`, Links `active` und `known-good`, `/usr/libexec/oarfish-update-helper` als Link auf `components/active`, Unit-Links in `/etc/systemd/system`, `/run/oarfish-update/` für den Socket des Helpers) und Hinweis, dass das Journal flüchtig sein kann (Konflikt C10 aus ADR 0010, nach den Beobachtungen aus G6.1); Kopfzeile: Dokumentversion und Stand aktualisiert (D-C64, ADR 0010). |
