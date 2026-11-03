@@ -7,6 +7,7 @@ This document describes what exists after Gate G5.1 and the boundaries later gat
 ```text
 backend/                     Go module github.com/swingstate/oarfish/backend
   cmd/oarfish/                 process entry point: flags, listen guard, state directory, signal handling, graceful shutdown (audit flushed), runs detection once
+  cmd/oarfish-update-helper/   the update helper stub (ADR 0010, G6.3a): a separate root program, standard library only, answers `status`. Not shipped yet (below)
   internal/server/           HTTP handler: /healthz, the account routes, GET /api/v1/device, /api/v1/metrics, /api/v1/events (SSE), Host/Origin/CSRF checks, correlation IDs, listen guard, static frontend, security headers
   internal/auth/             access control (ADR 0009): Argon2id hashes, account file, setup token, in-memory sessions, login limiter (docs/AUTH.md)
   internal/audit/            the audit file: typed JSON lines, buffered, rotated (docs/AUTH.md)
@@ -15,11 +16,12 @@ backend/                     Go module github.com/swingstate/oarfish/backend
   internal/metrics/          read-only live metrics: collector, sampler (only while watched), history ring, alert rules (docs/DASHBOARD.md)
   internal/platform/         read-only detection: source, hardware, operating_system, capabilities, profiles, detector (docs/DETECTION.md)
   internal/web/              go:embed of the built frontend (dist/)
+  internal/trustkey/        the release public key (a go:embed copy of release/oarfish-release.pub) and the minisign key parser; imported by the update helper
   internal/version/          Version and Commit, injected with -ldflags
 frontend/                    Svelte 5 + TypeScript + Vite
   src/                       App.svelte (session gate and navigation), pages/ (Home, Gerät, Einrichten, Anmelden, Konto), lib/ (metrics, stream, device and session clients, locales/de.ts + en.ts)
 docs/                        specification, ADRs, roadmap, this file
-install/                     install.sh (POSIX sh installer) and oarfish.service (unit, shipped in the bundle)
+install/                     install.sh (POSIX sh installer), oarfish.service (unit, shipped in the bundle) and the three update-helper units (repository files only, not shipped yet)
 scripts/                     release packaging, signing, verification, installer tests, budget and smoke tests
   bundlegen/                 stdlib-only Go module: tar.gz, manifest.json, checksums.txt (not part of the product)
 release/                     public signing key (oarfish-release.pub)
@@ -86,14 +88,54 @@ internal/securefile/ internal/clock/
 Not implemented, only reserved by the layout and by the project rules:
 
 - Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3) and implemented in G4 (below). Package, network and service adapters (`packages/`, `network/`, `services/` in spec 8.3) do not exist yet.
-- No privileged code exists. Privilege Broker and Update Helper are separate future components (spec 8.6): the Update Helper arrives in Gate G6, the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
+- No privileged code is installed anywhere. Privilege Broker and Update Helper are separate components (spec 8.6): the Update Helper arrives in Gate G6 (its stub is in the repository since step G6.3a, see "The update helper stub" below, and is not shipped), the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
 - Plugins and self-update are out of scope until their gates (ADR 0003, ADR 0004). Release signing exists (below); the installer verifies signatures with the system `openssl`, but nothing in the Oarfish binary verifies signatures yet.
+
+## The update helper stub (Gate G6, step G6.3a)
+
+ADR 0010 splits the update into an unprivileged service and a small, separate, privileged helper. Step G6.3a puts the first stub of that helper and its three units into the repository. **Nothing of it is shipped**: the release bundle, the manifest, the installer and the release workflow are unchanged, no unit is installed on a device, and no code in the service talks to it. Installing it is step G6.3b. Everything below describes files in the repository, tested on CI runners; none of it has run on a device.
+
+**The program** (`backend/cmd/oarfish-update-helper`) has exactly two subcommands; anything else prints one usage line to stderr and exits 2.
+
+- `recover` touches nothing and exits 0. Recovery is G6.6.
+- `serve` runs only when started by socket activation (`LISTEN_PID` equal to its own pid, `LISTEN_FDS=1`, descriptor 3, a Unix stream listener). Otherwise it exits 1 with a short fixed message and binds nothing itself. The socket, its directory and its modes belong to the socket unit.
+
+**Protocol P is 1, accepted range {1}.** One request per connection: one line of JSON ending in a newline, at most 4 KiB including the newline, 5 s to send it; one answer of at most 8 KiB; at most 4 connections are served at once (the others wait in the socket backlog); exit 0 after 30 s with no connection and none being served. The peer must have the uid of the user `oarfish` (`SO_PEERCRED`, looked up once at start); any other peer is closed without an answer. The decoder is strict: `DisallowUnknownFields`, no trailing data, `v` must be 1, and keys must be exactly `v` and `op` (no other letter case, no duplicate: `encoding/json` would accept both). Errors use only the closed codes of ADR 0010 U2, each with a fixed text; an error never contains the request, a path or an operating-system error string. A request that is too long, not terminated in time, or not valid is `bad_request`.
+
+**Requests in the stub.** Only `status` is answered. `stage`, `activate`, `discard` and `ack` are in the closed list of U2 and are answered with `bad_request` until G6.5 and G6.6 implement them; an unknown `op` is `bad_request` as well. The request is `{"v":1,"op":"status"}`. The answer is one line:
+
+```json
+{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"0.0.0-dev.abc1234","key_id":"11f1c52777090bfc","installed_version":"0.1.0-alpha.8","phase":"idle","free_bytes":1234567890}
+```
+
+| Member | Meaning |
+|---|---|
+| `v` | protocol version of this answer |
+| `ok` | `true`; an error answer is `{"v":1,"ok":false,"error":"<code>","message":"<fixed text>"}` |
+| `protocol_min`, `protocol_max` | the protocol range the helper implements |
+| `helper_version` | the version injected at build time (`dev` for an unstamped build) |
+| `key_id` | the id of the embedded release key, 16 lowercase hexadecimal digits |
+| `installed_version` | the version in the name of the target of `/opt/oarfish/current`, which must be `releases/<version>` with a version that matches the pattern of U2; `""` if the link is missing or anything else |
+| `phase` | the transaction phase; always `"idle"` in the stub |
+| `free_bytes` | bytes available to the helper on the file system of `/opt/oarfish` (`statfs`, available blocks times block size) |
+
+The names follow `state.json` and the manifest of ADR 0010. Members may only be added (U15 rule 6). The stub answers a subset of U2's `status`: previous healthy version, component state and last result are not in it. If `statfs` fails, the answer is `io_error`.
+
+**Key.** `backend/internal/trustkey` embeds a copy of `release/oarfish-release.pub` (`go:embed` cannot leave the module; `scripts/check-helper-key.sh` and a Go test require the copy to be identical) and parses the minisign public key. Its `ID()` is the key id as the manifest field `components.key_id` and `bundlegen check -expect-key-id` expect it: minisign stores the 8 id bytes in the key file in the order `fc0b097727c5f111` and prints them reversed, `11F1C52777090BFC`, in the comment line and in `install.sh`; `ID()` returns that reversed form in lower case, `11f1c52777090bfc`. The helper reports it in `status`. Nothing verifies a signature yet; the shared verification package is G6.4.
+
+**Resources.** The helper sets a soft Go memory limit of 16 MiB itself, because `MemoryMax=64M` is not enforced on the reference image (ADR 0010 A4) and the unit has no `Environment=` line. Buffers are fixed: a 4 KiB request buffer, answers well below 1 KiB.
+
+**What it must not import.** The helper is standard library only, plus `internal/version` and `internal/trustkey`. It must not import `net/http`, `os/exec`, a third-party module or the service's `web`, `auth`, `audit` or `server` packages. A test compares `go list -deps` for linux/arm64, linux/amd64 and the host with an allow-list. The helper is a root process and everything compiled into it is attack surface (U1).
+
+**The units** (`install/oarfish-update-helper.socket`, `.service` and `oarfish-update-recover.service`) have the texts of ADR 0010 U10 as amended by A1, plus a `[Unit]` description, `Documentation=` and an `[Install]` section for the socket (`WantedBy=sockets.target`) and the recover unit (`WantedBy=multi-user.target`), which the ADR text implies without printing. The helper has no `Requires=`, `BindsTo=`, `PartOf=` or ordering against `oarfish.service`, and no `Environment=`. The recover unit alone is ordered `Before=` the socket and `oarfish.service`. `scripts/check-units.sh` pins the required lines and forbids the rest; CI also runs `systemd-analyze verify` against a temporary root and prints `systemd-analyze security --offline` for information, with no threshold.
+
+**Build.** `scripts/build-helper.sh` builds the helper for linux/arm64 with the flags of the main binary and can check that two builds from an empty cache are identical. CI reports its size next to the bundle sizes; it is in no bundle and under no budget.
 
 ## Build and CI
 
 - Builds use `CGO_ENABLED=0` for the Linux ARM64 cross-build, producing a static binary.
 - CI runs on GitHub-hosted runners only and never connects to a device (ADR 0003, ORB-CICD-005). Third-party actions are pinned to commit SHAs (ORB-SEC-008) and workflows default to `contents: read`.
-- CI jobs: Go checks, frontend checks, release bundle with size budgets and an ARM64 smoke test under qemu-user, reproducibility check, signing and tamper tests, dependency scan and SBOM trial.
+- CI jobs: Go checks, frontend checks, release bundle with size budgets and an ARM64 smoke test under qemu-user (which also runs the update helper stub), reproducibility check, signing and tamper tests, installer checks, update helper units and key, dependency scan and SBOM trial.
 
 ## Release pipeline
 

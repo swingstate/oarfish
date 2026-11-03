@@ -1,0 +1,56 @@
+# Oarfish update recovery (ADR 0010, U1 and U10). Not installed yet: the
+# installer arrives in G6.3b. Runs `recover` at every boot before the helper
+# socket and the main service, from the known-good component set, and is
+# started by OnFailure= of the helper service.
+#
+# Not Requires= of anything, so a failing recovery never keeps Oarfish from
+# starting. The only mention of oarfish.service is the ordering below.
+# No socket. Same sandbox as the helper service.
+
+[Unit]
+Description=Oarfish update recovery
+Documentation=https://github.com/swingstate/oarfish
+Before=oarfish-update-helper.socket oarfish.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/oarfish/components/known-good/oarfish-update-helper recover
+User=root
+Group=root
+UMask=0077
+StateDirectory=oarfish-update
+StateDirectoryMode=0700
+ReadWritePaths=/opt/oarfish
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+MemoryMax=64M
+TasksMax=16
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
