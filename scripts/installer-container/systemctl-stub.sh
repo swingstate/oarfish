@@ -9,7 +9,34 @@
 S=/tmp/fake-systemd
 mkdir -p "$S"
 echo "$*" >> "$S/calls.log"
-UNIT="$FAKE_ROOT/etc/systemd/system/oarfish.service"
+# In a components installation /etc/systemd/system/oarfish.service is a link to
+# /opt/oarfish/current/oarfish.service, an absolute target that resolves only
+# below the test root; the same file is reached through the relative link current.
+UNIT="$FAKE_ROOT/opt/oarfish/current/oarfish.service"
+[ -f "$UNIT" ] || UNIT="$FAKE_ROOT/etc/systemd/system/oarfish.service"
+# The helper units (socket, service, recover unit) only keep an "active" and an
+# "enabled" flag; nothing is started for them. As systemd does (ADR 0010, A9, device
+# observation), a socket is not started or restarted while its service is active.
+cmd="$1"
+shift
+unit=''
+for a in "$@"; do case $a in -*) ;; *) unit=$a ;; esac; done
+case $unit in
+  oarfish-update-*)
+    case "$cmd" in
+      is-enabled) [ -f "$S/enabled.$unit" ] ;;
+      enable) : > "$S/enabled.$unit" ;;
+      disable) rm -f "$S/enabled.$unit" ;;
+      is-active) [ -f "$S/active.$unit" ] ;;
+      start|restart)
+        if [ "$unit" = oarfish-update-helper.socket ] && [ -f "$S/active.oarfish-update-helper.service" ]; then exit 1; fi
+        : > "$S/active.$unit" ;;
+      stop) rm -f "$S/active.$unit" ;;
+      *) exit 1 ;;
+    esac
+    exit $? ;;
+esac
+set -- "$cmd" "$@"
 
 running() { [ -f "$S/pid" ] && kill -0 "$(cat "$S/pid")" 2>/dev/null; }
 stop_proc() {
@@ -42,7 +69,7 @@ case "$1" in
   start) running || start_proc ;;
   restart) stop_proc; start_proc ;;
   stop) stop_proc ;;
-  cat) [ -f "$FAKE_ROOT/etc/systemd/system/oarfish.service" ] ;;
+  cat) [ -f "$UNIT" ] ;;
   daemon-reload) ;;
   *) exit 1 ;;
 esac

@@ -3,6 +3,10 @@
 #   /work/release/     a signed throwaway release with the real arm64 binary
 #   /work/install.sh   test copy of the installer trusting the throwaway key
 #   /work/run.sh, /work/systemctl-stub.sh
+# Optional (present when the host script could build one): /work/legacy-release and
+# /work/legacy-install.sh, a legacy-shape release of the same commit and its test
+# installer. It is installed first, so that the main release is an upgrade of an
+# alpha-style installation (a migration to the update helper layout, G6.3b).
 # Lines starting with REPORT are collected into the job summary.
 set -eu
 
@@ -13,7 +17,7 @@ ok() { echo "ok: $*"; }
 echo "REPORT image: $(. /etc/os-release && echo "$PRETTY_NAME"), $(uname -m), user $(id -un)"
 echo "REPORT tools present in the minimal image before anything is installed:"
 missing=''
-for t in curl openssl tar gzip sha256sum od base64 awk setpriv useradd getent; do
+for t in curl openssl tar gzip sha256sum od base64 awk setpriv useradd getent flock; do
   if command -v "$t" >/dev/null 2>&1; then echo "REPORT   $t: present"; else echo "REPORT   $t: MISSING"; missing="$missing $t"; fi
 done
 if command -v openssl >/dev/null 2>&1; then echo "REPORT openssl version: $(openssl version)"; fi
@@ -21,7 +25,7 @@ if command -v openssl >/dev/null 2>&1; then echo "REPORT openssl version: $(open
 # Install only what the image lacks, and say so.
 pkgs=''
 for t in $missing; do
-  case $t in curl) pkgs="$pkgs curl" ;; openssl) pkgs="$pkgs openssl" ;; *) fail "unexpected missing base tool: $t" ;; esac
+  case $t in curl) pkgs="$pkgs curl" ;; openssl) pkgs="$pkgs openssl" ;; flock) pkgs="$pkgs util-linux" ;; *) fail "unexpected missing base tool: $t" ;; esac
 done
 if [ -n "$pkgs" ]; then
   echo "REPORT installing with apt-get because the image lacks them:$pkgs"
@@ -37,6 +41,25 @@ mkdir -p "$R/run/systemd/system" "$R/etc"
 cp /etc/os-release "$R/etc/os-release"
 export OARFISH_TEST_ROOT="$R" OARFISH_SYSTEMCTL=/work/systemctl-stub.sh FAKE_ROOT="$R"
 export OARFISH_RELEASE_BASE_URL=file:///work/release OARFISH_HEALTH_TIMEOUT=120
+
+SHAPE=legacy
+if grep -q '^  "components": {$' /work/release/manifest.json; then SHAPE=components; fi
+echo "REPORT release shape: $SHAPE"
+HAVE_LEGACY=0
+if [ -f /work/legacy-install.sh ]; then
+  HAVE_LEGACY=1
+  echo "== legacy installation first (alpha-style), then the main release over it"
+  OARFISH_RELEASE_BASE_URL=file:///work/legacy-release sh /work/legacy-install.sh > /tmp/legacy.out 2>&1 || { cat /tmp/legacy.out; fail "the legacy installation failed"; }
+  [ -f "$R/etc/systemd/system/oarfish.service" ] && [ ! -L "$R/etc/systemd/system/oarfish.service" ] || fail "the legacy unit is not a regular file"
+  if [ -e "$R/opt/oarfish/components" ] || [ -e "$R/var/lib/oarfish-update" ] || [ -L "$R/etc/systemd/system/oarfish-update-helper.socket" ]; then fail "a legacy installation created the update helper layout"; fi
+  ok "a legacy-shape release installs as before: a regular unit file, no helper layout, no lock directory"
+  mkdir -p "$R/etc/systemd/system/oarfish.service.d" "$R/etc/systemd/system/multi-user.target.wants"
+  printf '[Service]\nEnvironment=KEEP=me\n' > "$R/etc/systemd/system/oarfish.service.d/override.conf"
+  ln -s /etc/systemd/system/oarfish.service "$R/etc/systemd/system/multi-user.target.wants/oarfish.service"
+  dropin_sum="$(sha256sum "$R/etc/systemd/system/oarfish.service.d/override.conf")"
+  LEGACY_VER="$(sed -n 's/^OARFISH_STAMPED_VERSION=.\(.*\).$/\1/p' /work/legacy-install.sh)"
+  [ "$(readlink "$R/opt/oarfish/current")" = "releases/$LEGACY_VER" ] || fail "the legacy release is not current"
+fi
 
 echo "== install"
 sh /work/install.sh > /tmp/install.out 2>&1 || { cat /tmp/install.out; fail "installer exited non-zero"; }
@@ -111,20 +134,81 @@ awk -v want="0100007F:$hexport" '$2 == want && $4 == "0A" { f = 1 } END { exit !
 if awk -v p=":$hexport" '$4 == "0A" && $2 ~ /^0+:/ && index($2, p) { f = 1 } END { exit !f }' /proc/net/tcp /proc/net/tcp6 2>/dev/null; then fail "port $port is open on all interfaces"; fi
 ok "listening on $listen only"
 
+if [ "$SHAPE" = components ]; then
+  echo "== update helper layout"
+  chk_link() { { [ -L "$1" ] && [ "$(readlink "$1")" = "$2" ]; } || fail "$1 is not a link to $2 (it is: $(readlink "$1" 2>/dev/null || echo 'not a link'))"; }
+  chk_link "$R/opt/oarfish/components/active" "$VER"
+  chk_link "$R/opt/oarfish/components/known-good" "$VER"
+  chk_link "$R/usr/libexec/oarfish-update-helper" /opt/oarfish/components/active/oarfish-update-helper
+  chk_link "$R/etc/systemd/system/oarfish.service" /opt/oarfish/current/oarfish.service
+  chk_link "$R/etc/systemd/system/oarfish-update-helper.socket" /opt/oarfish/components/active/oarfish-update-helper.socket
+  chk_link "$R/etc/systemd/system/oarfish-update-helper.service" /opt/oarfish/components/active/oarfish-update-helper.service
+  chk_link "$R/etc/systemd/system/oarfish-update-recover.service" /opt/oarfish/components/known-good/oarfish-update-recover.service
+  chk_link "$R/etc/systemd/system/multi-user.target.wants/oarfish.service" ../oarfish.service
+  chk_link "$R/etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket" ../oarfish-update-helper.socket
+  chk_link "$R/etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service" ../oarfish-update-recover.service
+  ok "the helper link, the four unit links and the three relative wants links have the exact targets"
+  cmp -s "$R/opt/oarfish/current/oarfish.service" "$R/opt/oarfish/releases/$VER/oarfish.service" || fail "oarfish.service reached through current differs from the release's"
+  cmp -s "$R/opt/oarfish/components/known-good/oarfish-update-recover.service" "$R/opt/oarfish/components/$VER/oarfish-update-recover.service" || fail "known-good does not reach the set"
+  [ "$(own "$R/opt/oarfish/components")" = "root:root 755" ] || fail "components is $(own "$R/opt/oarfish/components")"
+  [ "$(own "$R/opt/oarfish/components/$VER")" = "root:root 755" ] || fail "components/$VER is $(own "$R/opt/oarfish/components/$VER")"
+  [ "$(own "$R/opt/oarfish/components/$VER/oarfish-update-helper")" = "root:root 755" ] || fail "the helper is $(own "$R/opt/oarfish/components/$VER/oarfish-update-helper")"
+  for f in oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service; do
+    [ "$(own "$R/opt/oarfish/components/$VER/$f")" = "root:root 644" ] || fail "$f is $(own "$R/opt/oarfish/components/$VER/$f")"
+  done
+  [ "$(own "$R/var/lib/oarfish-update")" = "root:root 700" ] || fail "/var/lib/oarfish-update is $(own "$R/var/lib/oarfish-update")"
+  [ "$(own "$R/usr/libexec")" = "root:root 755" ] || fail "/usr/libexec is $(own "$R/usr/libexec")"
+  ok "ownership and modes of the component set, the helper, the units, /usr/libexec and /var/lib/oarfish-update"
+  # The helper stub is a real arm64 program here (the whole container is emulated).
+  H="$R/opt/oarfish/components/active/oarfish-update-helper"
+  rc=0; "$H" recover >/tmp/h1.out 2>&1 || rc=$?
+  [ "$rc" = 0 ] && [ ! -s /tmp/h1.out ] || fail "helper recover exited $rc: $(cat /tmp/h1.out)"
+  rc=0; "$H" serve >/tmp/h2.out 2>&1 </dev/null || rc=$?
+  [ "$rc" = 1 ] || fail "helper serve without socket activation exited $rc, expected 1"
+  ok "the installed helper stub runs: recover exits 0, serve without socket activation exits 1"
+  flock -x -n "$R/var/lib/oarfish-update" true || fail "the lock on /var/lib/oarfish-update is still held after the installer ended"
+  ok "the lock is free after the run (real flock on the directory)"
+  [ -f /tmp/fake-systemd/active.oarfish-update-helper.socket ] || fail "the helper socket was not started"
+  if grep -qE '^(enable|is-enabled) ' /tmp/fake-systemd/calls.log && [ "$HAVE_LEGACY" = 0 ]; then fail "systemctl enable was used"; fi
+  if grep -qE '^(start|restart) oarfish-update-recover' /tmp/fake-systemd/calls.log; then fail "the recover unit was started"; fi
+  ok "the helper socket was started, the recover unit was not"
+  if [ "$HAVE_LEGACY" = 1 ]; then
+    [ -L "$R/etc/systemd/system/oarfish.service" ] || fail "the alpha-style unit file was not replaced by a link"
+    [ "$(sha256sum "$R/etc/systemd/system/oarfish.service.d/override.conf")" = "$dropin_sum" ] || fail "the drop-in changed"
+    [ "$(readlink "$R/opt/oarfish/current")" = "releases/$VER" ] || fail "current was not switched"
+    [ -x "$R/opt/oarfish/releases/$LEGACY_VER/oarfish" ] || fail "the previous release was not kept"
+    ok "migration from the alpha-style installation: the unit became a link, the drop-in is unchanged, current switched, the old release is kept"
+  fi
+fi
+
 echo "== re-run"
+CALLS_BEFORE="$(wc -l < /tmp/fake-systemd/calls.log)"
 sh /work/install.sh > /tmp/install2.out 2>&1 || { cat /tmp/install2.out; fail "second run failed"; }
 grep -q "nothing to restart" /tmp/install2.out || { cat /tmp/install2.out; fail "second run restarted the service"; }
 [ "$(cat /tmp/fake-systemd/pid)" = "$pid" ] || fail "the process was replaced by the second run"
 ok "second run changed nothing and did not restart the process"
+if [ "$SHAPE" = components ] && tail -n +"$((CALLS_BEFORE + 1))" /tmp/fake-systemd/calls.log | grep -qE '^(restart|start|stop|enable|disable|daemon-reload)'; then
+  fail "the second run issued: $(tail -n +"$((CALLS_BEFORE + 1))" /tmp/fake-systemd/calls.log | tr '\n' ';')"
+fi
+ok "the second run restarted, stopped and reloaded nothing"
 
 echo "== uninstall"
 sh /work/install.sh --uninstall > /tmp/un.out 2>&1 || { cat /tmp/un.out; fail "uninstall failed"; }
-if [ -e "$R/opt/oarfish" ] || [ -e "$R/etc/systemd/system/oarfish.service" ]; then fail "uninstall left files"; fi
+if [ -e "$R/opt/oarfish" ] || [ -e "$R/etc/systemd/system/oarfish.service" ] || [ -L "$R/etc/systemd/system/oarfish.service" ]; then fail "uninstall left files"; fi
+if [ "$SHAPE" = components ]; then
+  for l in usr/libexec/oarfish-update-helper etc/systemd/system/oarfish-update-helper.socket etc/systemd/system/oarfish-update-helper.service etc/systemd/system/oarfish-update-recover.service \
+    etc/systemd/system/multi-user.target.wants/oarfish.service etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service; do
+    if [ -e "$R/$l" ] || [ -L "$R/$l" ]; then fail "uninstall left $l"; fi
+  done
+  [ -f "$R/etc/systemd/system/oarfish.service.d/override.conf" ] || [ "$HAVE_LEGACY" = 0 ] || fail "uninstall removed the drop-in"
+  [ -d "$R/var/lib/oarfish-update" ] || fail "uninstall removed /var/lib/oarfish-update without --purge"
+  ok "uninstall removed the helper links and the wants links, kept the drop-in and /var/lib/oarfish-update"
+fi
 if [ ! -d "$R/etc/oarfish" ] || [ ! -d "$R/var/lib/oarfish" ]; then fail "uninstall removed user data"; fi
 id oarfish >/dev/null 2>&1 || fail "uninstall removed the user without --purge"
 ok "uninstall kept data and user"
 sh /work/install.sh --uninstall --purge > /tmp/purge.out 2>&1 || { cat /tmp/purge.out; fail "purge failed"; }
-if [ -e "$R/etc/oarfish" ] || [ -e "$R/var/lib/oarfish" ]; then fail "purge left data"; fi
+if [ -e "$R/etc/oarfish" ] || [ -e "$R/var/lib/oarfish" ] || [ -e "$R/var/lib/oarfish-update" ]; then fail "purge left data"; fi
 if id oarfish >/dev/null 2>&1; then fail "purge left the user"; fi
 ok "purge removed data and user"
 echo "CONTAINER TEST PASSED"
