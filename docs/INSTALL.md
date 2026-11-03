@@ -159,9 +159,9 @@ sudo systemctl start oarfish
 
 The first page is **Home**: live values of the device (CPU, memory, temperatures, storage, network) and alerts. The device is only read while a browser has Home open and visible (at most four windows at the same time). Opening Home shows the host name and the IP addresses of the device; do not share screenshots of it publicly.
 
-### The update helper layout (G6.3b, not yet verified on a device)
+### The update helper layout (G6.3b)
 
-Since step G6.3b of ADR 0010 the release bundle carries the update helper by default (`oarfish-update-helper` and the units `oarfish-update-helper.socket`, `oarfish-update-helper.service` and `oarfish-update-recover.service`, [`RELEASING.md`](RELEASING.md#bundle-shapes-adr-0010-step-g62)). **The helper is still a stub** that does nothing the GUI uses; it is installed so that the layout, the lock and the units can be tried on a device before the helper does real work (G6.5 and later). The installer accepts exactly two bundle shapes, **legacy** (the five files of earlier releases) and **components** (those plus the four helper files), and the shape found in the bundle must agree with the manifest.
+Since step G6.3b of ADR 0010 the release bundle carries the update helper by default (`oarfish-update-helper` and the units `oarfish-update-helper.socket`, `oarfish-update-helper.service` and `oarfish-update-recover.service`, [`RELEASING.md`](RELEASING.md#bundle-shapes-adr-0010-steps-g62-and-g63b)). **The helper is still a stub** that does nothing the GUI uses; it is installed so that the layout, the lock and the units can be tried on a device before the helper does real work (G6.5 and later). The layout was observed on one device at the owner stop of G6.3 (a test release with a throwaway key, never published); what was seen and what was not is in [Results on the reference device (G6.3)](#results-on-the-reference-device-g63). It is not Verified. The installer accepts exactly two bundle shapes, **legacy** (the five files of earlier releases) and **components** (those plus the four helper files), and the shape found in the bundle must agree with the manifest.
 
 For the components shape the installer, under the lock described below, creates:
 
@@ -179,7 +179,7 @@ For the components shape the installer, under the lock described below, creates:
 
 The order of a run: take the lock; create the directories; install the release and the component set; create the links; one `systemctl daemon-reload`; if the helper bytes or the socket unit changed, or the socket is not active, `systemctl stop oarfish-update-helper.service` and then `systemctl restart oarfish-update-helper.socket` (systemd keeps the text a socket was started with, and a socket cannot be started while its service is active, ADR 0010 A9); restart `oarfish.service` when something changed. The recover unit is enabled by its link and is **not** started by the installer. The health check additionally needs `oarfish-update-helper.socket` to be active (not the service, which is socket activated and exits when idle). Running the same release again changes nothing and restarts nothing.
 
-**The lock.** The installer takes an exclusive `flock` on the directory `/var/lib/oarfish-update`, the object the helper will lock too (ADR 0010 U7, U8; the helper side comes with G6.5, so today it guards installer runs against each other). It waits at most 30 seconds and then stops with the message that an update or another installer run is in progress and that nothing was changed. The lock is held to the end of the run, also for `--uninstall`, and is released when the installer exits, however it exits. A legacy-shape release on a device without that directory takes no lock and does not create the directory.
+**The lock.** The installer takes an exclusive `flock` on the directory `/var/lib/oarfish-update`, the object the helper will lock too (ADR 0010 U7, U8; the helper side comes with G6.5, so today it guards installer runs against each other; two installer runs at the same time were tested only against the fake root, not on a device, and no helper holding the lock exists yet). It waits at most 30 seconds and then stops with the message that an update or another installer run is in progress and that nothing was changed. The lock is held to the end of the run, also for `--uninstall`, and is released when the installer exits, however it exits. A legacy-shape release on a device without that directory takes no lock and does not create the directory.
 
 **If the health check fails** and an earlier release was active, the installer switches `current` back, switches `components/active` back if it moved in this run, leaves `known-good` where it was, reloads systemd, stops the helper service, restarts the socket and checks again. The layout created in the run stays. On a first installation it disables `oarfish.service`, the helper socket and the recover unit and keeps all files; run the installer again after fixing the cause.
 
@@ -205,7 +205,7 @@ This is the installer's job for the first installation. Updating from the GUI co
 
 ## Hardware test results
 
-Five tests (G3 and G4 on the same device; G5, the UI foundation and the access control of G5.1 on a Raspberry Pi Zero 2 W Rev 1.0 with the same revision code). Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
+Six tests (G3 and G4 on the same device; G5, the UI foundation and the access control of G5.1 on a Raspberry Pi Zero 2 W Rev 1.0 with the same revision code; the update helper layout of G6.3 on a Raspberry Pi Zero 2 W whose revision code the evidence does not record). Each is a single data point, not general proof: it does not show that Oarfish works on other boards, other images or other versions of the same image.
 
 ### Gate G3: installer
 
@@ -234,7 +234,7 @@ The test setup is deliberately not identified here: no host or user names, no ad
 **Not verified on hardware:**
 
 - Ubuntu Server (any version) and any other board or image.
-- Uninstall on the device, and running the installer again for the *same* version. (The G4 test below upgraded in place from `v0.1.0-alpha.2` to `v0.1.0-alpha.3`; rollback after a failed health check has not been tried on the device.)
+- At the time of the G3 test: uninstall on the device, and running the installer again for the *same* version. Both were later observed once at the G6.3 owner stop (see [Results on the reference device (G6.3)](#results-on-the-reference-device-g63)). (The G4 test below upgraded in place from `v0.1.0-alpha.2` to `v0.1.0-alpha.3`; rollback after a failed health check has still not been tried on the device.)
 - A tampered or damaged download on the device.
 - Key rotation and revocation (not designed, ADR 0005).
 
@@ -338,7 +338,7 @@ Known gaps of the interface itself are listed in [`UI.md`](UI.md#known-gaps).
 
 ### Access control and audit (`v0.1.0-alpha.6`)
 
-User-run on 2026-10-31 to 2026-11-02 (the owner ran the steps and reported the results); the 24-hour readings span 24 h 41 min. Gate G5.1 closeout evidence: this block records what was seen, and whether G5.1 passes is the owner's decision. The measurements are in [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6); this block gives the install-side result.
+User-run on 2026-10-31 to 2026-11-02 (the owner ran the steps and reported the results); the 24-hour readings span 24 h 41 min. Gate G5.1 closeout evidence: this block records what was seen. Gate G5.1 passed on 2026-11-02, on the owner's decision after reviewing this evidence. The measurements are in [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6); this block gives the install-side result.
 
 | Item | Result |
 |---|---|
@@ -365,6 +365,35 @@ The same rules as above apply: one device, one image, one moment. No host or use
 - Behaviour over many days (the longest reading is 24 h 41 min).
 - One audit entry that went missing in one run is unexplained ([`AUTH.md`](AUTH.md#open-observations-from-the-device-run)).
 
+### Results on the reference device (G6.3)
+
+Label for every row below: **device observation (G6.3 owner stop, 2026-11-03): one Raspberry Pi Zero 2 W, Debian 13 (trixie) aarch64, kernel 6.18.50, systemd 257, one image, one moment.** The owner ran the steps and reported the results. Not a release test and not Verified.
+
+What was installed: a test release `0.1.0-alpha.6.1` (components shape, update helper stub) built from the merge commit of pull request 25, signed with a throwaway key and installed with a test copy of `install.sh` that differs from the production installer only in the key, the allowed download protocol and the base-URL override. It was never published. **The production key path with the real installer was not exercised there.** Support status stays Compatible; nothing is Verified.
+
+| Item | Result (device observation, G6.3 owner stop, 2026-11-03) |
+|---|---|
+| Fresh components install over a `v0.1.0-alpha.6` device (regular unit file) | The layout came out as designed: `components/<id>` with the relative links `active` and `known-good`, the `/usr/libexec` link, four unit links, `oarfish.service` turned from a regular file into a link into `current`, three relative wants links, `/var/lib/oarfish-update` `root:root` 0700, modes and owners as specified. No `enable` call. The hash of the account file was unchanged; the GUI login with the old password worked after the install and after a reboot. |
+| Socket activation | The socket was active (listening) with mode 0660 `root:oarfish` in a root-owned 0755 directory. The helper service was inactive until the first query. A `status` query as the user `oarfish` was answered with `key_id` `11f1c52777090bfc` and the installed version. The helper was active right after, inactive after 35 s (idle exit) and started again by the next query. The same query as an ordinary user got `Permission denied`; as root the connection was closed without an answer. |
+| `systemd-analyze security` | Both helper units 1.7 OK, equal to the offline value in CI; `oarfish.service` 1.7 OK as well. |
+| Wants links (ADR 0010 A5) | After `current` moved from `0.1.0-alpha.6` to `0.1.0-alpha.6.1` and the old release directory was removed, `daemon-reload` and a reboot left all three units enabled, loaded and started. The release directories `alpha.2` to `alpha.5` were still there: the installer keeps old releases. |
+| Boot order after that reboot | The recover unit exited about 42 ms before `oarfish.service` started and about 54 ms before the socket became active; it needed about 650 ms; result `success`. Total boot 40.9 s against 41.3 s before, no noticeable delay. |
+| Same installer again | Nothing changed and nothing was restarted (same PID, same activation timestamps). |
+| `SIGKILL` of the running helper (extra observation) | The service failed with result `signal`; `OnFailure=` started the recover unit, which finished within the same second; one second later `Restart=on-failure` started the helper again without a connection (restart counter 1). The socket stayed active and the next query was answered. |
+| Uninstall without `--purge` | Removed the `/opt/oarfish` tree, the cache, the helper link, the units and the wants links; kept `/etc/oarfish`, `/var/lib/oarfish`, `/var/lib/oarfish-update` and the user; no failed units; the account hash was unchanged. The official `v0.1.0-alpha.6` installer then restored the original state. |
+
+The same rules as above apply: one device, one image, one moment. No host or user names, addresses, serial numbers or MAC addresses are recorded here.
+
+**Not exercised on the device (G6.3):**
+
+- `--uninstall --purge`.
+- A first installation without any previous release.
+- The installer rollback after a failed health check.
+- The production-key path with the real installer.
+- Ubuntu Server, another Raspberry Pi model, a cold power cycle.
+- A crash loop up to the start limit, and a helper that does not start.
+- Two installer runs at the same time (tested only against the fake root) and a helper that holds the lock (the stub takes none).
+
 ## Uninstall
 
 ```bash
@@ -375,7 +404,7 @@ sudo sh install.sh --uninstall --dry-run # show what would be removed
 
 The first form removes the service, the unit file, `/opt/oarfish` and `/var/cache/oarfish`. It keeps `/etc/oarfish`, `/var/lib/oarfish` and the user, so a later installation finds your configuration and data, including the administrator account and the audit file (`/var/lib/oarfish/auth/`, `/var/lib/oarfish/audit/`): after a reinstall you sign in with the old password. `--purge` is the explicit flag that removes them. Any copy of `install.sh` can do this; the uninstall downloads nothing.
 
-If the update helper layout exists, the uninstall takes the lock on `/var/lib/oarfish-update` first, stops and disables `oarfish.service`, the helper socket, the helper service and the recover unit, and removes the three wants links, the unit links and `/usr/libexec/oarfish-update-helper` **only where they are links into `/opt/oarfish`** (the wants links where they are links named for the unit). A regular file or a link to something else at one of these paths is left alone and reported. The drop-in directory `oarfish.service.d` is never touched. `/var/lib/oarfish-update` is kept without `--purge` (the message says so) and removed by `--purge`. Not yet tried on a device.
+If the update helper layout exists, the uninstall takes the lock on `/var/lib/oarfish-update` first, stops and disables `oarfish.service`, the helper socket, the helper service and the recover unit, and removes the three wants links, the unit links and `/usr/libexec/oarfish-update-helper` **only where they are links into `/opt/oarfish`** (the wants links where they are links named for the unit). A regular file or a link to something else at one of these paths is left alone and reported. The drop-in directory `oarfish.service.d` is never touched. `/var/lib/oarfish-update` is kept without `--purge` (the message says so) and removed by `--purge`. Uninstall without `--purge` was observed on one device at the G6.3 owner stop (see [Results on the reference device (G6.3)](#results-on-the-reference-device-g63)); `--purge` was not tried on a device.
 
 ## Where things go
 
@@ -384,7 +413,7 @@ If the update helper layout exists, the uninstall takes the lock on `/var/lib/oa
 | `/opt/oarfish/releases/<version>/` | One directory per installed release: `oarfish`, `oarfish.service`, `LICENSE`, `THIRD_PARTY_NOTICES.txt`. Owned by root, never modified after installation. |
 | `/opt/oarfish/current` | Symlink to the active release, switched atomically. |
 | `/etc/systemd/system/oarfish.service` | The service unit (copied from the release for a legacy release; a link to `/opt/oarfish/current/oarfish.service` for a components release). |
-| `/opt/oarfish/components/`, `/usr/libexec/oarfish-update-helper`, the helper units in `/etc/systemd/system`, the wants links | The update helper layout of a components release, see [The update helper layout](#the-update-helper-layout-g63b-not-yet-verified-on-a-device). |
+| `/opt/oarfish/components/`, `/usr/libexec/oarfish-update-helper`, the helper units in `/etc/systemd/system`, the wants links | The update helper layout of a components release, see [The update helper layout](#the-update-helper-layout-g63b). |
 | `/var/lib/oarfish-update/` | Root-owned, mode 0700; the lock directory (and, later, the helper's state). |
 | `/etc/oarfish/` | Configuration (`root:oarfish`, 0750); `secrets/` inside is `oarfish`, 0700. Empty for now. |
 | `/var/lib/oarfish/` | State, owned by `oarfish`, mode 0700 (the installer creates it as 0750; the unit's `StateDirectoryMode=0700` applies when the service starts). Holds `auth/account.json` (the administrator account, 0600), `setup-token` (0600, only while there is no account) and `audit/audit.jsonl` with up to three rotated files (0600, at most 4 MiB in all). See [`AUTH.md`](AUTH.md#files-and-modes). |
@@ -433,19 +462,20 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 - Gate G5 (`v0.1.0-alpha.4`): in-place upgrade from `v0.1.0-alpha.3` with the stamped installer; the unchanged unit file's sandbox did not block any file the dashboard reads; dashboard values against the device's own tools (AT-008); idle CPU and `VmRSS` with no browser, with one Safari tab and with the tab hidden; no writes by the process (AT-022); no swap activity (ORB-NFR-007); a service restart with the tab open (the owner reported expected behaviour); Home in Safari through an SSH tunnel. Details in [Gate G5: dashboard](#gate-g5-dashboard).
 - UI foundation (`v0.1.0-alpha.5`): in-place upgrade from `v0.1.0-alpha.4` with the stamped installer (dry run, installation, signature OK, SHA-256 OK, service healthy); Home and "Gerät" in Safari (light and dark), Chrome and Firefox through an SSH tunnel with the layout as intended and the indicator on "Live"; an empty alert list on the idle device (1.5 MiB of 415 MiB in swap raised no alert, none for the Compatible tier); the tunnel interface with operstate `unknown` in neutral grey; keyboard-only use in Chrome or Firefox, as reported by the owner. Details in [UI foundation](#ui-foundation-v010-alpha5).
 
-**Measured on hardware, G5.1 closeout (one device, evidence for the owner's review; this does not decide whether G5.1 passes):** Access control and audit (`v0.1.0-alpha.6`): in-place upgrade from `v0.1.0-alpha.5` with the stamped installer into setup mode; the state directory 0700 after the update; setup, login, logout, the rate limit, a password change, restart behaviour and lost-password recovery; the session cookie in Safari, Chrome and Firefox over `http://127.0.0.1`; the Argon2id cost; memory readings including one after 24 h 41 min; idle CPU; no test password or token in the journal or the audit file; the audit write load over 24 h 41 min. Details in [Access control and audit](#access-control-and-audit-v010-alpha6) and [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6).
+**Measured on hardware, G5.1 closeout (one device; the evidence the owner reviewed before Gate G5.1 passed on 2026-11-02):** Access control and audit (`v0.1.0-alpha.6`): in-place upgrade from `v0.1.0-alpha.5` with the stamped installer into setup mode; the state directory 0700 after the update; setup, login, logout, the rate limit, a password change, restart behaviour and lost-password recovery; the session cookie in Safari, Chrome and Firefox over `http://127.0.0.1`; the Argon2id cost; memory readings including one after 24 h 41 min; idle CPU; no test password or token in the journal or the audit file; the audit write load over 24 h 41 min. Details in [Access control and audit](#access-control-and-audit-v010-alpha6) and [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6).
+
+**Observed on hardware, G6.3 owner stop (one device, a test release with a throwaway key, never published; not Verified):** the components install over a `v0.1.0-alpha.6` device with the layout as designed, socket activation with the idle exit and the refusal of other users, the `systemd-analyze security` rating of the helper units, the relative wants links after the old release directory was removed and a reboot, the boot order of the recover unit, an installer re-run that changed nothing, the `SIGKILL` recovery path, and uninstall without `--purge`. Details and the list of what was not exercised in [Results on the reference device (G6.3)](#results-on-the-reference-device-g63).
 
 **Not verified:**
 
 - **Gate G5 (dashboard), what the hardware runs did not cover**: screen-reader use, keyboard use in Safari, the dark theme in Chrome and Firefox, the lost-connection display of the new UI on the device, four simultaneous clients, CPU usage percent and network counters against a second tool, and long-running behaviour. (Idle CPU and `VmRSS` were read again with `v0.1.0-alpha.6`.) See [`DASHBOARD.md`](DASHBOARD.md#verification-status) and [`UI.md`](UI.md#verification-status).
 - **Ubuntu Server and any other board or image** have not run on real hardware. Container results are no proof for them. That includes device detection on Ubuntu (fixtures and the architecture test only), other Raspberry Pi models, and USB boot.
-- Uninstall, and running the installer again for the same version, have not been tried on the device (only in the containers and the CI tests). An upgrade from one version to the next was done once on the device (G4 test); a rollback was not.
+- `--uninstall --purge` has not been tried on the device (only in the containers and the CI tests); uninstall without `--purge` and running the installer again for the same version were observed once at the G6.3 owner stop. An upgrade from one version to the next was done on the device (G4 test); a rollback after a failed health check was not.
 - A tampered or damaged download has not been tried on the device (only in the CI tests).
 - The containers have **no systemd**: a small stand-in starts the binary. Only the one device above has run the unit file under a real systemd; other kernels and images may differ.
 - The 512 MB memory budget under load and long-term memory use (beyond 24 h 41 min) are not tested. The write load was read over 24 h 41 min only, with a few events (a rotation of the audit file was never reached). The idle `VmRSS` readings (7020 kB, 9212 kB and 8480 kB for three releases, none for `v0.1.0-alpha.5`, and 8784 kB for `v0.1.0-alpha.6`) are not a budget test.
 - The presence of OpenSSL 3 and the other tools on Ubuntu Server images, and on other versions of Raspberry Pi OS, is assumed from package information. One device had OpenSSL 3.5.7.
 - `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified for `v0.1.0-alpha.2` (2026-10-26) and for `v0.1.0-alpha.6` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.
-- **The update helper layout (G6.3b) has not run on any device.** Everything about it above (the links, the wants links, the lock, the socket restart, the order of the `systemctl` calls, the migration of an existing device, uninstall and purge) is verified only against a fake root and a stub `systemctl`, in the arm64 containers (no systemd) and, for the unit text, by `systemd-analyze verify` of the installed link layout on the CI runner. That a wants link whose release directory was removed still enables the unit, that a changed socket text is applied by the stop-and-restart, that `daemon-reload` behaves as ADR 0010 A9 says, that socket activation works with the installed units and the `systemd-analyze security` rating are all to be observed at the owner stop of G6.3, after G6.3b.
-- Two installer runs are guarded against each other by the lock on `/var/lib/oarfish-update` for the components shape (and for the legacy shape when that directory exists); a legacy-shape installer on a device without the directory takes no lock. An update by the helper does not take the lock yet (G6.5). Not yet tried on a device.
-- Retention of old release directories and old component sets is not implemented; they are kept.
+- **The update helper layout (G6.3b) was observed on one device only, with a test release.** At the G6.3 owner stop (device observation, 2026-11-03: one Raspberry Pi Zero 2 W, Debian 13 aarch64, systemd 257, one image, one moment) a test release `0.1.0-alpha.6.1` with a throwaway key and a test copy of `install.sh` was installed; it was never published. The links, the wants links after a removed release directory and a reboot, socket activation, the idle exit, the boot order of the recover unit, a re-run that changed nothing and uninstall without `--purge` came out as designed (details in [Results on the reference device (G6.3)](#results-on-the-reference-device-g63)). Not exercised there: the production key path with the real installer, `--purge`, a first installation without a previous release, the rollback after a failed health check, Ubuntu, other Pi models, a cold power cycle and a crash loop up to the start limit. Everything else about the layout is verified only against a fake root and a stub `systemctl`, in the arm64 containers (no systemd) and, for the unit text, by `systemd-analyze verify` of the installed link layout on the CI runner.
+- Two installer runs are guarded against each other by the lock on `/var/lib/oarfish-update` for the components shape (and for the legacy shape when that directory exists); a legacy-shape installer on a device without the directory takes no lock. An update by the helper does not take the lock yet (G6.5). Two installer runs at the same time were tested only against the fake root, not on a device, and no helper that holds the lock exists (the stub takes none).

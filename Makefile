@@ -97,7 +97,7 @@ lint-shell: ## shellcheck the installer (POSIX sh, all severities) and the repos
 	shellcheck -s sh install/install.sh scripts/installer-container/run.sh scripts/installer-container/systemctl-stub.sh
 	shellcheck -x -S warning scripts/*.sh
 
-build-helper: ## Cross-build the update helper stub, reproducibly, to bin/oarfish-update-helper-linux-arm64 (not part of any bundle)
+build-helper: ## Cross-build the update helper stub, reproducibly, to bin/oarfish-update-helper-linux-arm64 (part of the default release bundle since G6.3b)
 	scripts/build-helper.sh --twice
 
 test-helper: ## Update helper stub and its key package: vet and tests with -race
