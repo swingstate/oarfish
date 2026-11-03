@@ -9,8 +9,13 @@
 // Subcommands:
 //
 //	bundlegen bundle    -binary F -license F -notices F -unit F -version V -commit C -epoch N -out DIR
+//	                    [-helper F -helper-service F -helper-socket F -recover-service F
+//	                     -components-protocol N -components-key-id HEX16]   (all six or none)
+//	                    [-min-installed-version V] [-requires-helper-protocol N]
 //	bundlegen checksums -dir DIR FILE...
-//	bundlegen check     -dir DIR
+//	bundlegen check     -dir DIR [-expect-key-id HEX16]
+//
+// Without the six components flags, bundle writes the legacy bundle (docs/RELEASING.md).
 package main
 
 import (

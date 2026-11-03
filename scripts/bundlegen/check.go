@@ -59,11 +59,28 @@ func buildChecksums(dir string, names []string) (string, error) {
 func runCheck(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	dir := fs.String("dir", "", "release directory")
+	expectKeyID := fs.String("expect-key-id", "", "require components.key_id to equal this value (16 lowercase hex digits)")
 	fs.Parse(args)
 	if *dir == "" {
 		return errors.New("check: -dir is required")
 	}
-	return checkRelease(*dir)
+	opts := checkOptions{}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "expect-key-id" {
+			opts.ExpectKeyID = expectKeyID
+		}
+	})
+	if opts.ExpectKeyID != nil && !keyIDPattern.MatchString(*opts.ExpectKeyID) {
+		return fmt.Errorf("check: -expect-key-id %q is not 16 lowercase hexadecimal digits", *opts.ExpectKeyID)
+	}
+	return checkReleaseWith(*dir, opts)
+}
+
+// checkOptions are the optional extra requirements of `bundlegen check`.
+type checkOptions struct {
+	// ExpectKeyID, when non-nil, requires components.key_id to equal it. A
+	// release without a components object fails: the caller expected a helper.
+	ExpectKeyID *string
 }
 
 // checkRelease verifies, without trusting any single file on its own:
@@ -71,11 +88,19 @@ func runCheck(args []string) error {
 //  2. manifest.json, install.sh and the bundle are all listed, and install.sh
 //     is stamped with exactly the manifest's version,
 //  3. the manifest agrees with the bundle (name, size, SHA-256),
-//  4. the tarball holds exactly the files the manifest declares, with the
-//     declared modes and hashes, owned by uid/gid 0.
+//  4. the manifest declares exactly one of the two bundle shapes (legacy, or
+//     components with the update helper and its three units), the optional
+//     requirements fields and the components object are valid, and
+//  5. the tarball holds exactly the files the manifest declares, with the
+//     declared modes and hashes, owned by uid/gid 0, and the helper is an
+//     ARM64 ELF executable.
 //
-// It does not check the signature; that is minisign's job and must happen first.
-func checkRelease(dir string) error {
+// Unknown manifest fields are ignored, so that additive changes stay compatible
+// (ADR 0010, U4). It does not check the signature; that is minisign's job and
+// must happen first.
+func checkRelease(dir string) error { return checkReleaseWith(dir, checkOptions{}) }
+
+func checkReleaseWith(dir string, opts checkOptions) error {
 	listed, err := readChecksums(filepath.Join(dir, checksumName))
 	if err != nil {
 		return err
@@ -95,9 +120,7 @@ func checkRelease(dir string) error {
 		return err
 	}
 	var mf Manifest
-	dec := json.NewDecoder(bytes.NewReader(mraw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&mf); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(mraw)).Decode(&mf); err != nil {
 		return fmt.Errorf("%s: %w", manifestName, err)
 	}
 	if _, ok := listed[manifestName]; !ok {
@@ -111,6 +134,20 @@ func checkRelease(dir string) error {
 	}
 	if mf.Bundle.File != bundleFileName(mf.Version) {
 		return fmt.Errorf("manifest: bundle.file %q does not match version", mf.Bundle.File)
+	}
+	if err := checkExtras(&mf); err != nil {
+		return err
+	}
+	if err := checkContents(&mf); err != nil {
+		return err
+	}
+	if opts.ExpectKeyID != nil {
+		if mf.Components == nil {
+			return fmt.Errorf("manifest: -expect-key-id %s was given but the release has no components object", *opts.ExpectKeyID)
+		}
+		if mf.Components.KeyID != *opts.ExpectKeyID {
+			return fmt.Errorf("manifest: components.key_id %s differs from the expected key id %s", mf.Components.KeyID, *opts.ExpectKeyID)
+		}
 	}
 	if _, ok := listed[installerName]; !ok {
 		return fmt.Errorf("%s is not listed in %s", installerName, checksumName)
@@ -211,6 +248,14 @@ func checkTarball(tgz []byte, mf *Manifest) error {
 		}
 		if sum(data) != e.SHA256 || int64(len(data)) != e.Size || fmt.Sprintf("%04o", hdr.Mode) != e.Mode {
 			return fmt.Errorf("bundle: %s differs from the manifest (hash, size or mode)", hdr.Name)
+		}
+		if seen[hdr.Name] {
+			return fmt.Errorf("bundle: %s appears twice", hdr.Name)
+		}
+		if hdr.Name == root+"/"+helperName {
+			if err := checkARM64ELF(data); err != nil {
+				return fmt.Errorf("bundle: %s: %w", hdr.Name, err)
+			}
 		}
 		seen[hdr.Name] = true
 	}
