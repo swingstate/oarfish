@@ -15,7 +15,8 @@ FUZZTIME ?= 10s
 .DEFAULT_GOAL := help
 .PHONY: help dev dev-backend dev-frontend deps test test-backend test-frontend test-release-tools \
 	lint lint-backend lint-frontend fuzz frontend-build build build-arm64 bench-arm64 \
-	release-bundle check-reproducible test-signing test-installer lint-shell clean
+	release-bundle check-reproducible test-signing test-installer lint-shell clean \
+	build-helper test-helper check-helper
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -57,13 +58,14 @@ lint-backend:
 lint-frontend:
 	cd frontend && npm run check
 
-fuzz: ## Fuzz the os-release, device-tree, metrics and password-hash parsers (FUZZTIME=10s each)
+fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash and update-helper request parsers (FUZZTIME=10s each)
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseOSRelease$$' -fuzztime $(FUZZTIME) ./internal/platform/operating_system
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseCompatible$$' -fuzztime $(FUZZTIME) ./internal/platform/hardware
 	@for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes; do \
 		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./internal/metrics/parse) || exit 1; \
 	done
 	cd backend && go test -run '^$$' -fuzz '^FuzzParsePHC$$' -fuzztime $(FUZZTIME) ./internal/auth
+	cd backend && go test -run '^$$' -fuzz '^FuzzDecodeRequest$$' -fuzztime $(FUZZTIME) ./cmd/oarfish-update-helper
 
 frontend-build:
 	cd frontend && npm run build
@@ -94,6 +96,19 @@ test-installer: ## Installer tests against a fake root (needs minisign and OpenS
 lint-shell: ## shellcheck the installer (POSIX sh, all severities) and the repository scripts (warnings)
 	shellcheck -s sh install/install.sh scripts/installer-container/run.sh scripts/installer-container/systemctl-stub.sh
 	shellcheck -x -S warning scripts/*.sh
+
+build-helper: ## Cross-build the update helper stub, reproducibly, to bin/oarfish-update-helper-linux-arm64 (not part of any bundle)
+	scripts/build-helper.sh --twice
+
+test-helper: ## Update helper stub and its key package: vet and tests with -race
+	cd backend && go vet ./cmd/oarfish-update-helper ./internal/trustkey
+	cd backend && GOOS=linux GOARCH=arm64 go vet ./cmd/oarfish-update-helper ./internal/trustkey
+	cd backend && go test -race -count=1 ./cmd/oarfish-update-helper ./internal/trustkey
+
+check-helper: test-helper build-helper ## Everything CI checks for the update helper stub (tests, key copy, unit texts and their mutation test, reproducible build)
+	scripts/check-helper-key.sh
+	scripts/check-units.sh
+	scripts/check-units.sh --self-test
 
 clean: ## Remove build outputs (keeps the tracked embed placeholder)
 	rm -rf bin dist build

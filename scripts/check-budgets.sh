@@ -6,7 +6,9 @@
 # Sizes use decimal units (1 MB = 1,000,000 bytes), which is the stricter reading.
 # MAX_BUNDLE_BYTES / MAX_FRONTEND_GZIP_BYTES / MAX_INSTALLER_BYTES override the limits (used to test failure).
 #
-# Usage: scripts/check-budgets.sh BUNDLE.tar.gz
+# Usage: scripts/check-budgets.sh BUNDLE.tar.gz [HELPER_BINARY]
+#   HELPER_BINARY  the update helper stub (G6.3a). Its size is reported only: it is
+#                  not in the bundle and no budget applies to it.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
@@ -14,7 +16,8 @@ MAX_BUNDLE_BYTES="${MAX_BUNDLE_BYTES:-35000000}"
 MAX_FRONTEND_GZIP_BYTES="${MAX_FRONTEND_GZIP_BYTES:-750000}"
 MAX_INSTALLER_BYTES="${MAX_INSTALLER_BYTES:-50000}"
 
-BUNDLE="${1:?usage: $0 BUNDLE.tar.gz}"
+BUNDLE="${1:?usage: $0 BUNDLE.tar.gz [HELPER_BINARY]}"
+HELPER="${2:-}"
 DIST="$ROOT/backend/internal/web/dist"
 [ -f "$DIST/index.html" ] || die "frontend is not built: $DIST/index.html missing"
 
@@ -43,6 +46,13 @@ if [ "$bundle_bytes" -gt "$MAX_BUNDLE_BYTES" ]; then bv="OVER BUDGET"; status=1;
 if [ "$frontend_gz" -gt "$MAX_FRONTEND_GZIP_BYTES" ]; then fv="OVER BUDGET"; status=1; fi
 if [ "$installer_bytes" -gt "$MAX_INSTALLER_BYTES" ]; then iv="OVER BUDGET"; status=1; fi
 
+helper_row=""
+if [ -n "$HELPER" ]; then
+  [ -f "$HELPER" ] || die "$HELPER is missing"
+  helper_bytes="$(wc -c < "$HELPER" | tr -d ' ')"
+  helper_row="| Update helper stub \`$(basename "$HELPER")\` (not shipped) | $helper_bytes | none | reported only |"
+fi
+
 summary <<SUM
 ### Size budgets
 | Item | Size (bytes) | Budget (bytes) | Result |
@@ -50,12 +60,14 @@ summary <<SUM
 | Release bundle \`$(basename "$BUNDLE")\` (ORB-NFR-005) | $bundle_bytes | $MAX_BUNDLE_BYTES | $bv |
 | Initial frontend, gzip -9 (ORB-NFR-006) | $frontend_gz | $MAX_FRONTEND_GZIP_BYTES | $fv |
 | \`install.sh\` (G3, readability) | $installer_bytes | $MAX_INSTALLER_BYTES | $iv |
-
+${helper_row:+$helper_row
+}
 | Initial frontend file | Raw (bytes) | gzip -9 (bytes) |
 |---|---|---|
 $rows
 SUM
 echo "bundle:   $bundle_bytes bytes (budget $MAX_BUNDLE_BYTES): $bv"
 echo "installer: $installer_bytes bytes (budget $MAX_INSTALLER_BYTES): $iv"
+[ -z "$HELPER" ] || echo "helper:   $helper_bytes bytes (not shipped, no budget)"
 echo "frontend: $frontend_gz bytes gzip, $frontend_raw bytes raw (budget $MAX_FRONTEND_GZIP_BYTES): $fv"
 exit "$status"

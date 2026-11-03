@@ -1,0 +1,24 @@
+# Oarfish update helper socket (ADR 0010, U2 and U10). Not installed yet: the
+# installer arrives in G6.3b. The socket unit creates /run/oarfish-update/ and
+# the socket; the helper never binds anything itself.
+#
+# Only root and the group oarfish can connect, and the helper additionally
+# requires the uid of the user oarfish (SO_PEERCRED). The directory belongs to
+# root, so the service cannot replace or delete the socket.
+
+[Unit]
+Description=Oarfish update helper socket
+Documentation=https://github.com/swingstate/oarfish
+
+[Socket]
+ListenStream=/run/oarfish-update/helper.sock
+SocketUser=root
+SocketGroup=oarfish
+SocketMode=0660
+DirectoryMode=0755
+Accept=no
+Backlog=8
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

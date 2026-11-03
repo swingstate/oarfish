@@ -24,10 +24,13 @@ Node.js is a build-time tool only. The Oarfish binary and the target device do n
 | `make dev` | Go backend on `127.0.0.1:8484` plus the Vite dev server; open <http://localhost:5173>. Vite proxies `/healthz` and `/api` to the backend. The backend keeps its account, setup token and audit in `.dev-state/` (`DEV_STATE=<dir>` changes it; git-ignored); the setup page asks for the token in `.dev-state/setup-token`, and deleting `.dev-state/auth/account.json` returns to setup mode. `LISTEN=<addr>` changes the backend address (also update the proxy target in `frontend/vite.config.ts`); it must be a loopback IP address with a port, the binary refuses anything else (D-C29, D-C48). |
 | `make test` | `go test ./...` (backend and `scripts/bundlegen`) and `vitest run` |
 | `make lint` | gofmt check, `go vet` (backend and `scripts/bundlegen`), `svelte-check` (TypeScript and Svelte type check) |
-| `make fuzz` | native Go fuzzing of the os-release parser, the device-tree compatible parser, the six metrics parsers (`/proc/stat`, `/proc/meminfo`, `fib_trie`, `if_inet6`, `mountinfo`, `route`) and the password-hash (PHC) parser, `FUZZTIME=10s` each (CI runs 5 s each; the seed corpora also run in `make test`) |
+| `make fuzz` | native Go fuzzing of the os-release parser, the device-tree compatible parser, the six metrics parsers (`/proc/stat`, `/proc/meminfo`, `fib_trie`, `if_inet6`, `mountinfo`, `route`), the password-hash (PHC) parser and the update helper's request decoder, `FUZZTIME=10s` each (CI runs 5 s each; the seed corpora also run in `make test`) |
 | `make bench-arm64` | cross-builds the Argon2id benchmark test binary for linux/arm64 to `build/bench/oarfish-auth-bench.test` (git-ignored, never part of a release); the commands for the device are in [`AUTH.md`](AUTH.md#measurements-and-checks-on-the-device) |
 | `make build` | frontend production build, then host binary `bin/oarfish` with the frontend embedded |
 | `make build-arm64` | same, cross-compiled with `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` to `bin/oarfish-linux-arm64` |
+| `make build-helper` | `scripts/build-helper.sh --twice`: cross-builds the update helper stub to `bin/oarfish-update-helper-linux-arm64` with the flags of the main binary and fails unless two builds from an empty Go cache are identical. The helper is not part of any bundle ([`ARCHITECTURE.md`](ARCHITECTURE.md#the-update-helper-stub-gate-g6-step-g63a)) |
+| `make test-helper` | `go vet` (host and linux/arm64) and `go test -race -count=1` for `cmd/oarfish-update-helper` and `internal/trustkey` |
+| `make check-helper` | `test-helper`, `build-helper`, the key copy check, the unit check and its mutation self-test: what the CI jobs for the helper run, except `systemd-analyze` and the qemu smoke test, which need Linux |
 | `make release-bundle` | frontend build, then `scripts/release-bundle.sh`: unsigned `dist/release/oarfish_<version>_linux_arm64.tar.gz` and `manifest.json`, the same script CI and the release workflow use |
 | `make check-reproducible` | builds the bundle twice from scratch (frontend rebuilt, empty Go cache) and compares SHA-256 |
 | `make test-signing` | sign, verify and tamper-rejection tests with throwaway keys (needs `minisign`) |
@@ -85,14 +88,15 @@ Adding a dependency should be justified in the change that adds it.
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main`, and is also called by the release workflow (`workflow_call`):
 
-1. **backend**: gofmt, `go vet`, `go test -race`, a 5-second fuzz run of each detection and metrics parser, plus gofmt, vet and test for `scripts/bundlegen` and a check that both modules declare the same Go version
+1. **backend**: gofmt, `go vet`, `go test -race`, an explicit vet, build (linux/arm64 and linux/amd64) and `-race -count=1` test of the update helper stub, a 5-second fuzz run of each detection, metrics, password-hash and update-helper request parser, plus gofmt, vet and test for `scripts/bundlegen` and a check that both modules declare the same Go version
 2. **frontend**: `npm ci`, `svelte-check`, `vitest`, `vite build`, upload of the built assets
-3. **build** (needs both): host build; the ARM64 release bundle via `scripts/release-bundle.sh`; aarch64 ELF check; size budgets (below); ARM64 smoke test under `qemu-user`
+3. **build** (needs both): host build; the ARM64 release bundle via `scripts/release-bundle.sh`; aarch64 ELF check; the update helper stub built reproducibly (`scripts/build-helper.sh --twice`, not part of the bundle); size budgets (below, the helper's size is only reported); ARM64 smoke test under `qemu-user`, which also checks that the helper's `recover` exits 0 and its `serve` without socket activation exits non-zero
 4. **reproducibility**: `scripts/check-reproducible.sh --rebuild-frontend`
 5. **signing**: installs the pinned minisign and runs `scripts/test-signing.sh` (positive cases plus rejection cases for tampering, wrong key, replay and wrong signature format, including a tampered, replaced or wrongly stamped `install.sh`; throwaway keys only)
 6. **installer**: shellcheck, the check that `install.sh` embeds the committed release key, `systemd-analyze verify` of the unit, and `scripts/test-installer.sh` twice (installer run by `dash`, then by `bash`) with the runner's OpenSSL 3.0
 7. **installer-containers** (matrix `debian:12`, `ubuntu:24.04`): builds the real release bundle, signs it with a throwaway key, and runs the test copy of the installer end to end in a plain **arm64** container under qemu-user (`scripts/test-installer-container.sh`). The job summary lists which tools the minimal image already had. There is no systemd in the container: a stand-in starts the binary as the `oarfish` user. This is not a Raspberry Pi OS or Ubuntu Server test
-8. **security** (ORB-SEC-009, SOLL): `govulncheck` (pinned), `npm audit --audit-level=high`, and a trial SBOM generation
+8. **helper-units**: the update helper's embedded key equals `release/oarfish-release.pub`, `scripts/check-units.sh` (and its mutation self-test), and `scripts/verify-units.sh` (`systemd-analyze verify` of the three units against a temporary root, plus `systemd-analyze security --offline` printed for information, no threshold)
+9. **security** (ORB-SEC-009, SOLL): `govulncheck` (pinned), `npm audit --audit-level=high`, and a trial SBOM generation
 
 `.github/workflows/release.yml` (tag `v*`, or manual dry run) is described in [`RELEASING.md`](RELEASING.md).
 
@@ -106,11 +110,15 @@ Adding a dependency should be justified in the change that adds it.
 | `sign-release.sh`, `verify-release.sh`, `test-signing.sh`, `install-minisign.sh` | signing (ADR 0005) |
 | `stamp-installer.sh` | writes `install.sh` for a release: `install/install.sh` with the one line `OARFISH_STAMPED_VERSION='@@OARFISH_VERSION@@'` replaced by the version. Deterministic, replaces exactly one line |
 | `check-installer-key.sh` | `install.sh` must embed the key line and key id of `release/oarfish-release.pub` (run in CI and in the release `sign` job) |
+| `check-helper-key.sh` | the update helper's embedded copy of the release key must be byte-identical to `release/oarfish-release.pub` (run in CI) |
+| `check-units.sh` | the three update-helper units keep the directives of ADR 0010 U2/U10/A1 and gain no forbidden one (dependencies, `Environment=`, extra `Exec*`, any mention of `oarfish.service` except the recover unit's `Before=`); `--self-test` removes, changes and adds lines in a copy and requires the check to fail every time |
+| `verify-units.sh` | `systemd-analyze verify` of those units against a temporary root that holds the paths they name; prints `systemd-analyze security --offline` for information (needs `systemd-analyze`, so Linux) |
+| `build-helper.sh` | builds the update helper stub for linux/arm64 with the flags of the main binary; `--twice` checks that the build is reproducible |
 | `make-test-installer.sh` | test copy of `install.sh` with a throwaway key; the production script has no way to swap its key, so tests need a copy. Never published |
 | `test-installer.sh` | installer tests against a fake root |
 | `test-installer-container.sh`, `installer-container/` | installer end to end in an arm64 container under qemu |
-| `check-budgets.sh` | enforces and reports the size budgets |
-| `smoke-test-arm64.sh` | extracts the bundle, starts the binary, checks `/healthz` and `/` |
+| `check-budgets.sh` | enforces and reports the size budgets; with a second argument it also reports the update helper's size (no budget, not in the bundle) |
+| `smoke-test-arm64.sh` | extracts the bundle, starts the binary, checks `/healthz` and `/`; with a second argument also runs the update helper stub (`recover` exits 0, `serve` without socket activation exits 1, an unknown subcommand exits 2) |
 | `check-reproducible.sh` | double build and SHA-256 comparison |
 
 ### Size budgets

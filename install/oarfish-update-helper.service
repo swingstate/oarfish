@@ -1,0 +1,72 @@
+# Oarfish update helper (ADR 0010, U1 and U10, with amendments A1 and A4). Not
+# installed yet: the installer arrives in G6.3b. Started by socket activation,
+# it exits after 30 s without a connection.
+#
+# No Requires=, BindsTo=, PartOf= or ordering against oarfish.service: a restart
+# of the main service must never stop the helper (U1). No Environment=: the
+# soft memory limit is set by the program (A4).
+#
+# SuccessExitStatus=75 and RestartForceExitStatus=75 make the deliberate exit
+# 75 ("restart me with the new binary", U15 rule 4) a clean exit that still
+# restarts the service. Without them OnFailure= would start the recovery and
+# switch the component set back (A1).
+#
+# MemoryMax=64M is not enforced where the memory controller is absent, as on
+# the reference image (A4); TasksMax=16 works.
+
+[Unit]
+Description=Oarfish update helper
+Documentation=https://github.com/swingstate/oarfish
+OnFailure=oarfish-update-recover.service
+StartLimitIntervalSec=10
+StartLimitBurst=3
+
+[Service]
+Type=exec
+ExecStart=/usr/libexec/oarfish-update-helper serve
+Restart=on-failure
+RestartSec=1
+SuccessExitStatus=75
+RestartForceExitStatus=75
+RuntimeMaxSec=900
+User=root
+Group=root
+UMask=0077
+# Root-owned state (Q6, U8): /var/lib/oarfish-update, mode 0700.
+StateDirectory=oarfish-update
+StateDirectoryMode=0700
+# The one directory the helper writes (U10); /etc and /usr stay read-only.
+ReadWritePaths=/opt/oarfish
+
+# Hardening. A root process with an empty capability set.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+# AF_INET and AF_INET6 are for the loopback health check of a later step; the
+# address filter below limits traffic to loopback.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+MemoryMax=64M
+TasksMax=16
+Nice=10

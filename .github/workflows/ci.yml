@@ -43,6 +43,18 @@ jobs:
       - name: go test
         working-directory: backend
         run: go test -race ./...
+      # The update helper stub (ADR 0010, G6.3a) is a root program of its own: it
+      # must build for both architectures, and its tests (including the import
+      # check against go list -deps and the re-executed socket-activation
+      # tests) run with the race detector and without the test cache.
+      - name: Update helper stub (not shipped) vet, build and test
+        working-directory: backend
+        run: |
+          for arch in arm64 amd64; do
+            GOOS=linux GOARCH=$arch CGO_ENABLED=0 go vet ./cmd/oarfish-update-helper ./internal/trustkey
+            GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/oarfish-update-helper
+          done
+          go test -race -count=1 ./cmd/oarfish-update-helper ./internal/trustkey
       # ADR 0009 E1, ORB-NFR-001: the resident size after Argon2id hashes on
       # Linux. Without the race detector, whose shadow memory would hide it.
       - name: Hash memory is returned to the OS (Linux, no race detector)
@@ -50,7 +62,7 @@ jobs:
         run: go test -count=1 -run '^TestHashMemoryIsReturnedToTheOS$' -v ./internal/auth
       # Short fuzz runs of the parsers that read untrusted system files.
       # The seed corpora also run as ordinary tests in the step above.
-      - name: Fuzz the detection, metrics and password-hash parsers
+      - name: Fuzz the detection, metrics, password-hash and update-helper request parsers
         working-directory: backend
         run: |
           go test -run '^$' -fuzz '^FuzzParseOSRelease$' -fuzztime 5s ./internal/platform/operating_system
@@ -59,6 +71,7 @@ jobs:
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/metrics/parse
           done
           go test -run '^$' -fuzz '^FuzzParsePHC$' -fuzztime 5s ./internal/auth
+          go test -run '^$' -fuzz '^FuzzDecodeRequest$' -fuzztime 5s ./cmd/oarfish-update-helper
       # ADR 0009 E1: golang.org/x/crypto/argon2 is the only third-party package
       # (TestArchitectureOnlyArgon2FromXCrypto checks the imports); here the
       # compiler's own view of the release target confirms it.
@@ -150,8 +163,12 @@ jobs:
           bin="$(ls "$RUNNER_TEMP"/oarfish_*_linux_arm64/oarfish)"
           file "$bin"
           file "$bin" | grep -q 'ELF 64-bit.*ARM aarch64'
+      # G6.3a: the helper stub is built reproducibly with the flags of the main
+      # binary. It is not in the bundle; its size is reported, not gated.
+      - name: Update helper stub (not shipped), reproducible linux/arm64 build
+        run: scripts/build-helper.sh --twice -o "$RUNNER_TEMP/helper/oarfish-update-helper"
       - name: Size budgets (ORB-NFR-005, ORB-NFR-006)
-        run: scripts/check-budgets.sh dist/release/oarfish_*_linux_arm64.tar.gz
+        run: scripts/check-budgets.sh dist/release/oarfish_*_linux_arm64.tar.gz "$RUNNER_TEMP/helper/oarfish-update-helper"
       - name: Install qemu-user
         run: |
           sudo apt-get update -qq
@@ -160,7 +177,7 @@ jobs:
       - name: ARM64 smoke test under emulation (ORB-CICD-004)
         run: |
           EXPECTED_VERSION="$(jq -r .version dist/release/manifest.json)" \
-            scripts/smoke-test-arm64.sh dist/release/oarfish_*_linux_arm64.tar.gz
+            scripts/smoke-test-arm64.sh dist/release/oarfish_*_linux_arm64.tar.gz "$RUNNER_TEMP/helper/oarfish-update-helper"
 
   reproducibility:
     name: Reproducible bundle
@@ -251,6 +268,27 @@ jobs:
           OARFISH_TEST_SH=/bin/dash scripts/test-installer.sh
       - name: Installer tests again with bash as /bin/sh
         run: OARFISH_TEST_SH=/bin/bash scripts/test-installer.sh
+
+  # The update helper's units and key (ADR 0010, G6.3a). Nothing here installs
+  # anything: the units are repository files until G6.3b.
+  helper-units:
+    name: Update helper units and key
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The helper embeds the committed release key
+        run: scripts/check-helper-key.sh
+      - name: Required and forbidden directives in the three units
+        run: scripts/check-units.sh
+      # Removes each required line, changes each value and adds each forbidden
+      # directive to a copy, one at a time; the check must fail on every one.
+      - name: The unit check fails on every mutation
+        run: scripts/check-units.sh --self-test
+      - name: systemd-analyze verify (temporary root) and security (informational)
+        run: scripts/verify-units.sh
 
   # The installer and the real linux/arm64 binary in plain arm64 container images
   # under qemu-user. No systemd inside, so this is not a Raspberry Pi OS or Ubuntu
