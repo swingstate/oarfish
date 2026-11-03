@@ -20,7 +20,7 @@ Cost: some information is harder to obtain from files (the boot medium needs `/p
 
 ### 2. Profiles are JSON, decoded with the standard library; no YAML dependency
 
-Profiles are JSON files, decoded with `encoding/json` using `DisallowUnknownFields`, then checked by an explicit validator. The standard library has no YAML parser; a YAML dependency would add a third-party parser to a binary that runs as a service, and YAML's features (anchors, tags, implicit typing) are exactly what a "data only, no commands" schema does not want. JSON with strict decoding gives the schema check, the no-commands guarantee (an unknown `command` field is an error) and no new dependency (CLAUDE.md: standard library first).
+Profiles are JSON files, decoded with `encoding/json` using `DisallowUnknownFields`, then checked by an explicit validator. The standard library has no YAML parser; a YAML dependency would add a third-party parser to a binary that runs as a service, and YAML's features (anchors, tags, implicit typing) are exactly what a "data only, no commands" schema does not want. JSON with strict decoding gives the schema check, the no-commands guarantee (an unknown `command` field is an error) and no new dependency (project rules: standard library first).
 
 Profiles may reference only named, versioned handlers (`sensor.thermal_zone.v1`) from a list compiled into the core. G4 ships no handler that writes anything.
 

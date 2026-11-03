@@ -1,5 +1,5 @@
-# Local Claude context
-CLAUDE.local.md
+# Local, untracked context
+*.local.md
 
 # Environment and secrets
 .env

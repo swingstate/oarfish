@@ -141,7 +141,7 @@ Rules for editing workflows:
 
 ## Local-only information
 
-Device hostnames, usernames, endpoints and credentials belong in `CLAUDE.local.md` (git-ignored) or an untracked `.env`. `.env.example` documents variables the code reads; Gate G1 reads none.
+Device hostnames, usernames, endpoints and credentials belong in an untracked `*.local.md` file (git-ignored) or an untracked `.env`. `.env.example` documents variables the code reads; Gate G1 reads none.
 
 ## The installer and its tests
 

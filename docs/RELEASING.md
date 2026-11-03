@@ -21,7 +21,7 @@ The bundle contains `oarfish`, `oarfish.service` (the systemd unit the installer
 
 ## One-time setup: signing key (maintainer, local machine)
 
-The private key must never enter the repository, a log or a chat. Claude Code does not generate or read it. Run these on your own machine:
+The private key must never enter the repository, a log or a chat. The implementation agent does not generate or read it. Run these on your own machine:
 
 ```bash
 brew install minisign        # macOS; Debian/Ubuntu: sudo apt install minisign

@@ -62,7 +62,7 @@ Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`, `make r
 | `backend/` | Go module: `cmd/oarfish` entry point, `internal/` packages |
 | `frontend/` | Svelte 5 + TypeScript + Vite (build time only) |
 | `install/` | `install.sh` (POSIX sh installer) and `oarfish.service` (systemd unit, shipped inside the bundle) |
-| `docs/` | Specification, ADRs, roadmap, architecture, install and development guides, gate prompts |
+| `docs/` | Specification, ADRs, roadmap, architecture, install and development guides |
 | `scripts/` | Release packaging, signing, verification, installer tests and smoke tests |
 | `.github/workflows/` | CI and release (hosted runners only; no deployment to devices) |
 | `Makefile` | Developer entry points |

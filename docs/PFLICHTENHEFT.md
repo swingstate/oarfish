@@ -2,14 +2,14 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.3.6
+- Dokumentversion: 0.3.7
 - Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G4 abgenommen)
 - Stand: 3. November 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
 - Verbindliches Folgeziel: Ubuntu Server LTS ARM64 auf Raspberry-Pi- und generischer ARM64-Hardware
-- Entwicklung: Claude Code auf macOS
+- Entwicklung: Implementierungsagent (KI-Coding-Agent) auf macOS
 - CI und Distribution: GitHub Actions, GitHub Releases, pull-basierte Installation und GUI-Updates
 
 > Dieses Pflichtenheft ist die normative Produkt- und Implementierungsgrundlage. Die Markdown-Fassung unter `docs/PFLICHTENHEFT.md` ist die Source of Truth. Die Umsetzung erfolgt in abgegrenzten Gates. Ein Gate wird erst begonnen, wenn sein Vorgänger abgenommen wurde.
@@ -44,7 +44,7 @@ Der Raspberry Pi Zero 2 W ist die bewusst knappe Ressourcenbaseline. Builds find
 | B-06 | Tailscale ist ein optionales First-Party-Plugin und keine Core-, Installations- oder Update-Abhängigkeit. | bestätigt |
 | B-07 | Container Management ist ein optionales First-Party-Plugin mit Docker- und Podman-Adaptern. | bestätigt |
 | B-08 | Oarfish Assist ist ein optionales Plugin für Cloud- oder lokale LLM-Endpunkte. | bestätigt |
-| B-09 | Entwicklung erfolgt mit Claude Code auf dem MacBook in kleinen Gates. | bestätigt |
+| B-09 | Entwicklung erfolgt mit dem Implementierungsagenten auf dem MacBook in kleinen Gates. | bestätigt |
 | B-10 | GitHub Actions führt CI, Cross-Builds und Release-Erstellung aus, aber kein Deployment auf den Pi. | bestätigt |
 | B-11 | Erstinstallation erfolgt über ein Installationsskript, spätere Updates über die Oarfish-GUI. | bestätigt |
 | B-12 | Self-Update, Signaturprüfung, atomare Aktivierung und Rollback gehören zum Core. | bestätigt |
@@ -52,7 +52,7 @@ Der Raspberry Pi Zero 2 W ist die bewusst knappe Ressourcenbaseline. Builds find
 ### 0.3 Freigabereihenfolge
 
 1. Dieses Pflichtenheft als Version 0.3 prüfen und als Gate G0 freigeben.
-2. Gate G1 mit dem bereitgestellten Claude-Code-Prompt ausführen.
+2. Gate G1 mit dem zugehörigen Gate-Prompt für den Implementierungsagenten ausführen.
 3. Repository-Skeleton, CI und ARM64-Cross-Build abnehmen.
 4. Gate G2 für die GitHub-Release-Pipeline separat beauftragen.
 5. Gate G3 für das Installationsskript separat beauftragen.
@@ -77,7 +77,7 @@ Der Raspberry Pi Zero 2 W ist die bewusst knappe Ressourcenbaseline. Builds find
 | 11 | Nichtfunktionale Anforderungen |
 | 12 | Test- und Abnahmekonzept |
 | 13 | Betrieb, Recovery und Observability |
-| 14 | Schrittweiser Realisierungsplan mit Claude Code |
+| 14 | Schrittweiser Realisierungsplan mit dem Implementierungsagenten |
 | 15 | Risiken und Gegenmaßnahmen |
 | 16 | Definition of Done |
 | 17 | Verbleibende Entscheidungen und Defaultwerte |
@@ -150,7 +150,7 @@ Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert
 |---|---|---|
 | Product Owner | Scope, UX, Prioritäten und Baseline freigeben. | Keine besondere Laufzeitrolle. |
 | Geräteadministrator | SBC verstehen, konfigurieren und Anwendungen betreiben. | Lokaler Admin mit bestätigungspflichtigen Aktionen. |
-| Entwickler | Code mit Claude Code entwickeln und über GitHub versionieren. | Repository-Zugriff, kein automatischer Zugriff auf Zielgeräte. |
+| Entwickler | Code mit dem Implementierungsagenten entwickeln und über GitHub versionieren. | Repository-Zugriff, kein automatischer Zugriff auf Zielgeräte. |
 | GitHub Actions | Tests, Build, Paketierung und Release-Erstellung ausführen. | Nur Repository- und Release-Berechtigungen, kein Pi-Zugriff. |
 | Installer | Erstinstallation eines verifizierten Release-Bundles. | Einmalig mit explizitem Root-Aufruf auf dem Zielgerät. |
 | Update Helper | Geprüfte Oarfish-Releases atomar aktivieren oder zurückrollen. | Eng begrenzte Root-Rechte für Oarfish-Releasepfade und Dienstneustart. |
@@ -179,7 +179,7 @@ Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert
 
 | Komponente | Rolle |
 |---|---|
-| MacBook | Claude Code, lokale Entwicklung, Git-Operationen und optionale lokale Tests. |
+| MacBook | Implementierungsagent, lokale Entwicklung, Git-Operationen und optionale lokale Tests. |
 | GitHub Repository | Source of Truth für Code, Dokumentation, Issues und Pull Requests. |
 | GitHub-hosted Runner | Tests, Frontend-Build, Go-Cross-Build, Checksums und Releases. |
 | GitHub Releases | Versionierte, unveränderliche Distributionsartefakte. |
@@ -758,7 +758,7 @@ Der Delivery Flow ist pull-basiert:
 
 ```text
 MacBook
-  Claude Code und lokale Entwicklung
+  Implementierungsagent und lokale Entwicklung
         |
         | git push
         v
@@ -1047,15 +1047,15 @@ Oarfish Core, Profile und Plugins besitzen getrennte Versionen. Der Core-Updater
 
 Ein Core-Update zeigt Herkunft, Signaturstatus, Kompatibilität, Migrationshinweise und Rollbackfähigkeit. Der Updater speichert keine dauerhaften GitHub-Credentials für den normalen öffentlichen Releasepfad.
 
-## 14. Schrittweiser Realisierungsplan mit Claude Code
+## 14. Schrittweiser Realisierungsplan mit dem Implementierungsagenten
 
 ### 14.1 Arbeitsmodus
 
-Nach Freigabe erhält Claude Code keinen allumfassenden Implementierungsauftrag. Jede Session bearbeitet genau ein Gate oder ein klar abgegrenztes Teilpaket. Am Ende stehen getesteter Code, aktualisierte Dokumentation, ein sauberer Commit und ein messbares Exit-Kriterium.
+Nach Freigabe erhält der Implementierungsagent keinen allumfassenden Implementierungsauftrag. Jede Session bearbeitet genau ein Gate oder ein klar abgegrenztes Teilpaket. Am Ende stehen getesteter Code, aktualisierte Dokumentation, ein sauberer Commit und ein messbares Exit-Kriterium.
 
-Claude Code muss vor jeder Arbeit:
+Der Implementierungsagent muss vor jeder Arbeit:
 
-1. `CLAUDE.md`, dieses Pflichtenheft und den aktuellen Gate-Prompt lesen.
+1. Dieses Pflichtenheft und den aktuellen Gate-Prompt lesen.
 2. Bestehenden Code und CI-Status prüfen.
 3. Nur den freigegebenen Scope implementieren.
 4. Tests und Abnahmekriterien ausführen.
@@ -1085,7 +1085,7 @@ Claude Code muss vor jeder Arbeit:
 
 G6 beginnt erst, wenn G5.1 PASS ist. G7 beginnt erst, wenn G6 einschließlich G6.10 abgenommen ist.
 
-### 14.3 Prompt-Struktur für Claude Code
+### 14.3 Prompt-Struktur für den Implementierungsagenten
 
 Jeder Gate-Prompt enthält:
 
@@ -1097,7 +1097,7 @@ Jeder Gate-Prompt enthält:
 - Regeln für Git und GitHub Actions,
 - Abschlussformat mit Ergebnissen und offenen Punkten.
 
-Der mit diesem Paket gelieferte erste Prompt ist `docs/prompts/G1_REPOSITORY_AND_CI.md`. Er erstellt Repository und CI, aber noch keine Produktfunktionen, Releases, Installer oder Pi-Installation.
+Gate-Prompts werden außerhalb des Repositorys geführt; im Repository gelten dieses Pflichtenheft und die ADRs.
 
 ## 15. Risiken und Gegenmaßnahmen
 
@@ -1187,9 +1187,7 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | Datei | Zweck |
 |---|---|
 | `docs/PFLICHTENHEFT.md` | Verbindliche Produkt- und Systemanforderungen. |
-| `CLAUDE.md` | Kompakte Arbeitsregeln für Claude Code. |
 | `docs/adr/` | Architekturentscheidungen und ihre Begründung. |
-| `docs/prompts/` | Versionierte Gate-Prompts für Claude Code. |
 | `README.md` | Einstieg, Build und Projektstatus. |
 
 ### 18.3 Informative Referenzen
@@ -1214,3 +1212,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.3.4 | 28. Oktober 2026 | Abschnitt 8.2: Zeilen `/etc/oarfish/secrets/` und `/var/lib/oarfish/` präzisiert; vom Dienst geschriebene Geheimnisse und Zustände (Konto, Setup-Token, Audit) liegen unter `/var/lib/oarfish`, `/etc/oarfish/secrets/` bleibt für vom Betreiber bereitgestellte, nur gelesene Secrets (D-C47, ADR 0009); Abschnitt 14.2, Zeile G5.1: explizite Konfiguration für nicht-lokale Bindung aus dem Lieferumfang entfernt, G5.1 bleibt auf Loopback beschränkt, die Bindung behandelt der Design-Stopp D-D10 vor dem MVP-Release (D-C48, ADR 0009); Kopfzeile: Stand aktualisiert. |
 | 0.3.5 | 2. November 2026 | Abschnitt 8.1: Update Manager als unprivilegiert gekennzeichnet (Erkennung, Download in den Cache, Vorabprüfung); Abschnitt 8.2: neue Zeile `/var/lib/oarfish-update/` für den root-eigenen Zustand des Update Helpers, "Updatezustand" aus der Zeile `/var/lib/oarfish/` entfernt (D-C58); Abschnitt 8.6: Aufgaben des Update Helpers um eigenen Zustand, Lesen des Dienstzustands und Austausch der eigenen Komponenten ergänzt (D-C54); Abschnitt 9.6: Prerelease-Regel (D-C59); Abschnitt 10.1 Punkt 6: Broker oder Update Helper; Abschnitt 13.1: `/healthz` darf die Version nennen (D-C57); ORB-REL-002: Abnahmespalte nennt die Prüfungen des MVP; Abschnitt 14.2: Zeile G6 um die Teilschritte G6.0 bis G6.10 ergänzt, neue Zeile G6.10, G7 beginnt erst nach G6.10 (D-C63); Kopfzeile: Dokumentversion und Stand aktualisiert (D-C62, ADR 0010). |
 | 0.3.6 | 3. November 2026 | Abschnitt 8.2: Komponentenbaum des Update Helpers ergänzt (`/opt/oarfish/components/<id>/`, Links `active` und `known-good`, `/usr/libexec/oarfish-update-helper` als Link auf `components/active`, Unit-Links in `/etc/systemd/system`, `/run/oarfish-update/` für den Socket des Helpers) und Hinweis, dass das Journal flüchtig sein kann (Konflikt C10 aus ADR 0010, nach den Beobachtungen aus G6.1); Kopfzeile: Dokumentversion und Stand aktualisiert (D-C64, ADR 0010). |
+| 0.3.7 | 3. November 2026 | Kopfzeile, Abschnitte 0.2 (B-09), 0.3, 0.4, 2.1, 2.4, 9.1 und 14: Name des Entwicklungswerkzeugs durch "Implementierungsagent" ersetzt, Titel von Abschnitt 14 und Eintrag in der Inhaltsübersicht angepasst; Abschnitt 14.1: Der Implementierungsagent liest dieses Pflichtenheft und den aktuellen Gate-Prompt, der Verweis auf die lokale Regeldatei entfällt; Abschnitt 14.3: Verweis auf den ersten Gate-Prompt ersetzt durch den Satz, dass Gate-Prompts außerhalb des Repositorys geführt werden; Abschnitt 18.2: Zeilen für die lokale Regeldatei des Agenten und für das Verzeichnis der Gate-Prompts entfernt; Kopfzeile: Dokumentversion aktualisiert (D-C65). |
