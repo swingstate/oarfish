@@ -83,7 +83,11 @@ func startServer(t *testing.T, mutate func(*options)) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := newServer(o, testUID, statusSource{helperVersion: o.helperVersion, keyID: testKeyID, root: o.root})
+	uid, err := o.lookupUID(serviceUser) // the same lookup as in production
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := newServer(o, uid, statusSource{helperVersion: o.helperVersion, keyID: testKeyID, root: o.root})
 	ts := &testServer{path: path, srv: srv, done: make(chan error, 1), ln: ln}
 	go func() { ts.done <- srv.serve(ln) }()
 	t.Cleanup(func() {

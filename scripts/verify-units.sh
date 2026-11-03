@@ -25,6 +25,13 @@ for p in usr/libexec/oarfish-update-helper opt/oarfish/components/known-good/oar
   cp /bin/true "$R/$p"
   chmod 0755 "$R/$p"
 done
+# Inside a root, systemd finds its base units (sysinit.target, sockets.target, ...)
+# only under that root, so the runner's own system units are copied in.
+SYSTEM_UNITS=/usr/lib/systemd/system
+[ -d "$SYSTEM_UNITS" ] || SYSTEM_UNITS=/lib/systemd/system
+[ -d "$SYSTEM_UNITS" ] || die "no system unit directory found"
+mkdir -p "$R/usr/lib/systemd"
+cp -R "$SYSTEM_UNITS" "$R/usr/lib/systemd/system"
 UNITS="oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service"
 for u in $UNITS; do cp "$DIR/$u" "$R$UNITDIR/$u"; done
 # The recover unit is ordered before oarfish.service; give systemd the unit it names.

@@ -31,8 +31,10 @@ func TestRealPeerCheck(t *testing.T) {
 		served bool
 	}{{"own uid", self, true}, {"another uid", self + 1, false}} {
 		t.Run(tt.name, func(t *testing.T) {
-			ts := startServer(t, func(o *options) { o.peerUID = peerUID })
-			ts.srv.uid = tt.expect
+			ts := startServer(t, func(o *options) {
+				o.peerUID = peerUID
+				o.lookupUID = func(string) (uint32, error) { return tt.expect, nil }
+			})
 			raw := ts.exchange(t, []byte(okStatus), false)
 			if tt.served {
 				if r := parseReply(t, raw); !r.OK {
