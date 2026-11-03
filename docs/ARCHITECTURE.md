@@ -18,7 +18,7 @@ backend/                     Go module github.com/swingstate/oarfish/backend
   internal/version/          Version and Commit, injected with -ldflags
 frontend/                    Svelte 5 + TypeScript + Vite
   src/                       App.svelte (session gate and navigation), pages/ (Home, Gerät, Einrichten, Anmelden, Konto), lib/ (metrics, stream, device and session clients, locales/de.ts + en.ts)
-docs/                        specification, ADRs, roadmap, prompts, this file
+docs/                        specification, ADRs, roadmap, this file
 install/                     install.sh (POSIX sh installer) and oarfish.service (unit, shipped in the bundle)
 scripts/                     release packaging, signing, verification, installer tests, budget and smoke tests
   bundlegen/                 stdlib-only Go module: tar.gz, manifest.json, checksums.txt (not part of the product)
@@ -83,7 +83,7 @@ internal/securefile/ internal/clock/
 
 ## Boundaries prepared for later gates
 
-Not implemented, only reserved by the layout and by CLAUDE.md rules:
+Not implemented, only reserved by the layout and by the project rules:
 
 - Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3) and implemented in G4 (below). Package, network and service adapters (`packages/`, `network/`, `services/` in spec 8.3) do not exist yet.
 - No privileged code exists. Privilege Broker and Update Helper are separate future components (spec 8.6): the Update Helper arrives in Gate G6, the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).

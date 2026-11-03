@@ -32,4 +32,4 @@
 | G13 | Hardening and MVP acceptance |
 | Post-MVP | Armbian, Rockchip, additional boards, and external plugins |
 
-Each gate receives its own Claude Code prompt. A later gate must not be implemented early unless the specification is formally changed.
+Each gate receives its own prompt for the implementation agent. A later gate must not be implemented early unless the specification is formally changed.

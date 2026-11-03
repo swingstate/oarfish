@@ -1,6 +1,6 @@
 # Publication checklist
 
-Manual GitHub settings for making `swingstate/oarfish` public (decision D-C17). Nothing here is applied by the repository or by Claude Code; each step is done by the maintainer in the GitHub UI. The review of the repository content (history scan, workflows, license) is documented in `docs/RELEASING.md`, "Before making the repository public".
+Manual GitHub settings for making `swingstate/oarfish` public (decision D-C17). Nothing here is applied by the repository or by the implementation agent; each step is done by the maintainer in the GitHub UI. The review of the repository content (history scan, workflows, license) is documented in `docs/RELEASING.md`, "Before making the repository public".
 
 Verification commands use the `gh` CLI, read-only, logged in as a repository admin.
 
