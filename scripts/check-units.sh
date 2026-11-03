@@ -17,6 +17,8 @@
 #     recover unit (U1); the helper has no ordering or dependency on the service;
 #   - no line continuation (a trailing backslash).
 # The helper service has no [Install] section and the recover unit no RemainAfterExit.
+# The recover unit has TimeoutStartSec=120 (ADR 0010 A9): a oneshot unit has no
+# start timeout by default, and this one is ordered Before=oarfish.service.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
@@ -100,6 +102,7 @@ EOF
       echo "$RECOVER_BEFORE"
       cat <<'EOF'
 Service|Type=oneshot
+Service|TimeoutStartSec=120
 Service|ExecStart=/opt/oarfish/components/known-good/oarfish-update-helper recover
 Install|WantedBy=multi-user.target
 EOF
@@ -211,6 +214,7 @@ self_test() {
   fresh; insert oarfish-update-helper.service Service 'NoNewPrivileges=no'; mutant oarfish-update-helper.service "helper service: NoNewPrivileges=no after the required line"
   fresh; insert oarfish-update-helper.service Service 'User=oarfish'; mutant oarfish-update-helper.service "helper service: a second User="
   fresh; printf '[Install]\nWantedBy=multi-user.target\n' >> "$tmp/m/oarfish-update-helper.service"; mutant oarfish-update-helper.service "helper service with [Install]"
+  fresh; insert oarfish-update-recover.service Service 'TimeoutStartSec=0'; mutant oarfish-update-recover.service "recover unit: a second TimeoutStartSec= after the required line"
   fresh; insert oarfish-update-recover.service Service 'RemainAfterExit=yes'; mutant oarfish-update-recover.service "recover unit with RemainAfterExit="
   fresh; sed 's/^Before=.*/Before=oarfish-update-helper.socket/' "$src/oarfish-update-recover.service" > "$tmp/m/oarfish-update-recover.service"; mutant oarfish-update-recover.service "recover unit without Before=oarfish.service"
   fresh; rm "$tmp/m/oarfish-update-helper.socket"; mutant oarfish-update-helper.socket "socket unit missing"

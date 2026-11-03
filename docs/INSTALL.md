@@ -13,7 +13,7 @@ Oarfish runs on a 64-bit ARM Linux device with systemd. You download one script,
 | 64-bit ARM Linux (`uname -m` shows `aarch64`) | The release is built for ARM64 only. 32-bit systems are refused. |
 | systemd as the running init system | Oarfish is installed as a systemd service. |
 | `openssl` **3.0 or newer** | Checks the release signature. OpenSSL 1.x and LibreSSL are refused. Check with `openssl version`. |
-| `curl`, `tar`, `gzip`, `sha256sum` and the usual base tools | The installer lists any that are missing and stops. |
+| `curl`, `tar`, `gzip`, `sha256sum`, `flock` (util-linux) and the usual base tools | The installer lists any that are missing and stops. `flock` takes the lock that keeps two installer runs, and later an update, apart. |
 | `useradd` or `adduser` | Creates the service user. |
 | About 64 MB free on `/opt` and in `/tmp` | The release is about 3 MB; the installer wants room to spare. |
 | root (use `sudo`) | The installer creates a user, directories and the service. |
@@ -30,7 +30,7 @@ Prereleases are installed from their own tag. This example uses `v0.1.0-alpha.2`
 # 1. Download the installer of that release (HTTPS, no login).
 curl -fsSLO https://github.com/swingstate/oarfish/releases/download/v0.1.0-alpha.2/install.sh
 
-# 2. Read it. It is a plain shell script of about 600 lines.
+# 2. Read it. It is a plain shell script of about 1,000 lines.
 less install.sh
 
 # 3. See what it would do. Changes nothing, downloads nothing.
@@ -57,6 +57,8 @@ For later stable releases the address `https://github.com/swingstate/oarfish/rel
 5. Only now it changes the system: creates the user `oarfish` (no login shell), the directories, installs the release, switches the `current` link, installs and starts the service.
 6. Calls `http://127.0.0.1:8484/healthz`. If the new service does not become healthy and an older version was installed, it switches back to the older version.
 7. Prints the version and the address.
+
+A release can carry the update helper (the "components" bundle shape, below). Then the installer also takes the lock, creates the helper layout and checks the helper socket; step 5 and 6 differ as described in the next section. A release without it (the "legacy" shape) is installed exactly as before.
 
 Nothing is sent anywhere except the download requests to `github.com`. The script has no telemetry.
 
@@ -157,7 +159,35 @@ sudo systemctl start oarfish
 
 The first page is **Home**: live values of the device (CPU, memory, temperatures, storage, network) and alerts. The device is only read while a browser has Home open and visible (at most four windows at the same time). Opening Home shows the host name and the IP addresses of the device; do not share screenshots of it publicly.
 
-**The installer overwrites `/etc/systemd/system/oarfish.service`.** If the file exists and differs from the one in the release, it is replaced (the installer says so), also when you re-run it. Do not edit that file. Local changes belong in a drop-in directory, which the installer never touches:
+### The update helper layout (G6.3b, not yet verified on a device)
+
+Since step G6.3b of ADR 0010 the release bundle carries the update helper by default (`oarfish-update-helper` and the units `oarfish-update-helper.socket`, `oarfish-update-helper.service` and `oarfish-update-recover.service`, [`RELEASING.md`](RELEASING.md#bundle-shapes-adr-0010-step-g62)). **The helper is still a stub** that does nothing the GUI uses; it is installed so that the layout, the lock and the units can be tried on a device before the helper does real work (G6.5 and later). The installer accepts exactly two bundle shapes, **legacy** (the five files of earlier releases) and **components** (those plus the four helper files), and the shape found in the bundle must agree with the manifest.
+
+For the components shape the installer, under the lock described below, creates:
+
+| Path | Content |
+|---|---|
+| `/opt/oarfish/components/<id>/` | The helper and its three units (root:root, directory 0755, helper 0755, units 0644). `<id>` is the version of the release that first delivered exactly these bytes; a later release with identical bytes creates nothing new. Never modified after installation. |
+| `/opt/oarfish/components/active` | Relative link to `<id>`; serves the helper, its socket and its service. Moves at once when the helper bytes change. |
+| `/opt/oarfish/components/known-good` | Relative link to `<id>`; serves the recover unit. On the first installation it equals `active`; later it moves only **after** the health check of the run has passed. |
+| `/usr/libexec/oarfish-update-helper` | Link to `/opt/oarfish/components/active/oarfish-update-helper`. |
+| `/etc/systemd/system/oarfish.service` | Link to `/opt/oarfish/current/oarfish.service` (it was a copy before). A regular file there (an install of an earlier release) is replaced atomically by the link; the drop-in directory `oarfish.service.d` is never touched. |
+| `/etc/systemd/system/oarfish-update-helper.socket` and `.service` | Links to the files in `components/active`. |
+| `/etc/systemd/system/oarfish-update-recover.service` | Link to the file in `components/known-good`. |
+| `multi-user.target.wants/oarfish.service`, `sockets.target.wants/oarfish-update-helper.socket`, `multi-user.target.wants/oarfish-update-recover.service` | **Relative** links to the unit in `/etc/systemd/system` (for example `../oarfish.service`). The installer creates them itself and does not use `systemctl enable`, which would link the resolved release directory (ADR 0010, A5); they therefore keep working when an old release directory is removed. |
+| `/var/lib/oarfish-update/` | Root-owned, mode 0700. Created by the installer because it takes the lock there before the helper has ever run. An existing directory with another owner or mode is a reason to stop. |
+
+The order of a run: take the lock; create the directories; install the release and the component set; create the links; one `systemctl daemon-reload`; if the helper bytes or the socket unit changed, or the socket is not active, `systemctl stop oarfish-update-helper.service` and then `systemctl restart oarfish-update-helper.socket` (systemd keeps the text a socket was started with, and a socket cannot be started while its service is active, ADR 0010 A9); restart `oarfish.service` when something changed. The recover unit is enabled by its link and is **not** started by the installer. The health check additionally needs `oarfish-update-helper.socket` to be active (not the service, which is socket activated and exits when idle). Running the same release again changes nothing and restarts nothing.
+
+**The lock.** The installer takes an exclusive `flock` on the directory `/var/lib/oarfish-update`, the object the helper will lock too (ADR 0010 U7, U8; the helper side comes with G6.5, so today it guards installer runs against each other). It waits at most 30 seconds and then stops with the message that an update or another installer run is in progress and that nothing was changed. The lock is held to the end of the run, also for `--uninstall`, and is released when the installer exits, however it exits. A legacy-shape release on a device without that directory takes no lock and does not create the directory.
+
+**If the health check fails** and an earlier release was active, the installer switches `current` back, switches `components/active` back if it moved in this run, leaves `known-good` where it was, reloads systemd, stops the helper service, restarts the socket and checks again. The layout created in the run stays. On a first installation it disables `oarfish.service`, the helper socket and the recover unit and keeps all files; run the installer again after fixing the cause.
+
+**What changes on an existing device.** An alpha-style installation (`/etc/systemd/system/oarfish.service` is a regular file, no helper) is migrated by running the installer of a release that carries the helper: the unit file becomes a link, the layout above is created, `current` is switched, and the service restarts if the version changed. The one-time step from a release without the helper is an installer run (ADR 0010 U11, the "bootstrap release"); updating from the GUI does not exist yet.
+
+**Going back to a release without the helper is not supported.** A legacy-shape release is refused with a clear message on a device that already has the helper layout; use `--uninstall` first (this is the installer's reading of ADR 0010, which does not describe a downgrade to a release without a helper). Old release directories and old component sets are still kept; retention of old components is not implemented yet (ADR 0010 U5 puts it into the helper).
+
+**The installer overwrites `/etc/systemd/system/oarfish.service`** (a copy for a legacy release, a link into the active release for a components release). If the file exists and differs from the one in the release, it is replaced (the installer says so), also when you re-run it. Do not edit that file. Local changes belong in a drop-in directory, which the installer never touches:
 
 ```bash
 sudo systemctl edit oarfish        # creates /etc/systemd/system/oarfish.service.d/override.conf
@@ -339,11 +369,13 @@ The same rules as above apply: one device, one image, one moment. No host or use
 
 ```bash
 sudo sh install.sh --uninstall           # stop and remove the service and the program; keeps your data
-sudo sh install.sh --uninstall --purge   # also remove /etc/oarfish, /var/lib/oarfish and the user "oarfish"
+sudo sh install.sh --uninstall --purge   # also remove /etc/oarfish, /var/lib/oarfish, /var/lib/oarfish-update and the user "oarfish"
 sudo sh install.sh --uninstall --dry-run # show what would be removed
 ```
 
 The first form removes the service, the unit file, `/opt/oarfish` and `/var/cache/oarfish`. It keeps `/etc/oarfish`, `/var/lib/oarfish` and the user, so a later installation finds your configuration and data, including the administrator account and the audit file (`/var/lib/oarfish/auth/`, `/var/lib/oarfish/audit/`): after a reinstall you sign in with the old password. `--purge` is the explicit flag that removes them. Any copy of `install.sh` can do this; the uninstall downloads nothing.
+
+If the update helper layout exists, the uninstall takes the lock on `/var/lib/oarfish-update` first, stops and disables `oarfish.service`, the helper socket, the helper service and the recover unit, and removes the three wants links, the unit links and `/usr/libexec/oarfish-update-helper` **only where they are links into `/opt/oarfish`** (the wants links where they are links named for the unit). A regular file or a link to something else at one of these paths is left alone and reported. The drop-in directory `oarfish.service.d` is never touched. `/var/lib/oarfish-update` is kept without `--purge` (the message says so) and removed by `--purge`. Not yet tried on a device.
 
 ## Where things go
 
@@ -351,7 +383,9 @@ The first form removes the service, the unit file, `/opt/oarfish` and `/var/cach
 |---|---|
 | `/opt/oarfish/releases/<version>/` | One directory per installed release: `oarfish`, `oarfish.service`, `LICENSE`, `THIRD_PARTY_NOTICES.txt`. Owned by root, never modified after installation. |
 | `/opt/oarfish/current` | Symlink to the active release, switched atomically. |
-| `/etc/systemd/system/oarfish.service` | The service unit (copied from the release). |
+| `/etc/systemd/system/oarfish.service` | The service unit (copied from the release for a legacy release; a link to `/opt/oarfish/current/oarfish.service` for a components release). |
+| `/opt/oarfish/components/`, `/usr/libexec/oarfish-update-helper`, the helper units in `/etc/systemd/system`, the wants links | The update helper layout of a components release, see [The update helper layout](#the-update-helper-layout-g63b-not-yet-verified-on-a-device). |
+| `/var/lib/oarfish-update/` | Root-owned, mode 0700; the lock directory (and, later, the helper's state). |
 | `/etc/oarfish/` | Configuration (`root:oarfish`, 0750); `secrets/` inside is `oarfish`, 0700. Empty for now. |
 | `/var/lib/oarfish/` | State, owned by `oarfish`, mode 0700 (the installer creates it as 0750; the unit's `StateDirectoryMode=0700` applies when the service starts). Holds `auth/account.json` (the administrator account, 0600), `setup-token` (0600, only while there is no account) and `audit/audit.jsonl` with up to three rotated files (0600, at most 4 MiB in all). See [`AUTH.md`](AUTH.md#files-and-modes). |
 | `/var/cache/oarfish/` | Cache, owned by `oarfish`. |
@@ -368,7 +402,11 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 |---|---|
 | `unsupported CPU architecture` | Not a 64-bit ARM system. Check `uname -m`. |
 | `systemd is not the running init system` | No systemd, or inside a container. |
-| `required tools are missing: ...` | Install them, for example `sudo apt install curl openssl`. |
+| `required tools are missing: ...` | Install them, for example `sudo apt install curl openssl`; `flock` is part of `util-linux`. |
+| `another update or installer run is in progress` | Another installer (or, later, an update) holds the lock on `/var/lib/oarfish-update`. Nothing was changed; run the installer again when the other run has finished. |
+| `... must be owned by root:root with mode 0700` | `/var/lib/oarfish-update` exists with another owner or mode. It is security relevant: look at who created it, fix or remove it, run again. Nothing was changed. |
+| `... is a link to ..., not to ...` / `... is not a link to ... (a foreign file)` | A file or link of your own sits where the helper layout needs a link. The installer does not touch it. Move it away, or decide the layout is not wanted. Nothing was changed. |
+| `going back to a release without the helper is not supported` | A legacy release on a device that has the helper layout. Install a release with the helper, or `--uninstall` first. |
 | `... is not OpenSSL` / `OpenSSL ... is too old` | Needs OpenSSL 3.0+. Upgrade the system or its `openssl` package. |
 | `SIGNATURE VERIFICATION FAILED` | The release was not signed with the Oarfish release key, or the files were changed on the way. Do not install. Nothing was changed. |
 | `does not match the SHA-256 in the signed checksums.txt` | The download is damaged or has been changed. Try again; if it repeats, do not install. |
@@ -385,7 +423,8 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 - The installer functions against a fake root directory with a throwaway signing key, run with `dash` and with `bash`: wrong architecture, non-Linux, missing systemd, missing tools, LibreSSL and OpenSSL 1.1, a "verifier" that accepts everything, tampered `checksums.txt`, tampered and truncated signature, signature from another key, a valid prehashed signature, replayed signature, tampered and truncated bundle, tampered manifest, missing files, interrupted download (old installation untouched), bundles with extra files, links or an x86-64 binary, re-run without changes, upgrade, rollback after a failed health check (with a healthy and with an unhealthy rollback, and `reset-failed` before the restart), a first installation that never becomes healthy (service stopped and disabled, files kept), `useradd`, `chown` on every path and `userdel` with stub tools, dry run, uninstall and purge. `scripts/test-installer.sh`. The `systemctl` used there is a stub, so these tests prove the installer's logic, not systemd behaviour.
 - The release pipeline: `install.sh` is stamped with the version, listed in the signed `checksums.txt`, and a tampered or wrongly stamped `install.sh` is rejected by `scripts/verify-release.sh`. The bundle, manifest and `install.sh` are reproducible.
 - End to end in plain `debian:12` and `ubuntu:24.04` **arm64** container images under qemu-user: signature verification with the image's OpenSSL, real `useradd`/`chown`, the real ARM64 binary started as the `oarfish` user, `/healthz` and the GUI answer, only `127.0.0.1:8484` listens, a second run changes nothing, uninstall and purge. Result of the first CI run: both passed. The minimal images contained **neither `curl` nor `openssl`** (the test installed both with `apt-get`, giving OpenSSL 3.0.22 on Debian 12 and 3.0.13 on Ubuntu 24.04); `tar`, `gzip`, `sha256sum`, `od`, `base64`, `awk`, `useradd` and `getent` were present. On a minimal system run `sudo apt install curl openssl` first. The per-job tool report is in the job summary of the "Installer in arm64 container" jobs.
-- The unit file passes `systemd-analyze verify` on the CI runner.
+- The unit file passes `systemd-analyze verify` on the CI runner, and so do `oarfish.service` and the three helper units **as the installer links them** (`scripts/verify-units.sh --installed`, run on a fake root after a components installation; because `systemd-analyze --root` opens paths on the host, the absolute link targets are rewritten to equivalent relative links in a copy first).
+- The components shape (G6.3b), against the fake root with the stub `systemctl`: both bundle shapes are accepted and anything else is rejected before a change (extra, missing or wrong-type entries, a manifest that disagrees with the shape, a helper that is not an ARM64 ELF); exact link targets, modes and relative wants links; wants and unit links that still resolve after old release and component directories are removed; the order of the `systemctl` calls (`daemon-reload` before any start, the helper service stopped before the socket is restarted, no `enable`, the recover unit never started, nothing restarted on an identical re-run) for a fresh install, an upgrade with new helper bytes, an upgrade with identical bytes and a rollback; `known-good` moving only after the health check; the lock (a held lock, a second installer, free after success and after failure, the same object for uninstall); migration of an alpha-style installation with a drop-in; refusals for foreign files and links, an immutable component set and a state directory with a wrong owner or mode; a legacy release on a device with the helper layout; uninstall, purge and dry run for the layout. The stub refuses to restart the socket while the helper service is active, as ADR 0010 A9 describes systemd, so the order is exercised; it is still a stub.
 
 **Verified on hardware (one device, see [Hardware test results](#hardware-test-results)):**
 
@@ -407,4 +446,6 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 - The presence of OpenSSL 3 and the other tools on Ubuntu Server images, and on other versions of Raspberry Pi OS, is assumed from package information. One device had OpenSSL 3.5.7.
 - `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified for `v0.1.0-alpha.2` (2026-10-26) and for `v0.1.0-alpha.6` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.
-- Two installers running at the same time are not guarded against.
+- **The update helper layout (G6.3b) has not run on any device.** Everything about it above (the links, the wants links, the lock, the socket restart, the order of the `systemctl` calls, the migration of an existing device, uninstall and purge) is verified only against a fake root and a stub `systemctl`, in the arm64 containers (no systemd) and, for the unit text, by `systemd-analyze verify` of the installed link layout on the CI runner. That a wants link whose release directory was removed still enables the unit, that a changed socket text is applied by the stop-and-restart, that `daemon-reload` behaves as ADR 0010 A9 says, that socket activation works with the installed units and the `systemd-analyze security` rating are all to be observed at the owner stop of G6.3, after G6.3b.
+- Two installer runs are guarded against each other by the lock on `/var/lib/oarfish-update` for the components shape (and for the legacy shape when that directory exists); a legacy-shape installer on a device without the directory takes no lock. An update by the helper does not take the lock yet (G6.5). Not yet tried on a device.
+- Retention of old release directories and old component sets is not implemented; they are kept.

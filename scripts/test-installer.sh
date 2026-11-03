@@ -59,34 +59,65 @@ EOF
 if ! command -v sha256sum >/dev/null 2>&1; then
   printf '#!/bin/sh\nexec shasum -a 256 "$@"\n' > "$TMP/shim/sha256sum"
 fi
-# systemctl stand-in: records calls and keeps enabled/active state in files.
+# systemctl stand-in: records calls and keeps enabled/active state in files, per unit
+# (oarfish.service: enabled, active; any other unit: enabled.UNIT, active.UNIT).
 # Health is a file ($state/healthz, read by the installer through a file:// URL):
 # start/restart writes it, unless the version that "current" points to is listed
 # in $state/unhealthy, in which case it is removed, as a service that fails to come up.
+# Like systemd (ADR 0010 A9, device observation), it refuses to start or restart the
+# helper socket while the helper service is active. A file $state/block-daemon-reload
+# makes daemon-reload wait (until $state/proceed exists) and announce itself with
+# $state/blocked, so a test can hold an installer run while it holds the lock.
 cat > "$TMP/shim/systemctl-stub" <<'EOF'
 #!/bin/sh
 S="$FAKE_SYSTEMD_STATE"
 echo "$*" >> "$S/calls.log"
+cmd="$1"; shift
+unit=''
+for a in "$@"; do case $a in -*) ;; *) unit=$a ;; esac; done
+case $unit in oarfish.service|'') sfx='' ;; *) sfx=".$unit" ;; esac
 set_health() {
   cur="$(readlink "$FAKE_ROOT/opt/oarfish/current" 2>/dev/null || true)"
   cur="${cur#releases/}"
   if [ -f "$S/unhealthy" ] && grep -qx "$cur" "$S/unhealthy"; then rm -f "$S/healthz"
   else echo '{"status":"ok"}' > "$S/healthz"; fi
 }
-case "$1" in
-  is-enabled) [ -f "$S/enabled" ] ;;
-  enable)     : > "$S/enabled" ;;
-  disable)    rm -f "$S/enabled"
-              case " $* " in *" --now "*) rm -f "$S/active" "$S/healthz" ;; esac ;;
-  is-active)  [ -f "$S/active" ] ;;
-  start|restart) : > "$S/active"; set_health ;;
-  stop)       rm -f "$S/active" "$S/healthz" ;;
+case "$cmd" in
+  is-enabled) [ -f "$S/enabled$sfx" ] ;;
+  enable)     : > "$S/enabled$sfx" ;;
+  disable)    rm -f "$S/enabled$sfx"
+              case " $* " in *" --now "*) rm -f "$S/active$sfx"; [ -n "$sfx" ] || rm -f "$S/healthz" ;; esac ;;
+  is-active)  [ -f "$S/active$sfx" ] ;;
+  start|restart)
+              if [ "$unit" = oarfish-update-helper.socket ] && [ -f "$S/active.oarfish-update-helper.service" ]; then
+                echo "Socket service oarfish-update-helper.service already active, refusing." >&2; exit 1
+              fi
+              [ -f "$S/fail-start$sfx" ] && exit 1
+              : > "$S/active$sfx"; [ -n "$sfx" ] || set_health ;;
+  stop)       rm -f "$S/active$sfx"; [ -n "$sfx" ] || rm -f "$S/healthz" ;;
   reset-failed) ;;
-  cat)        [ -f "$FAKE_ROOT/etc/systemd/system/oarfish.service" ] ;;
-  daemon-reload) ;;
+  cat)        [ -f "$FAKE_ROOT/etc/systemd/system/oarfish.service" ] || [ -L "$FAKE_ROOT/etc/systemd/system/oarfish.service" ] ;;
+  daemon-reload)
+              if [ -f "$S/block-daemon-reload" ]; then
+                : > "$S/blocked"
+                i=0; while [ ! -f "$S/proceed" ] && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i+1)); done
+              fi ;;
   *) exit 1 ;;
 esac
 EOF
+# flock stand-in for hosts without util-linux (macOS): flock -x -w SECONDS FD, on an
+# inherited descriptor, like the real tool. perl ships with macOS.
+if ! command -v flock >/dev/null 2>&1; then
+  cat > "$TMP/shim/flock" <<'EOF'
+#!/usr/bin/perl
+use strict; use warnings; use Fcntl qw(:flock); use Time::HiRes qw(sleep time);
+my ($wait, $fd) = (0, undef);
+while (@ARGV) { my $a = shift @ARGV; if ($a eq '-x') { next } elsif ($a eq '-w') { $wait = shift @ARGV } else { $fd = $a } }
+open(my $fh, '<&=', $fd) or exit 64;
+my $end = time() + $wait;
+while (1) { exit 0 if flock($fh, LOCK_EX | LOCK_NB); exit 1 if time() >= $end; sleep(0.05); }
+EOF
+fi
 # User and ownership tools for the tests that run with OARFISH_TEST_USERS=1: record
 # their arguments instead of touching the machine. "id -u oarfish" follows useradd/userdel.
 REAL_ID="$(command -v id)"
@@ -145,7 +176,7 @@ run_inst() {
     OARFISH_RELEASE_BASE_URL="file://$rel" OARFISH_HEALTHCHECK="${INST_HEALTHCHECK-skip}" \
     ${INST_ENV:-} \
     FAKE_UNAME_S="${FAKE_UNAME_S:-Linux}" FAKE_UNAME_M="${FAKE_UNAME_M:-aarch64}" \
-    "$SH" "$inst" "$@" > "$TMP/out" 2>&1
+    "$SH" "$inst" "$@" > "${INST_OUT:-$TMP/out}" 2>&1
   RC=$?
   set -e
 }
@@ -280,7 +311,7 @@ pass "refused runs left the root untouched"
 # Tools: a PATH that lacks one required tool.
 tool_path() { # tool_path EXCLUDE: a PATH dir with every needed tool except EXCLUDE
   local d="$TMP/path-$1"; mkdir -p "$d"
-  for t in curl tar gzip sha256sum od base64 mktemp awk df id mv ln rm mkdir chmod cat cp sed grep tr head tail wc sleep readlink dirname find chown useradd userdel getent; do
+  for t in curl tar gzip sha256sum od base64 mktemp awk df id mv ln rm mkdir chmod cat cp sed grep tr head tail wc sleep readlink dirname ls flock find chown useradd userdel getent; do
     [ "$t" != "$1" ] || continue
     src="$(PATH="$TMP/shim:$PATH" command -v "$t")" || die "test host lacks $t"
     ln -sf "$src" "$d/$t"
@@ -332,7 +363,8 @@ tamper_case() { # tamper_case NAME PATTERN COMMAND-ON-COPY...
   no_leftovers "$r" || fail "[$N] $name: leftovers"
 }
 flip() { local f="$1" size; size="$(wc -c < "$f" | tr -d ' ')"; printf '\377' | dd of="$f" bs=1 seek=$((size / 2)) count=1 conv=notrunc 2>/dev/null; }
-tamper_case "tampered checksums.txt (a hash changed)" "SIGNATURE VERIFICATION FAILED" sed -i.bak '1s/^./0/;1s/^0/1/' checksums.txt
+# The first digit must really change, whatever it is (a swap through 0 and 1 is a no-op for a hash that starts with 1).
+tamper_case "tampered checksums.txt (a hash changed)" "SIGNATURE VERIFICATION FAILED" sed -i.bak -e '1s/^0/1/' -e t -e '1s/^./0/' checksums.txt
 tamper_case "tampered checksums.txt (line appended)" "SIGNATURE VERIFICATION FAILED" sh -c 'echo "$(printf "0%.0s" $(seq 1 64))  evil" >> checksums.txt'
 tamper_case "tampered signature (byte flipped)" "SIGNATURE VERIFICATION FAILED" flip checksums.txt.sig
 tamper_case "signature file truncated" "SIGNATURE VERIFICATION FAILED" sh -c 'head -c 60 checksums.txt.sig > s && mv s checksums.txt.sig'
@@ -530,6 +562,456 @@ assert "purge removed configuration and state" test ! -e "$R/etc/oarfish" -a ! -
 left="$(find "$R" \( -type f -o -type l \) ! -path "$R/etc/os-release")"
 [ -z "$left" ] || fail "files remain after purge: $left"
 pass "no installed file or link remains after purge"
+
+
+# =========================================================================
+# Components shape (ADR 0010, G6.3b): the update helper layout, the lock, the
+# link layout, the order of systemctl calls. Nothing here runs systemd; the stub
+# proves the installer's logic and order, not systemd behaviour (docs/INSTALL.md).
+# =========================================================================
+CKEY="$(sed -n 1p "$ROOT/release/oarfish-release.pub" | sed -n 's/^untrusted comment: minisign public key \([0-9A-F]\{16\}\)$/\1/p' | tr 'A-F' 'a-f')"
+CV1=0.2.0-test.1; CV2=0.2.0-test.2; CV3=0.2.0-test.3
+UNITS3="oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service"
+
+# make_crelease DIR VERSION [HELPER_TAG] [SOCKET_COMMENT]: signed components release (throwaway key A).
+make_crelease() {
+  local dir="$1" ver="$2" tag="${3:-a}" sock="${4:-}" ud u
+  ud="$TMP/cunits-$ver-$tag-${sock:-none}"; mkdir -p "$dir" "$ud"
+  fake_elf "$TMP/fake-oarfish" "$ver"; fake_elf "$TMP/fake-helper" "helper $tag"
+  for u in $UNITS3; do cp "$ROOT/install/$u" "$ud/$u"; done
+  [ -z "$sock" ] || printf '# %s\n' "$sock" >> "$ud/oarfish-update-helper.socket"
+  "$TMP/bundlegen" bundle -binary "$TMP/fake-oarfish" -license "$ROOT/LICENSE" \
+    -notices "$ROOT/THIRD_PARTY_NOTICES.txt" -unit "$ROOT/install/oarfish.service" \
+    -version "$ver" -commit "$COMMIT" -epoch 1700000000 -out "$dir" \
+    -helper "$TMP/fake-helper" -helper-service "$ud/oarfish-update-helper.service" \
+    -helper-socket "$ud/oarfish-update-helper.socket" -recover-service "$ud/oarfish-update-recover.service" \
+    -components-protocol 1 -components-key-id "$CKEY" >/dev/null
+  "$ROOT/scripts/stamp-installer.sh" "$ver" "$dir/install.sh" >/dev/null
+  sign_release_dir "$dir" "oarfish_${ver}_linux_arm64.tar.gz" install.sh manifest.json
+}
+
+echo "== components shape: setup"
+CREL1="$TMP/rel/c1"; CREL2="$TMP/rel/c2"; CREL3="$TMP/rel/c3"; CREL3S="$TMP/rel/c3s"
+make_crelease "$CREL1" "$CV1" a
+make_crelease "$CREL2" "$CV2" a                 # same helper bytes as c1
+make_crelease "$CREL3" "$CV3" b                 # different helper bytes
+make_crelease "$CREL3S" "$CV3" a socket-text-changed   # same helper, different socket text
+make_installer "$CV1" "$TMP/inst-c1.sh"; make_installer "$CV2" "$TMP/inst-c2.sh"; make_installer "$CV3" "$TMP/inst-c3.sh"
+tar -tzf "$CREL1/oarfish_${CV1}_linux_arm64.tar.gz" | sed 's#^[^/]*/##' | grep -v '^$' | LC_ALL=C sort | tr '\n' ' ' > "$TMP/c1-entries"
+[ "$(cat "$TMP/c1-entries")" = "LICENSE THIRD_PARTY_NOTICES.txt oarfish oarfish-update-helper oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service oarfish.service " ] \
+  || fail "the components fixture has unexpected entries: $(cat "$TMP/c1-entries")"
+pass "the components fixture holds the nine entries of the contract"
+
+# resolve ROOT PATH: follow links the way the device would, absolute targets inside ROOT.
+resolve() {
+  local r="$1" p="$2" n=0 t
+  while [ -L "$p" ]; do
+    t="$(readlink "$p")"
+    case $t in /*) p="$r$t" ;; *) p="$(dirname "$p")/$t" ;; esac
+    n=$((n + 1)); [ "$n" -le 20 ] || return 1
+  done
+  [ -e "$p" ] && echo "$p"
+}
+link_is() { [ -L "$1" ] && [ "$(readlink "$1")" = "$2" ]; } # link_is PATH TARGET
+mode_is() { [ "$(perm_of "$1")" = "$2" ]; }
+calls_of() { tr '\n' ';' < "$(state_of "$1")/calls.log"; }
+# True when the lock on DIR can be taken at once (nobody holds it).
+lock_is_free() { perl -e 'use Fcntl ":flock"; open(F, "<", $ARGV[0]) or exit 2; exit(flock(F, LOCK_EX | LOCK_NB) ? 0 : 1)' "$1"; }
+hold_lock() { # hold_lock DIR SECONDS: a background process that holds an exclusive flock on DIR
+  rm -f "$TMP/holder.out"
+  perl -e '$| = 1; use Fcntl ":flock"; open(F, "<", $ARGV[0]) or die; flock(F, LOCK_EX) or die; print "locked\n"; sleep $ARGV[1];' "$1" "$2" > "$TMP/holder.out" &
+  HOLDER=$!
+  for _ in $(seq 1 50); do [ -s "$TMP/holder.out" ] && break; sleep 0.1; done
+  [ -s "$TMP/holder.out" ] || fail "the test could not take the lock"
+}
+release_lock() { kill "$HOLDER" 2>/dev/null || true; wait "$HOLDER" 2>/dev/null || true; }
+print_layout() { # the link layout as the test sees it
+  (cd "$1" && find opt etc usr var -not -path 'opt/oarfish/releases/*' -not -path 'etc/oarfish*' -not -path 'var/lib/oarfish/*' -not -path 'var/cache/*' -not -path 'opt/oarfish/components/[0-9]*/*' \
+    | LC_ALL=C sort | while IFS= read -r p; do
+      if [ -L "$p" ]; then printf '  %s -> %s\n' "$p" "$(readlink "$p")"; else printf '  %s\n' "$p"; fi
+    done)
+}
+
+echo "== bundle shapes: exactly two are accepted, everything else is rejected before a change"
+mkdir -p "$TMP/cbundle-src"
+fake_elf "$TMP/cbundle-src/oarfish" good; chmod 755 "$TMP/cbundle-src/oarfish"
+fake_elf "$TMP/cbundle-src/oarfish-update-helper" helper; chmod 755 "$TMP/cbundle-src/oarfish-update-helper"
+cp "$ROOT/install/oarfish.service" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.txt" "$TMP/cbundle-src/"
+for u in $UNITS3; do cp "$ROOT/install/$u" "$TMP/cbundle-src/"; done
+make_release "$TMP/rel/lcv1" "$CV1"             # a legacy release (and manifest) with the components test version
+custom_bundle() { # custom_bundle NAME VERSION SRCDIR MANIFEST_DIR BUILD-FUNCTION: signed release with a hand-made bundle
+  local name="$1" ver="$2" src="$3" mdir="$4" fn="$5" dir work
+  dir="$TMP/rel/x-$name"; rm -rf "$dir"; mkdir -p "$dir"
+  cp "$mdir/manifest.json" "$dir/"
+  work="$TMP/work-x-$name"; rm -rf "$work"; mkdir -p "$work/oarfish_${ver}_linux_arm64"
+  cp -R "$src/"* "$work/oarfish_${ver}_linux_arm64/"
+  "$fn" "$work/oarfish_${ver}_linux_arm64"
+  (cd "$work" && COPYFILE_DISABLE=1 tar -czf "$dir/oarfish_${ver}_linux_arm64.tar.gz" "oarfish_${ver}_linux_arm64")
+  sign_release_dir "$dir" "oarfish_${ver}_linux_arm64.tar.gz" manifest.json
+  echo "$dir"
+}
+nothing() { :; }
+c_extra() { echo evil > "$1/extra"; }
+c_missing_unit() { rm "$1/oarfish-update-recover.service"; }
+c_missing_helper() { rm "$1/oarfish-update-helper"; }
+c_helper_link() { rm "$1/oarfish-update-helper"; ln -s /etc/passwd "$1/oarfish-update-helper"; }
+c_helper_hardlink() { rm "$1/oarfish-update-helper"; ln "$1/oarfish" "$1/oarfish-update-helper"; }
+c_helper_text() { echo "not an executable" > "$1/oarfish-update-helper"; }
+c_helper_x86() { fake_elf "$1/oarfish-update-helper" x86 '\076\000'; }
+c_helper_32bit() { printf '\177ELF\001\001\001\000\000\000\000\000\000\000\000\000\002\000\267\000' > "$1/oarfish-update-helper"; }
+l_missing() { rm "$1/LICENSE"; }
+l_helper_only() { cp "$TMP/cbundle-src/oarfish-update-helper" "$1/"; }
+
+R="$(new_root)"
+x="$(custom_bundle plain "$CV1" "$TMP/cbundle-src" "$CREL1" nothing)"
+expect_ok "a hand-made components bundle that follows the contract is accepted" "$R" "$TMP/inst-c1.sh" "$x"
+R="$(new_root)"
+x="$(custom_bundle c-extra "$CV1" "$TMP/cbundle-src" "$CREL1" c_extra)";          expect_reject "components bundle with an extra entry" "unexpected entry" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-missing "$CV1" "$TMP/cbundle-src" "$CREL1" c_missing_unit)"; expect_reject "components bundle without the recover unit" "neither the legacy shape" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-nohelper "$CV1" "$TMP/cbundle-src" "$CREL1" c_missing_helper)"; expect_reject "components bundle without the helper" "neither the legacy shape" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-link "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_link)";     expect_reject "components bundle whose helper is a symlink" "regular files" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-hard "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_hardlink)"; expect_reject "components bundle whose helper is a hard link" "regular files" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-text "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_text)";     expect_reject "components bundle with a helper that is not an ELF file" "oarfish-update-helper binary in the bundle is not a 64-bit ARM" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-x86 "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_x86)";       expect_reject "components bundle with an x86-64 helper" "oarfish-update-helper binary in the bundle is not a 64-bit ARM" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-32 "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_32bit)";      expect_reject "components bundle with a 32-bit ELF helper" "oarfish-update-helper binary in the bundle is not a 64-bit ARM" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-legacy-manifest "$CV1" "$TMP/cbundle-src" "$TMP/rel/lcv1" nothing)"; expect_reject "components bundle with a manifest without a components object" "no components object" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle l-comp-manifest "$CV1" "$TMP/bundle-src" "$CREL1" nothing)";   expect_reject "legacy bundle with a manifest that declares components" "does not carry them" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle l-missing "$CV1" "$TMP/bundle-src" "$TMP/rel/lcv1" l_missing)"; expect_reject "legacy bundle with a missing entry" "neither the legacy shape" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle l-helper "$CV1" "$TMP/bundle-src" "$TMP/rel/lcv1" l_helper_only)"; expect_reject "legacy bundle plus only the helper (six entries)" "neither the legacy shape" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle l-extra "$CV1" "$TMP/bundle-src" "$TMP/rel/lcv1" c_extra)";    expect_reject "legacy bundle with an extra entry" "unexpected entry" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle l-link "$CV1" "$TMP/bundle-src" "$TMP/rel/lcv1" c_helper_link)"; expect_reject "legacy bundle with a symlink named like the helper" "regular files" "$R" "$TMP/inst-c1.sh" "$x"
+untouched "$R"
+no_leftovers "$R" || fail "leftovers after the rejected bundles"
+pass "none of the rejected bundles of either shape changed the root (no lock directory, no layout, no user)"
+
+echo "== components shape: fresh installation, layout, modes, call order"
+R="$(new_root)"; CALLS="$(state_of "$R")/calls.log"
+expect_ok "fresh installation of a components release" "$R" "$TMP/inst-c1.sh" "$CREL1"
+out_has "components shape" || fail "the output does not name the bundle shape"
+link_is "$R/opt/oarfish/current" "releases/$CV1" || fail "current"
+link_is "$R/opt/oarfish/components/active" "$CV1" || fail "components/active"
+link_is "$R/opt/oarfish/components/known-good" "$CV1" || fail "components/known-good"
+pass "components/active and components/known-good are relative links to <id> (first installation: both the new id)"
+link_is "$R/usr/libexec/oarfish-update-helper" "/opt/oarfish/components/active/oarfish-update-helper" || fail "libexec link"
+link_is "$R/etc/systemd/system/oarfish.service" "/opt/oarfish/current/oarfish.service" || fail "oarfish.service link"
+link_is "$R/etc/systemd/system/oarfish-update-helper.socket" "/opt/oarfish/components/active/oarfish-update-helper.socket" || fail "socket link"
+link_is "$R/etc/systemd/system/oarfish-update-helper.service" "/opt/oarfish/components/active/oarfish-update-helper.service" || fail "helper service link"
+link_is "$R/etc/systemd/system/oarfish-update-recover.service" "/opt/oarfish/components/known-good/oarfish-update-recover.service" || fail "recover link"
+pass "the helper link and the four unit links have the exact targets of ADR 0010 U5"
+link_is "$R/etc/systemd/system/multi-user.target.wants/oarfish.service" "../oarfish.service" || fail "wants oarfish"
+link_is "$R/etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket" "../oarfish-update-helper.socket" || fail "wants socket"
+link_is "$R/etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service" "../oarfish-update-recover.service" || fail "wants recover"
+pass "every wants link is relative and points to the unit in /etc/systemd/system (A5)"
+for l in usr/libexec/oarfish-update-helper etc/systemd/system/oarfish.service etc/systemd/system/oarfish-update-helper.socket etc/systemd/system/oarfish-update-helper.service \
+  etc/systemd/system/oarfish-update-recover.service etc/systemd/system/multi-user.target.wants/oarfish.service etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket \
+  etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service; do
+  resolve "$R" "$R/$l" >/dev/null || fail "$l does not resolve"
+done
+pass "every link resolves to a file"
+cmp -s "$(resolve "$R" "$R/etc/systemd/system/oarfish-update-recover.service")" "$ROOT/install/oarfish-update-recover.service" || fail "the recover unit is not the repository's"
+cmp -s "$(resolve "$R" "$R/etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service")" "$ROOT/install/oarfish-update-recover.service" || fail "the recover wants link does not reach the unit"
+pass "the units reached through the links are the bytes of the bundle"
+mode_is "$R/opt/oarfish/components" rwxr-xr-x && mode_is "$R/opt/oarfish/components/$CV1" rwxr-xr-x || fail "component directory modes"
+mode_is "$R/opt/oarfish/components/$CV1/oarfish-update-helper" rwxr-xr-x || fail "helper mode"
+for u in $UNITS3; do mode_is "$R/opt/oarfish/components/$CV1/$u" rw-r--r-- || fail "$u mode"; done
+mode_is "$R/usr/libexec" rwxr-xr-x || fail "/usr/libexec mode"
+mode_is "$R/var/lib/oarfish-update" rwx------ || fail "state directory mode"
+pass "modes: components 0755, helper 0755, units 0644, /usr/libexec 0755, /var/lib/oarfish-update 0700"
+assert "the helper in components/<id> equals the bundle's helper" cmp -s "$R/opt/oarfish/components/$CV1/oarfish-update-helper" "$TMP/fake-helper"
+assert "an extra component directory was not created" test "$(find "$R/opt/oarfish/components" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = 3
+assert "no staging or temp leftovers" no_leftovers "$R"
+[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;restart oarfish.service;" ] \
+  || fail "unexpected systemctl calls on a fresh installation: $(calls_of "$R")"
+pass "systemctl calls (fresh): daemon-reload; stop helper service; restart helper socket; restart oarfish.service"
+grep -qE '^(enable|disable|is-enabled)' "$CALLS" && fail "systemctl enable was used"
+pass "no enable call: the wants links enable the units"
+grep -qE 'oarfish-update-recover' "$CALLS" && fail "the recover unit was started"
+pass "the recover unit is enabled by its wants link and was not started"
+echo "-- layout after a fresh installation (as printed by the test) --"; print_layout "$R"
+
+echo "== components shape: identical re-run changes nothing"
+snapshot "$R" > "$TMP/snap1"; : > "$CALLS"
+expect_ok "re-run of the same components release" "$R" "$TMP/inst-c1.sh" "$CREL1"
+snapshot "$R" > "$TMP/snap2"
+cmp -s "$TMP/snap1" "$TMP/snap2" || { diff "$TMP/snap1" "$TMP/snap2" || true; fail "the re-run changed the installation"; }
+pass "re-run changed nothing (files, modes, inodes, link targets)"
+grep -qE '^(restart|start|stop|enable|disable|daemon-reload)' "$CALLS" && fail "the re-run issued: $(calls_of "$R")"
+pass "re-run restarted, stopped, enabled and reloaded nothing (calls: $(calls_of "$R"))"
+out_has "nothing to restart" || fail "re-run output"
+
+echo "== components shape: a helper stopped from the stub makes a second run restart the socket"
+rm -f "$(state_of "$R")/active.oarfish-update-helper.socket"; : > "$CALLS"
+expect_ok "re-run with the helper socket not active" "$R" "$TMP/inst-c1.sh" "$CREL1"
+[ "$(calls_of "$R")" = "is-active --quiet oarfish-update-helper.socket;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish.service;" ] \
+  || fail "unexpected calls for an inactive socket: $(calls_of "$R")"
+pass "an inactive socket is started again (stop service, restart socket), oarfish.service untouched: $(calls_of "$R")"
+
+echo "== components shape: upgrade with identical helper bytes creates no new component set"
+: > "$CALLS"
+expect_ok "upgrade c1 -> c2 (same helper and units)" "$R" "$TMP/inst-c2.sh" "$CREL2"
+link_is "$R/opt/oarfish/current" "releases/$CV2" || fail "current"
+link_is "$R/opt/oarfish/components/active" "$CV1" && link_is "$R/opt/oarfish/components/known-good" "$CV1" || fail "active must stay"
+assert "no components/$CV2 directory" test ! -e "$R/opt/oarfish/components/$CV2"
+[ "$(calls_of "$R")" = "is-active --quiet oarfish-update-helper.socket;restart oarfish.service;" ] || fail "calls: $(calls_of "$R")"
+pass "identical helper bytes: active stays on $CV1, only oarfish.service restarts (calls: $(calls_of "$R"))"
+
+echo "== components shape: upgrade with different helper bytes, health passes"
+ST="$(state_of "$R")"; : > "$CALLS"; : > "$ST/active.oarfish-update-helper.service"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_ok "upgrade c2 -> c3 (new helper bytes), the helper service is running" "$R" "$TMP/inst-c3.sh" "$CREL3"
+assert "a new component set components/$CV3 exists" test -x "$R/opt/oarfish/components/$CV3/oarfish-update-helper"
+link_is "$R/opt/oarfish/components/active" "$CV3" && link_is "$R/opt/oarfish/components/known-good" "$CV3" || fail "active and known-good after a healthy upgrade"
+assert "the old component set is kept" test -x "$R/opt/oarfish/components/$CV1/oarfish-update-helper"
+[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;restart oarfish.service;is-active --quiet oarfish.service;is-active --quiet oarfish-update-helper.socket;" ] \
+  || fail "unexpected calls for an upgrade with new helper bytes: $(calls_of "$R")"
+pass "systemctl calls (upgrade, new helper bytes): daemon-reload; stop service; restart socket; restart oarfish; health needs oarfish.service and the socket active"
+pass "the socket restart was accepted because the stub's helper service had been stopped first (the stub refuses otherwise, as systemd does, A9)"
+echo "-- layout after the upgrade --"; print_layout "$R"
+
+echo "== components shape: after old release and component directories are removed, the links still resolve (A5, fake-root half)"
+rm -rf "$R/opt/oarfish/releases/$CV1" "$R/opt/oarfish/releases/$CV2" "$R/opt/oarfish/components/$CV1"
+for l in etc/systemd/system/oarfish.service etc/systemd/system/oarfish-update-helper.socket etc/systemd/system/oarfish-update-helper.service etc/systemd/system/oarfish-update-recover.service \
+  etc/systemd/system/multi-user.target.wants/oarfish.service etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service usr/libexec/oarfish-update-helper; do
+  resolve "$R" "$R/$l" >/dev/null || fail "$l no longer resolves after the old directories were removed"
+done
+pass "wants links and unit links resolve with only the active release and set present (the on-device half is the owner stop)"
+
+echo "== components shape: upgrade whose health check fails is rolled back, known-good stays"
+R="$(new_root)"; ST="$(state_of "$R")"; CALLS="$ST/calls.log"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_ok "install c1 with the health check on" "$R" "$TMP/inst-c1.sh" "$CREL1"
+echo "$CV3" > "$ST/unhealthy"; : > "$CALLS"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "c3 fails its health check" "previous version $CV1 is active again and healthy" "$R" "$TMP/inst-c3.sh" "$CREL3"
+link_is "$R/opt/oarfish/current" "releases/$CV1" || fail "current must be restored"
+link_is "$R/opt/oarfish/components/active" "$CV1" || fail "components/active must be restored"
+link_is "$R/opt/oarfish/components/known-good" "$CV1" || fail "known-good must not have moved"
+pass "rollback: current and components/active are back on $CV1, known-good never moved"
+assert "the layout created in this run stays (components/$CV3 kept)" test -x "$R/opt/oarfish/components/$CV3/oarfish-update-helper"
+[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;restart oarfish.service;daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;reset-failed oarfish.service;restart oarfish.service;is-active --quiet oarfish.service;is-active --quiet oarfish-update-helper.socket;" ] \
+  || fail "unexpected calls for the rollback: $(calls_of "$R")"
+pass "systemctl calls (rollback): daemon-reload; stop service; restart socket; reset-failed; restart oarfish; health on the restored release"
+
+echo "== components shape: first installation whose health check fails"
+R="$(new_root)"; ST="$(state_of "$R")"; echo "$CV1" > "$ST/unhealthy"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "first components installation never becomes healthy" "stopped and disabled" "$R" "$TMP/inst-c1.sh" "$CREL1"
+for c in "disable --now oarfish.service" "disable --now oarfish-update-helper.socket" "disable oarfish-update-recover.service"; do
+  grep -qx "$c" "$ST/calls.log" || fail "missing call: $c (calls: $(tr '\n' ';' < "$ST/calls.log"))"
+done
+pass "oarfish.service, the helper socket and the recover unit were disabled"
+assert "the files and links are kept" test -x "$R/opt/oarfish/releases/$CV1/oarfish" -a -L "$R/opt/oarfish/components/active" -a -L "$R/etc/systemd/system/oarfish.service"
+assert "the lock is free after a failed run" lock_is_free "$R/var/lib/oarfish-update"
+
+echo "== components shape: migration from an alpha-style installation"
+R="$(new_root)"; ST="$(state_of "$R")"
+expect_ok "alpha-style install (legacy bundle)" "$R" "$TMP/inst-v1.sh" "$REL1"
+assert "the unit is a regular file" test -f "$R/etc/systemd/system/oarfish.service" -a ! -L "$R/etc/systemd/system/oarfish.service"
+mkdir -p "$R/etc/systemd/system/oarfish.service.d" "$R/etc/systemd/system/multi-user.target.wants"
+printf '[Service]\nEnvironment=KEEP=me\n' > "$R/etc/systemd/system/oarfish.service.d/override.conf"
+ln -s /etc/systemd/system/oarfish.service "$R/etc/systemd/system/multi-user.target.wants/oarfish.service"
+dropin_sha="$(sha256_of "$R/etc/systemd/system/oarfish.service.d/override.conf")"; : > "$ST/calls.log"
+expect_ok "upgrade the alpha-style installation with a components release" "$R" "$TMP/inst-c1.sh" "$CREL1"
+link_is "$R/etc/systemd/system/oarfish.service" "/opt/oarfish/current/oarfish.service" || fail "the unit must now be a link"
+[ "$(sha256_of "$R/etc/systemd/system/oarfish.service.d/override.conf")" = "$dropin_sha" ] || fail "the drop-in changed"
+pass "the regular unit file became a link; the drop-in is untouched"
+link_is "$R/etc/systemd/system/multi-user.target.wants/oarfish.service" "../oarfish.service" || fail "the old absolute wants link must be replaced by the relative one"
+link_is "$R/opt/oarfish/current" "releases/$CV1" && link_is "$R/opt/oarfish/components/active" "$CV1" && link_is "$R/etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket" "../oarfish-update-helper.socket" || fail "layout incomplete"
+pass "layout complete, wants links relative, current switched"
+assert "the previous release is kept" test -x "$R/opt/oarfish/releases/$V1/oarfish"
+out_has "replacing the regular file" || fail "the output does not say that the file is replaced"
+grep -qE '^(enable|is-enabled)' "$ST/calls.log" && fail "systemctl enable was used in a migration"
+
+echo "== components shape: migration without a version change"
+R="$(new_root)"; ST="$(state_of "$R")"
+make_crelease "$TMP/rel/cv1" "$V1" a; make_installer "$V1" "$TMP/inst-cv1.sh"
+expect_ok "legacy install of $V1" "$R" "$TMP/inst-v1.sh" "$REL1"; : > "$ST/calls.log"
+expect_ok "components release with the same version" "$R" "$TMP/inst-cv1.sh" "$TMP/rel/cv1"
+link_is "$R/opt/oarfish/components/active" "$V1" && link_is "$R/etc/systemd/system/oarfish.service" "/opt/oarfish/current/oarfish.service" || fail "layout not created"
+[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish.service;" ] || fail "calls: $(calls_of "$R")"
+pass "same version: the layout is created, oarfish.service is not restarted (calls: $(calls_of "$R"))"
+
+echo "== components shape: the socket text changed, the helper did not"
+R="$(new_root)"; ST="$(state_of "$R")"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"; : > "$ST/calls.log"
+expect_ok "upgrade to a release whose socket unit text differs" "$R" "$TMP/inst-c3.sh" "$CREL3S"
+link_is "$R/opt/oarfish/components/active" "$CV3" || fail "a changed socket unit is a new component set"
+grep -qx "restart oarfish-update-helper.socket" "$ST/calls.log" && grep -qx "stop oarfish-update-helper.service" "$ST/calls.log" || fail "the socket must be restarted: $(calls_of "$R")"
+pass "a changed socket text alone makes the installer stop the helper service and restart the socket"
+
+echo "== components shape: refusals before anything is changed"
+R="$(new_root)"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+rm "$R/etc/systemd/system/oarfish-update-recover.service"; echo foreign > "$R/etc/systemd/system/oarfish-update-recover.service"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "a foreign regular file at a helper unit path" "foreign file" "$R" "$TMP/inst-c3.sh" "$CREL3"; untouched "$R"
+rm "$R/etc/systemd/system/oarfish-update-recover.service"; ln -s /opt/elsewhere/recover.service "$R/etc/systemd/system/oarfish-update-recover.service"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "a helper unit link to something else" "not to /opt/oarfish/components/known-good" "$R" "$TMP/inst-c3.sh" "$CREL3"; untouched "$R"
+rm "$R/etc/systemd/system/oarfish-update-recover.service"; ln -s /opt/oarfish/components/known-good/oarfish-update-recover.service "$R/etc/systemd/system/oarfish-update-recover.service"
+rm "$R/etc/systemd/system/oarfish.service"; ln -s /somewhere/else.service "$R/etc/systemd/system/oarfish.service"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "oarfish.service is a link to something else" "not to /opt/oarfish/current/oarfish.service" "$R" "$TMP/inst-c3.sh" "$CREL3"; untouched "$R"
+rm "$R/etc/systemd/system/oarfish.service"; ln -s /opt/oarfish/current/oarfish.service "$R/etc/systemd/system/oarfish.service"
+rm "$R/usr/libexec/oarfish-update-helper"; echo foreign > "$R/usr/libexec/oarfish-update-helper"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "a foreign file at /usr/libexec/oarfish-update-helper" "foreign file" "$R" "$TMP/inst-c3.sh" "$CREL3"; untouched "$R"
+rm "$R/usr/libexec/oarfish-update-helper"; ln -s /opt/oarfish/components/active/oarfish-update-helper "$R/usr/libexec/oarfish-update-helper"
+rm "$R/etc/systemd/system/multi-user.target.wants/oarfish.service"; echo foreign > "$R/etc/systemd/system/multi-user.target.wants/oarfish.service"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "a regular file where a wants link belongs" "not a symbolic link" "$R" "$TMP/inst-c3.sh" "$CREL3"; untouched "$R"
+rm "$R/etc/systemd/system/multi-user.target.wants/oarfish.service"; ln -s ../oarfish.service "$R/etc/systemd/system/multi-user.target.wants/oarfish.service"
+mkdir "$R/opt/oarfish/components/$CV3"; echo different > "$R/opt/oarfish/components/$CV3/oarfish-update-helper"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "components/<version> exists with other bytes (immutable)" "already exists and differs" "$R" "$TMP/inst-c3.sh" "$CREL3"; untouched "$R"
+rmdir_c3() { rm -rf "$R/opt/oarfish/components/$CV3"; }; rmdir_c3
+rm "$R/opt/oarfish/components/active"; ln -s ../../elsewhere "$R/opt/oarfish/components/active"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "components/active points to something that is not a component set" "not a component directory" "$R" "$TMP/inst-c3.sh" "$CREL3"; untouched "$R"
+
+echo "== components shape: the state directory"
+R="$(new_root)"; mkdir -m 0755 "$R/var" "$R/var/lib" 2>/dev/null || true; mkdir "$R/var/lib/oarfish-update"; chmod 0755 "$R/var/lib/oarfish-update"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "a state directory with mode 0755 is refused" "must be owned by root:root with mode 0700" "$R" "$TMP/inst-c1.sh" "$CREL1"; untouched "$R"
+chmod 0700 "$R/var/lib/oarfish-update"; snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+INST_ENV="OARFISH_TEST_ROOT_UID=$(( $(id -u) + 1 ))" expect_reject "a state directory owned by someone else is refused" "must be owned by root:root" "$R" "$TMP/inst-c1.sh" "$CREL1"; untouched "$R"
+INST_ENV="OARFISH_TEST_ROOT_GID=$(( $(id -g) + 1 ))" expect_reject "a state directory with another group is refused" "must be owned by root:root" "$R" "$TMP/inst-c1.sh" "$CREL1"; untouched "$R"
+rmdir "$R/var/lib/oarfish-update"; ln -s /tmp "$R/var/lib/oarfish-update"; snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "a symbolic link as state directory is refused" "is not a directory" "$R" "$TMP/inst-c1.sh" "$CREL1"; untouched "$R"
+pass "the state directory is refused for wrong mode, owner, group and type, and nothing is changed"
+R="$(new_root)"
+expect_ok "an existing state directory with 0700 is accepted" "$R" "$TMP/inst-c1.sh" "$CREL1"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_ok "a second run accepts the directory it created" "$R" "$TMP/inst-c1.sh" "$CREL1"
+
+echo "== components shape: the lock"
+R="$(new_root)"; mkdir -p "$R/var/lib"; mkdir -m 0700 "$R/var/lib/oarfish-update"; snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+hold_lock "$R/var/lib/oarfish-update" 30
+t0=$(date +%s)
+INST_ENV="OARFISH_LOCK_WAIT=2" expect_reject "another process holds the lock" "in progress" "$R" "$TMP/inst-c1.sh" "$CREL1"
+t1=$(date +%s)
+[ $((t1 - t0)) -ge 1 ] && [ $((t1 - t0)) -le 15 ] || fail "the installer waited $((t1 - t0)) s with a wait of 2 s"
+out_has "Nothing was changed" || fail "the message does not say that nothing was changed"
+untouched "$R"
+pass "a held lock stops the installer after the shortened wait ($((t1 - t0)) s), nothing changed"
+INST_ENV="OARFISH_LOCK_WAIT=1" expect_reject "the lock also blocks --uninstall" "in progress" "$R" "$TMP/inst-c1.sh" "$CREL1" --uninstall
+release_lock
+assert "the lock is free once the holder ended" lock_is_free "$R/var/lib/oarfish-update"
+expect_ok "the same run succeeds once the lock is free" "$R" "$TMP/inst-c1.sh" "$CREL1"
+assert "the lock is free after a successful run" lock_is_free "$R/var/lib/oarfish-update"
+
+echo "== components shape: a second installer while the first runs"
+R="$(new_root)"; ST="$(state_of "$R")"; : > "$ST/block-daemon-reload"; rm -f "$ST/blocked" "$ST/proceed" "$TMP/bg.rc"
+( INST_OUT="$TMP/out-bg" run_inst "$R" "$TMP/inst-c1.sh" "$CREL1"; echo "$RC" > "$TMP/bg.rc" ) &
+BGPID=$!
+for _ in $(seq 1 100); do [ -f "$ST/blocked" ] && break; sleep 0.1; done
+[ -f "$ST/blocked" ] || fail "the first installer never reached daemon-reload"
+snapshot "$R" > "$TMP/snap-first-running"
+INST_ENV="OARFISH_LOCK_WAIT=2" expect_reject "a second installer while the first runs" "in progress" "$R" "$TMP/inst-c1.sh" "$CREL1"
+cmp -s "$TMP/snap-first-running" <(snapshot "$R") || fail "the second installer changed the root"
+pass "the second installer failed with the same message and changed nothing"
+: > "$ST/proceed"; wait "$BGPID" || true
+[ "$(cat "$TMP/bg.rc")" = 0 ] || { cat "$TMP/out-bg"; fail "the first installer failed"; }
+pass "the first installer finished normally"
+assert "the lock is free after both runs" lock_is_free "$R/var/lib/oarfish-update"
+rm -f "$ST/block-daemon-reload"
+
+echo "== components shape: flock is required"
+R="$(new_root)"
+INST_PATH="$(tool_path flock)" expect_reject "missing flock refused" "required tools are missing: flock" "$R" "$TMP/inst-c1.sh" "$CREL1"; untouched "$R"
+
+echo "== legacy shape and the helper layout"
+R="$(new_root)"
+expect_ok "legacy install on a clean device" "$R" "$TMP/inst-v1.sh" "$REL1"
+assert "a legacy installation takes no lock directory and creates none" test ! -e "$R/var/lib/oarfish-update" -a ! -e "$R/opt/oarfish/components"
+assert "a legacy installation creates no helper link" test ! -e "$R/usr/libexec/oarfish-update-helper" -a ! -L "$R/etc/systemd/system/oarfish-update-helper.socket"
+R="$(new_root)"
+expect_ok "components install" "$R" "$TMP/inst-c1.sh" "$CREL1"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "a legacy release on a device with the helper layout" "not supported" "$R" "$TMP/inst-v2.sh" "$REL2"
+out_has "--uninstall" || fail "the refusal does not name --uninstall"
+untouched "$R"
+R="$(new_root)"; mkdir -p "$R/var/lib"; mkdir -m 0700 "$R/var/lib/oarfish-update"; snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_ok "a legacy release with only the state directory left over" "$R" "$TMP/inst-v1.sh" "$REL1"
+hold_lock "$R/var/lib/oarfish-update" 30
+INST_ENV="OARFISH_LOCK_WAIT=1" expect_reject "a legacy release waits for the lock when the directory exists" "in progress" "$R" "$TMP/inst-v2.sh" "$REL2"
+release_lock
+
+echo "== components shape: the source of the lock timeout is the test mode only"
+awk '/^if \[ "\$TESTMODE" = 1 \]; then$/ { in_t = 1 } in_t && /OARFISH_LOCK_WAIT/ { ok = 1 } /^fi$/ { in_t = 0 } /OARFISH_LOCK_WAIT/ && !in_t && !/^#/ { bad = 1 } END { exit !(ok && !bad) }' "$ROOT/install/install.sh" \
+  || fail "OARFISH_LOCK_WAIT must be read only inside the test-mode block"
+pass "OARFISH_LOCK_WAIT is read only in test mode"
+
+echo "== components shape: ownership of the new paths"
+R="$(new_root)"; ST="$(state_of "$R")"
+INST_ENV="OARFISH_TEST_USERS=1" expect_ok "components install acting as root with stub user tools" "$R" "$TMP/inst-c1.sh" "$CREL1"
+for pth in "/var/lib/oarfish-update" "/opt/oarfish/components" "/usr/libexec"; do
+  grep -q "^root:root $R$pth\$" "$ST/chown.log" || fail "chown root:root was not applied to $pth (chown.log: $(tr '\n' ';' < "$ST/chown.log"))"
+done
+# The component files are owned while they are in the staging directory, before the rename.
+for f in "" /oarfish-update-helper /oarfish-update-helper.socket /oarfish-update-helper.service /oarfish-update-recover.service; do
+  grep -q "^root:root .*/components/\.stage\.[^/]*/set$f\$" "$ST/chown.log" || fail "chown root:root was not applied to the component set path '...set$f' (chown.log: $(tr '\n' ';' < "$ST/chown.log"))"
+done
+pass "chown root:root was applied to the state directory, /usr/libexec, the component directory and every component file"
+
+echo "== components shape: dry run and uninstall"
+R="$(new_root)"
+expect_ok "dry run names the lock, the layout and the shape check" "$R" "$TMP/prod/install.sh" "$TMP/rel/empty" --dry-run
+for sx in "components" "legacy" "$R/var/lib/oarfish-update" "exclusive lock" "wants links" "known-good" "after the download" "Dry run: nothing was downloaded or changed"; do
+  out_has "$sx" || fail "the dry run output lacks '$sx'"
+done
+untouched "$R"; pass "the plan lists the new steps and the dry run changed nothing"
+R="$(new_root)"; ST="$(state_of "$R")"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"
+echo '{"keep":"me"}' > "$R/etc/oarfish/config.json"; echo state > "$R/var/lib/oarfish-update/state.json"
+snapshot "$R" > "$TMP/snap-installed"
+expect_ok "uninstall dry run" "$R" "$TMP/inst-c1.sh" "$CREL1" --uninstall --dry-run
+cmp -s <(snapshot "$R") "$TMP/snap-installed" || fail "uninstall dry run changed something"
+out_has "$R/var/lib/oarfish-update" || fail "the uninstall plan does not name the lock directory"
+pass "uninstall --dry-run lists the helper layout and changes nothing"
+# a foreign regular file at a unit path and a foreign link are left alone and reported
+rm "$R/etc/systemd/system/oarfish-update-helper.service"; echo foreign > "$R/etc/systemd/system/oarfish-update-helper.service"
+rm "$R/usr/libexec/oarfish-update-helper"; ln -s /usr/bin/env "$R/usr/libexec/oarfish-update-helper"
+mkdir -p "$R/etc/systemd/system/oarfish.service.d"; echo '[Service]' > "$R/etc/systemd/system/oarfish.service.d/o.conf"
+: > "$ST/calls.log"
+expect_ok "uninstall of the components layout" "$R" "$TMP/inst-c1.sh" "$CREL1" --uninstall
+out_has "left $R/etc/systemd/system/oarfish-update-helper.service alone" || fail "the foreign file is not reported"
+out_has "left $R/usr/libexec/oarfish-update-helper alone" || fail "the foreign link is not reported"
+assert "the foreign regular file is still there" test -f "$R/etc/systemd/system/oarfish-update-helper.service" -a "$(cat "$R/etc/systemd/system/oarfish-update-helper.service")" = foreign
+assert "the foreign link is still there" link_is "$R/usr/libexec/oarfish-update-helper" /usr/bin/env
+assert "the drop-in directory is untouched" test -f "$R/etc/systemd/system/oarfish.service.d/o.conf"
+for l in etc/systemd/system/oarfish.service etc/systemd/system/oarfish-update-helper.socket etc/systemd/system/oarfish-update-recover.service \
+  etc/systemd/system/multi-user.target.wants/oarfish.service etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service; do
+  [ ! -e "$R/$l" ] && [ ! -L "$R/$l" ] || fail "$l was not removed"
+done
+pass "the unit links and the three wants links into /opt/oarfish were removed"
+assert "/opt/oarfish and the cache are gone" test ! -e "$R/opt/oarfish" -a ! -e "$R/var/cache/oarfish"
+assert "the state directory and configuration are kept without --purge" test -f "$R/var/lib/oarfish-update/state.json" -a -f "$R/etc/oarfish/config.json"
+out_has "kept the update state and lock directory" || fail "the message does not say that the state directory is kept"
+for c in "stop oarfish.service" "stop oarfish-update-helper.socket" "stop oarfish-update-helper.service" "stop oarfish-update-recover.service" "disable oarfish-update-helper.socket" "disable oarfish-update-recover.service"; do
+  grep -qx "$c" "$ST/calls.log" || fail "missing call: $c (calls: $(tr '\n' ';' < "$ST/calls.log"))"
+done
+grep -qx daemon-reload "$ST/calls.log" || fail "no daemon-reload after removing the links"
+pass "uninstall stopped and disabled all four units and reloaded systemd"
+assert "the lock is free after the uninstall" lock_is_free "$R/var/lib/oarfish-update"
+expect_ok "uninstall --purge" "$R" "$TMP/inst-c1.sh" "$CREL1" --uninstall --purge
+assert "purge removed the update state directory" test ! -e "$R/var/lib/oarfish-update" -a ! -e "$R/etc/oarfish" -a ! -e "$R/var/lib/oarfish"
+echo "-- layout after the uninstall and purge (what remains of the helper layout) --"; print_layout "$R"
+
+echo "== components shape: a clean full cycle leaves nothing behind"
+R="$(new_root)"
+expect_ok "install" "$R" "$TMP/inst-c1.sh" "$CREL1"
+expect_ok "uninstall --purge" "$R" "$TMP/inst-c1.sh" "$CREL1" --uninstall --purge
+left="$(find "$R" \( -type f -o -type l \) ! -path "$R/etc/os-release")"
+[ -z "$left" ] || fail "files or links remain after purge: $left"
+pass "no installed file or link remains after install and purge of the components layout"
+
+echo "== components shape: the installed link layout passes systemd-analyze verify"
+R="$(new_root)"
+expect_ok "install c1 for the unit verification" "$R" "$TMP/inst-c1.sh" "$CREL1"
+if command -v systemd-analyze >/dev/null 2>&1; then
+  "$ROOT/scripts/verify-units.sh" --installed "$R" || fail "systemd-analyze verify rejected the installed layout"
+  pass "systemd-analyze verify accepts oarfish.service and the three helper units as installed links"
+else
+  echo "SKIP  systemd-analyze is not available on this host; CI runs it (scripts/verify-units.sh --installed)"
+fi
 
 echo "== real mode (no OARFISH_TEST_ROOT) refuses a non-root user before doing anything"
 # Not in test mode, so it would touch the real system if it got past the root check;

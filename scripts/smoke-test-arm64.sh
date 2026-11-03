@@ -4,10 +4,11 @@
 # ORB-CICD-004). Nothing is deployed anywhere; the server binds to loopback only.
 #
 # Usage: scripts/smoke-test-arm64.sh BUNDLE.tar.gz [HELPER_BINARY]
-#   HELPER_BINARY  the linux/arm64 update helper (scripts/build-helper.sh). It is not
-#                  part of the bundle in G6.3a; with it the test also checks that
-#                  `recover` exits 0 and that `serve` without socket activation
-#                  exits non-zero.
+#   HELPER_BINARY  a linux/arm64 update helper (scripts/build-helper.sh). The default
+#                  bundle carries the helper since G6.3b, and the test then checks
+#                  that one without an argument. With an argument the given binary
+#                  is checked as well. For each helper the test checks that `recover`
+#                  exits 0 and that `serve` without socket activation exits non-zero.
 #   OARFISH_SMOKE_EMULATOR  command prefix; default qemu-aarch64 unless the host is
 #                         linux/arm64. Set to "none" to run the binary directly.
 #   OARFISH_SMOKE_PORT      default 18484
@@ -95,14 +96,20 @@ echo "GET /api/v1/device  -> 401 setup_required (no data without an account)"
 if grep -qF "$(cat "$TMP/state/setup-token")" "$TMP/server.log"; then fail "the setup token is in the log"; fi
 echo "setup token written to the state directory, not to the log"
 
-# The update helper stub (ADR 0010 U1, G6.3a). Not started by systemd here, so
-# `serve` must refuse: it never binds a socket itself.
+# The update helper stub (ADR 0010 U1). Not started by systemd here, so `serve`
+# must refuse: it never binds a socket itself. The helper of the bundle (components
+# shape) is always checked; a helper given as an argument is checked in addition.
+helpers=()
+BUNDLE_HELPER="$(ls "$TMP"/oarfish_*/oarfish-update-helper 2>/dev/null || true)"
+[ -z "$BUNDLE_HELPER" ] || helpers+=("$BUNDLE_HELPER")
+[ -z "$HELPER" ] || helpers+=("$HELPER")
 helper_summary=""
-if [ -n "$HELPER" ]; then
-  echo "helper: $(file -b "$HELPER")"
-  file -b "$HELPER" | grep -q 'ELF 64-bit.*ARM aarch64' || fail "the update helper is not an aarch64 ELF"
-  mkdir "$TMP/helper-cwd"
-  helper() { (cd "$TMP/helper-cwd" && env -u LISTEN_PID -u LISTEN_FDS -u LISTEN_FDNAMES "${run[@]}" "$HELPER" "$@"); }
+for HELPER_UNDER_TEST in ${helpers[@]+"${helpers[@]}"}; do
+  if [ "$HELPER_UNDER_TEST" = "$BUNDLE_HELPER" ]; then label="bundle helper"; else label="given helper"; fi
+  echo "$label: $(file -b "$HELPER_UNDER_TEST")"
+  file -b "$HELPER_UNDER_TEST" | grep -q 'ELF 64-bit.*ARM aarch64' || fail "the update helper is not an aarch64 ELF"
+  rm -rf "$TMP/helper-cwd"; mkdir "$TMP/helper-cwd"
+  helper() { (cd "$TMP/helper-cwd" && env -u LISTEN_PID -u LISTEN_FDS -u LISTEN_FDNAMES "${run[@]}" "$HELPER_UNDER_TEST" "$@"); }
 
   rc=0; out="$(helper recover 2>&1)" || rc=$?
   [ "$rc" = 0 ] || fail "helper recover exited $rc"
@@ -115,7 +122,7 @@ if [ -n "$HELPER" ]; then
   [ "$out" = "oarfish-update-helper: not started by socket activation" ] || fail "helper serve printed: $out"
   echo "helper serve          -> exit 1 without socket activation"
 
-  rc=0; out="$(cd "$TMP/helper-cwd" && env LISTEN_PID=1 LISTEN_FDS=1 "${run[@]}" "$HELPER" serve 2>&1)" || rc=$?
+  rc=0; out="$(cd "$TMP/helper-cwd" && env LISTEN_PID=1 LISTEN_FDS=1 "${run[@]}" "$HELPER_UNDER_TEST" serve 2>&1)" || rc=$?
   [ "$rc" = 1 ] || fail "helper serve with another LISTEN_PID exited $rc, expected 1"
   echo "helper serve (LISTEN_PID of another process) -> exit 1"
 
@@ -125,8 +132,8 @@ if [ -n "$HELPER" ]; then
   echo "helper status         -> exit 2, usage line"
 
   [ -z "$(ls -A "$TMP/helper-cwd")" ] || fail "the helper created files"
-  helper_summary=" The update helper stub (not shipped) answered as specified: \`recover\` exit 0, \`serve\` without socket activation exit 1, unknown subcommand exit 2."
-fi
+  helper_summary="$helper_summary The update helper stub ($label) answered as specified: \`recover\` exit 0, \`serve\` without socket activation exit 1, unknown subcommand exit 2."
+done
 
 echo "SMOKE TEST PASSED (${emu})"
 summary <<SUM

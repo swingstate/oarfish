@@ -1,6 +1,6 @@
-# Oarfish update helper socket (ADR 0010, U2 and U10). Not installed yet: the
-# installer arrives in G6.3b. The socket unit creates /run/oarfish-update/ and
-# the socket; the helper never binds anything itself.
+# Oarfish update helper socket (ADR 0010, U2 and U10). Installed by install.sh
+# (G6.3b) as a link into the active component set. The socket unit creates
+# /run/oarfish-update/ and the socket; the helper never binds anything itself.
 #
 # Only root and the group oarfish can connect, and the helper additionally
 # requires the uid of the user oarfish (SO_PEERCRED). The directory belongs to

@@ -8,6 +8,13 @@
 # real systemd (there is none, a stub starts the binary), a Raspberry Pi OS or
 # Ubuntu Server image, a reboot, or real hardware. Docs: docs/INSTALL.md.
 #
+# Since G6.3b the release is normally the components shape (the update helper and its
+# units are in the bundle): the test checks the link layout, modes, owners, the real
+# flock on /var/lib/oarfish-update and that the arm64 helper stub runs. When go and
+# minisign are available (CI has both) the script also builds a legacy-shape release of
+# the same commit with a throwaway key and the test installs it first, so that the main
+# release is an upgrade of an alpha-style installation (the migration).
+#
 # Usage: scripts/test-installer-container.sh IMAGE RELEASE_DIR TEST_INSTALL_SH
 #   IMAGE            e.g. debian:12 or ubuntu:24.04
 #   RELEASE_DIR      release files signed with a throwaway key
@@ -26,6 +33,21 @@ cp "$REL"/* "$STAGE/release/"
 cp "$INST" "$STAGE/install.sh"
 cp "$ROOT/scripts/installer-container/run.sh" "$ROOT/scripts/installer-container/systemctl-stub.sh" "$STAGE/"
 chmod +x "$STAGE/systemctl-stub.sh"
+
+# Optional: a legacy-shape release of the same commit, signed with its own throwaway key.
+if command -v go >/dev/null && command -v minisign >/dev/null && [ -f "$ROOT/backend/internal/web/dist/index.html" ]; then
+  main_ver="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$REL/manifest.json")"
+  legacy_ver="$main_ver.legacy"
+  LEGACY="$(mktemp -d)"; trap 'rm -rf "$STAGE" "$LEGACY"' EXIT
+  OARFISH_BUNDLE_SHAPE=legacy VERSION="$legacy_ver" "$ROOT/scripts/release-bundle.sh" -o "$LEGACY/release" >/dev/null
+  "$ROOT/scripts/make-checksums.sh" "$LEGACY/release" >/dev/null
+  "$ROOT/scripts/sign-release.sh" --ephemeral "$LEGACY/throwaway.pub" "$LEGACY/release" >/dev/null
+  "$ROOT/scripts/make-test-installer.sh" "$legacy_ver" "$LEGACY/throwaway.pub" "$STAGE/legacy-install.sh"
+  mkdir "$STAGE/legacy-release"; cp "$LEGACY/release"/* "$STAGE/legacy-release/"
+  echo "legacy-shape release $legacy_ver built for the migration step"
+else
+  echo "go, minisign or the frontend build is missing: the migration step is skipped"
+fi
 
 arch="$(docker run --rm --platform linux/arm64 "$IMAGE" uname -m)"
 echo "container architecture: $arch"

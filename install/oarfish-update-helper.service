@@ -1,6 +1,6 @@
-# Oarfish update helper (ADR 0010, U1 and U10, with amendments A1 and A4). Not
-# installed yet: the installer arrives in G6.3b. Started by socket activation,
-# it exits after 30 s without a connection.
+# Oarfish update helper (ADR 0010, U1 and U10, with amendments A1 and A4).
+# Installed by install.sh (G6.3b) as a link into the active component set.
+# Started by socket activation, it exits after 30 s without a connection.
 #
 # No Requires=, BindsTo=, PartOf= or ordering against oarfish.service: a restart
 # of the main service must never stop the helper (U1). No Environment=: the
