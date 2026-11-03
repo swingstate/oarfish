@@ -62,7 +62,7 @@ jobs:
         run: go test -count=1 -run '^TestHashMemoryIsReturnedToTheOS$' -v ./internal/auth
       # Short fuzz runs of the parsers that read untrusted system files.
       # The seed corpora also run as ordinary tests in the step above.
-      - name: Fuzz the detection, metrics, password-hash and update-helper request parsers
+      - name: Fuzz the detection, metrics, password-hash, update-helper request and release-verification parsers
         working-directory: backend
         run: |
           go test -run '^$' -fuzz '^FuzzParseOSRelease$' -fuzztime 5s ./internal/platform/operating_system
@@ -72,6 +72,9 @@ jobs:
           done
           go test -run '^$' -fuzz '^FuzzParsePHC$' -fuzztime 5s ./internal/auth
           go test -run '^$' -fuzz '^FuzzDecodeRequest$' -fuzztime 5s ./cmd/oarfish-update-helper
+          for f in FuzzParseSignature FuzzParseChecksums FuzzParseManifest FuzzVersion FuzzInspectTar; do
+            go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/relverify
+          done
       # ADR 0009 E1: golang.org/x/crypto/argon2 is the only third-party package
       # (TestArchitectureOnlyArgon2FromXCrypto checks the imports); here the
       # compiler's own view of the release target confirms it.
@@ -219,6 +222,12 @@ jobs:
       # Throwaway keys generated inside the test. The release key is not involved.
       - name: Sign, verify and reject tampered input
         run: scripts/test-signing.sh
+      # G6.4: the shared verification package (backend/internal/relverify) must
+      # accept what the release tooling produces. This builds bundlegen, makes a
+      # legacy and a components release, signs each with a throwaway key and
+      # verifies them with the package (the test is skipped without this variable).
+      - name: Release verification package accepts bundlegen releases (both shapes)
+        run: make test-relverify-producer
 
   installer:
     name: Installer checks and tests
