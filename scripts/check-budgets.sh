@@ -7,8 +7,9 @@
 # MAX_BUNDLE_BYTES / MAX_FRONTEND_GZIP_BYTES / MAX_INSTALLER_BYTES override the limits (used to test failure).
 #
 # Usage: scripts/check-budgets.sh BUNDLE.tar.gz [HELPER_BINARY]
-#   HELPER_BINARY  the update helper stub (G6.3a). Its size is reported only: it is
-#                  not in the bundle and no budget applies to it.
+#   HELPER_BINARY  an update helper stub build. Its size is reported only; no budget
+#                  applies to it on its own. Since G6.3b the default bundle carries
+#                  the helper, so its bytes count in the bundle budget above.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
@@ -50,7 +51,7 @@ helper_row=""
 if [ -n "$HELPER" ]; then
   [ -f "$HELPER" ] || die "$HELPER is missing"
   helper_bytes="$(wc -c < "$HELPER" | tr -d ' ')"
-  helper_row="| Update helper stub \`$(basename "$HELPER")\` (not shipped) | $helper_bytes | none | reported only |"
+  helper_row="| Update helper stub \`$(basename "$HELPER")\` (standalone build; the bundle carries one since G6.3b) | $helper_bytes | none | reported only |"
 fi
 
 summary <<SUM
@@ -68,6 +69,6 @@ $rows
 SUM
 echo "bundle:   $bundle_bytes bytes (budget $MAX_BUNDLE_BYTES): $bv"
 echo "installer: $installer_bytes bytes (budget $MAX_INSTALLER_BYTES): $iv"
-[ -z "$HELPER" ] || echo "helper:   $helper_bytes bytes (not shipped, no budget)"
+[ -z "$HELPER" ] || echo "helper:   $helper_bytes bytes (standalone build, reported only)"
 echo "frontend: $frontend_gz bytes gzip, $frontend_raw bytes raw (budget $MAX_FRONTEND_GZIP_BYTES): $fv"
 exit "$status"

@@ -1,10 +1,13 @@
-# Oarfish update recovery (ADR 0010, U1 and U10). Not installed yet: the
-# installer arrives in G6.3b. Runs `recover` at every boot before the helper
-# socket and the main service, from the known-good component set, and is
-# started by OnFailure= of the helper service.
+# Oarfish update recovery (ADR 0010, U1 and U10, amendment A9). Installed by
+# install.sh (G6.3b) as a link into the known-good component set. Runs `recover`
+# at every boot before the helper socket and the main service, from the
+# known-good component set, and is started by OnFailure= of the helper service.
 #
 # Not Requires= of anything, so a failing recovery never keeps Oarfish from
-# starting. The only mention of oarfish.service is the ordering below.
+# starting. The only mention of oarfish.service is the ordering below. A oneshot
+# unit has no start timeout by default, so TimeoutStartSec=120 ends a hanging
+# recovery; systemd then marks the unit failed and oarfish.service still starts,
+# because Before= is an ordering and not a requirement (A9).
 # No socket. Same sandbox as the helper service.
 
 [Unit]
@@ -14,6 +17,7 @@ Before=oarfish-update-helper.socket oarfish.service
 
 [Service]
 Type=oneshot
+TimeoutStartSec=120
 ExecStart=/opt/oarfish/components/known-good/oarfish-update-helper recover
 User=root
 Group=root
