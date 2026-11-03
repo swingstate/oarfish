@@ -363,7 +363,8 @@ tamper_case() { # tamper_case NAME PATTERN COMMAND-ON-COPY...
   no_leftovers "$r" || fail "[$N] $name: leftovers"
 }
 flip() { local f="$1" size; size="$(wc -c < "$f" | tr -d ' ')"; printf '\377' | dd of="$f" bs=1 seek=$((size / 2)) count=1 conv=notrunc 2>/dev/null; }
-tamper_case "tampered checksums.txt (a hash changed)" "SIGNATURE VERIFICATION FAILED" sed -i.bak '1s/^./0/;1s/^0/1/' checksums.txt
+# The first digit must really change, whatever it is (a swap through 0 and 1 is a no-op for a hash that starts with 1).
+tamper_case "tampered checksums.txt (a hash changed)" "SIGNATURE VERIFICATION FAILED" sed -i.bak -e '1s/^0/1/' -e t -e '1s/^./0/' checksums.txt
 tamper_case "tampered checksums.txt (line appended)" "SIGNATURE VERIFICATION FAILED" sh -c 'echo "$(printf "0%.0s" $(seq 1 64))  evil" >> checksums.txt'
 tamper_case "tampered signature (byte flipped)" "SIGNATURE VERIFICATION FAILED" flip checksums.txt.sig
 tamper_case "signature file truncated" "SIGNATURE VERIFICATION FAILED" sh -c 'head -c 60 checksums.txt.sig > s && mv s checksums.txt.sig'
