@@ -28,7 +28,7 @@ Node.js is a build-time tool only. The Oarfish binary and the target device do n
 | `make bench-arm64` | cross-builds the Argon2id benchmark test binary for linux/arm64 to `build/bench/oarfish-auth-bench.test` (git-ignored, never part of a release); the commands for the device are in [`AUTH.md`](AUTH.md#measurements-and-checks-on-the-device) |
 | `make build` | frontend production build, then host binary `bin/oarfish` with the frontend embedded |
 | `make build-arm64` | same, cross-compiled with `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` to `bin/oarfish-linux-arm64` |
-| `make build-helper` | `scripts/build-helper.sh --twice`: cross-builds the update helper stub to `bin/oarfish-update-helper-linux-arm64` with the flags of the main binary and fails unless two builds from an empty Go cache are identical. The helper is not part of any bundle ([`ARCHITECTURE.md`](ARCHITECTURE.md#the-update-helper-stub-gate-g6-step-g63a)) |
+| `make build-helper` | `scripts/build-helper.sh --twice`: cross-builds the update helper stub to `bin/oarfish-update-helper-linux-arm64` with the flags of the main binary and fails unless two builds from an empty Go cache are identical. The helper is part of the default (components) bundle since G6.3b; this target builds the standalone file ([`ARCHITECTURE.md`](ARCHITECTURE.md#the-update-helper-stub-gate-g6-step-g63a)) |
 | `make test-helper` | `go vet` (host and linux/arm64) and `go test -race -count=1` for `cmd/oarfish-update-helper` and `internal/trustkey` |
 | `make check-helper` | `test-helper`, `build-helper`, the key copy check, the unit check and its mutation self-test: what the CI jobs for the helper run, except `systemd-analyze` and the qemu smoke test, which need Linux |
 | `make release-bundle` | frontend build, then `scripts/release-bundle.sh`: unsigned `dist/release/oarfish_<version>_linux_arm64.tar.gz` and `manifest.json`, the same script CI and the release workflow use |
@@ -117,7 +117,7 @@ Adding a dependency should be justified in the change that adds it.
 | `make-test-installer.sh` | test copy of `install.sh` with a throwaway key; the production script has no way to swap its key, so tests need a copy. Never published |
 | `test-installer.sh` | installer tests against a fake root |
 | `test-installer-container.sh`, `installer-container/` | installer end to end in an arm64 container under qemu |
-| `check-budgets.sh` | enforces and reports the size budgets; with a second argument it also reports the update helper's size (no budget, not in the bundle) |
+| `check-budgets.sh` | enforces and reports the size budgets; with a second argument it also reports the update helper's size (no budget of its own; the bundle has carried one since G6.3b) |
 | `smoke-test-arm64.sh` | extracts the bundle, starts the binary, checks `/healthz` and `/`; with a second argument also runs the update helper stub (`recover` exits 0, `serve` without socket activation exits 1, an unknown subcommand exits 2) |
 | `check-reproducible.sh` | double build and SHA-256 comparison |
 
@@ -179,11 +179,11 @@ Rules when changing the installer: keep it dependency-light (only tools Raspberr
 
 (Detection limits are in [`DETECTION.md`](DETECTION.md), "Verification status".)
 
-- Real hardware: one Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit) ran the installer and the service (single data point, see `INSTALL.md`, "Hardware test results"). Nothing has run on an Ubuntu Server image or another board. The release bundle's ARM64 binary is exercised under `qemu-user` (smoke test, installer container jobs), which is not a hardware test.
+- Real hardware: one Raspberry Pi Zero 2 W (image reported as Raspberry Pi OS Lite 64-bit) ran the installer and the service (single data point, see `INSTALL.md`, "Hardware test results"). The update helper layout and the stub's socket activation were observed once on one device with a test release (device observation, G6.3 owner stop, 2026-11-03; same section, not Verified). Nothing has run on an Ubuntu Server image or another board. The release bundle's ARM64 binary is exercised under `qemu-user` (smoke test, installer container jobs), which is not a hardware test.
 - The unit file was checked with `systemd-analyze verify` and started by a real systemd (257) on that one device, including a reboot (AT-007). The containers have no systemd. Other kernels and images, and the 512 MB memory budget under load, are untested.
 - The installer container jobs use plain `debian:12` and `ubuntu:24.04` arm64 images. They are not Raspberry Pi OS Lite or Ubuntu Server images; the results (including which tools the minimal images lacked) say nothing certain about those.
 - The embedded UI was verified by fetching the served HTML and assets, and the frontend by unit tests in jsdom. The redesigned UI (UI foundation task) was also opened in headless Chrome on a developer Mac for layout checks and screenshots ([`UI.md`](UI.md#verification-status)); it has not been opened in Firefox or Safari, nor on the device.
 - Reproducibility is verified for the same commit, version string, Go and Node versions. Cross-toolchain-version reproducibility is not claimed.
 - Manifest `requirements` list OS, CPU architecture and libc. Kernel and memory minimums are not stated because they have not been measured.
 - Signature verification exists in the installer (system `openssl`) but not inside the Oarfish binary; the update path is Gate G6.
-- Two installer runs are serialised by an exclusive `flock` on `/var/lib/oarfish-update` (30 s wait) when the release carries the update helper, and when that directory already exists; not yet tried on a device (G6.3b, ADR 0010 T14). The helper does not take the lock before G6.5.
+- Two installer runs are serialised by an exclusive `flock` on `/var/lib/oarfish-update` (30 s wait) when the release carries the update helper, and when that directory already exists; on one device, installer runs were observed one at a time, with the lock directory created as specified (device observation, G6.3 owner stop, 2026-11-03; see [`INSTALL.md`](INSTALL.md#results-on-the-reference-device-g63)); two runs at the same time were tested only against the fake root (G6.3b, ADR 0010 T14). The helper does not take the lock before G6.5, so its side is not tried anywhere.

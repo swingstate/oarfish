@@ -21,7 +21,7 @@ backend/                     Go module github.com/swingstate/oarfish/backend
 frontend/                    Svelte 5 + TypeScript + Vite
   src/                       App.svelte (session gate and navigation), pages/ (Home, Gerät, Einrichten, Anmelden, Konto), lib/ (metrics, stream, device and session clients, locales/de.ts + en.ts)
 docs/                        specification, ADRs, roadmap, this file
-install/                     install.sh (POSIX sh installer), oarfish.service (unit, shipped in the bundle) and the three update-helper units (repository files only, not shipped yet)
+install/                     install.sh (POSIX sh installer), oarfish.service (unit, shipped in the bundle) and the three update-helper units (shipped in the default release bundle since G6.3b)
 scripts/                     release packaging, signing, verification, installer tests, budget and smoke tests
   bundlegen/                 stdlib-only Go module: tar.gz, manifest.json, checksums.txt (not part of the product)
 release/                     public signing key (oarfish-release.pub)
@@ -88,12 +88,12 @@ internal/securefile/ internal/clock/
 Not implemented, only reserved by the layout and by the project rules:
 
 - Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3) and implemented in G4 (below). Package, network and service adapters (`packages/`, `network/`, `services/` in spec 8.3) do not exist yet.
-- The only privileged code that is installed is the stub of the Update Helper, and only by an installer run of a release that carries it (G6.3b; not yet run on a device). Privilege Broker and Update Helper are separate components (spec 8.6): the Update Helper arrives in Gate G6 (its stub is in the repository since step G6.3a and in the release bundle since G6.3b, see "The update helper stub" below), the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
+- The only privileged code that is installed is the stub of the Update Helper, and only by an installer run of a release that carries it (G6.3b; run once on one device at the G6.3 owner stop with a test release, see [INSTALL.md](INSTALL.md#results-on-the-reference-device-g63); not Verified). Privilege Broker and Update Helper are separate components (spec 8.6): the Update Helper arrives in Gate G6 (its stub is in the repository since step G6.3a and in the release bundle since G6.3b, see "The update helper stub" below), the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
 - Plugins and self-update are out of scope until their gates (ADR 0003, ADR 0004). Release signing exists (below); the installer verifies signatures with the system `openssl`, but nothing in the Oarfish binary verifies signatures yet.
 
 ## The update helper stub (Gate G6, step G6.3a)
 
-ADR 0010 splits the update into an unprivileged service and a small, separate, privileged helper. Step G6.3a puts the first stub of that helper and its three units into the repository. In G6.3a nothing of it was shipped. **Since step G6.3b the release bundle carries the helper and the units by default, and `install/install.sh` installs them** (below); no code in the service talks to the helper. Everything below describes files in the repository and the installer, tested on CI runners and against a fake root; none of it has run on a device.
+ADR 0010 splits the update into an unprivileged service and a small, separate, privileged helper. Step G6.3a puts the first stub of that helper and its three units into the repository. In G6.3a nothing of it was shipped. **Since step G6.3b the release bundle carries the helper and the units by default, and `install/install.sh` installs them** (below); no code in the service talks to the helper. Everything below describes files in the repository and the installer, tested on CI runners and against a fake root. The installer, the layout and socket activation with the stub were also observed on one device: device observation (G6.3 owner stop, 2026-11-03: one Raspberry Pi Zero 2 W, Debian 13 aarch64, kernel 6.18.50, systemd 257, one image, one moment); a test release with a throwaway key, never published, installed with a test copy of `install.sh`. Details, and what was not exercised (among it the production key path), are in [INSTALL.md](INSTALL.md#results-on-the-reference-device-g63). That is not Verified. Not yet observed on any device: the helper's side of the lock (G6.5), and everything from G6.5 on.
 
 **The program** (`backend/cmd/oarfish-update-helper`) has exactly two subcommands; anything else prints one usage line to stderr and exits 2.
 
@@ -129,7 +129,7 @@ The names follow `state.json` and the manifest of ADR 0010. Members may only be 
 
 **The units** (`install/oarfish-update-helper.socket`, `.service` and `oarfish-update-recover.service`) have the texts of ADR 0010 U10 as amended by A1, plus a `[Unit]` description, `Documentation=` and an `[Install]` section for the socket (`WantedBy=sockets.target`) and the recover unit (`WantedBy=multi-user.target`), which the ADR text implies without printing. The helper has no `Requires=`, `BindsTo=`, `PartOf=` or ordering against `oarfish.service`, and no `Environment=`. The recover unit alone is ordered `Before=` the socket and `oarfish.service`. `scripts/check-units.sh` pins the required lines and forbids the rest; CI also runs `systemd-analyze verify` against a temporary root and prints `systemd-analyze security --offline` for information, with no threshold.
 
-**Build.** `scripts/build-helper.sh` builds the helper for linux/arm64 with the flags of the main binary and can check that two builds from an empty cache are identical. CI reports its size next to the bundle sizes; it is in no bundle and under no budget.
+**Build.** `scripts/build-helper.sh` builds the helper for linux/arm64 with the flags of the main binary and can check that two builds from an empty cache are identical. CI reports its size next to the bundle sizes; it has no budget of its own; since G6.3b its bytes count in the bundle budget.
 
 ## Build and CI
 
