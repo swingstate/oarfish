@@ -16,6 +16,11 @@
 #                          (links stay links), the runner's base units are added, and
 #                          oarfish.service and the three helper units are verified by their
 #                          paths in /etc/systemd/system, which are links into /opt/oarfish.
+#                          systemd-analyze opens ROOT/path on the host's file system, so an
+#                          absolute link target such as /opt/oarfish/current/oarfish.service
+#                          would be looked up on the host: in the copy every absolute link is
+#                          rewritten to the equivalent relative link (lexically, links are not
+#                          expanded), which resolves the same way inside the root.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
@@ -36,6 +41,12 @@ UNITDIR=/etc/systemd/system
 if [ -n "$INSTALLED" ]; then
   cp -R "$INSTALLED" "$R"
   chmod -R u+w "$R"
+  while IFS= read -r l; do
+    t="$(readlink "$l")"
+    case "$t" in
+      /*) ln -sfn "$(realpath -m -s --relative-to="$(dirname "$l")" "$R$t")" "$l" ;;
+    esac
+  done < <(find "$R" -type l)
 else
   mkdir -p "$R$UNITDIR" "$R/usr/libexec" "$R/opt/oarfish/components/known-good" "$R/opt/oarfish/current"
   for p in usr/libexec/oarfish-update-helper opt/oarfish/components/known-good/oarfish-update-helper opt/oarfish/current/oarfish; do
