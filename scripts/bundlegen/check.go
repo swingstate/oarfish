@@ -95,9 +95,11 @@ type checkOptions struct {
 //     declared modes and hashes, owned by uid/gid 0, and the helper is an
 //     ARM64 ELF executable.
 //
-// Unknown manifest fields are ignored, so that additive changes stay compatible
-// (ADR 0010, U4). It does not check the signature; that is minisign's job and
-// must happen first.
+// The manifest is decoded strictly: an unknown field is an error, because this
+// tool validates the manifest we produce at release time. (The readers on the
+// device ignore unknown fields so that additive changes stay compatible, ADR 0010,
+// U4; that is their business, not this tool's.) It does not check the signature;
+// that is minisign's job and must happen first.
 func checkRelease(dir string) error { return checkReleaseWith(dir, checkOptions{}) }
 
 func checkReleaseWith(dir string, opts checkOptions) error {
@@ -120,7 +122,9 @@ func checkReleaseWith(dir string, opts checkOptions) error {
 		return err
 	}
 	var mf Manifest
-	if err := json.NewDecoder(bytes.NewReader(mraw)).Decode(&mf); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(mraw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&mf); err != nil {
 		return fmt.Errorf("%s: %w", manifestName, err)
 	}
 	if _, ok := listed[manifestName]; !ok {

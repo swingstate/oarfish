@@ -650,17 +650,19 @@ func TestCheckCommandLineExpectKeyID(t *testing.T) {
 
 // --- unknown fields ----------------------------------------------------------
 
-func TestCheckIgnoresUnknownManifestFields(t *testing.T) {
-	for name, dir := range map[string]string{"legacy": writeRelease(t), "components": writeComponentsRelease(t)} {
+// bundlegen check validates the manifest this tool wrote, so it stays strict.
+// (The readers on the device ignore unknown fields; they are not this tool.)
+func TestCheckRejectsUnknownManifestFields(t *testing.T) {
+	for name, edit := range map[string]func(map[string]any){
+		"top level":    func(m map[string]any) { m["future_field"] = 1 },
+		"requirements": func(m map[string]any) { m["requirements"].(map[string]any)["future_requirement"] = "x" },
+		"components":   func(m map[string]any) { m["components"].(map[string]any)["future_component_field"] = true },
+	} {
 		t.Run(name, func(t *testing.T) {
-			rewriteManifest(t, dir, func(m map[string]any) {
-				m["future_field"] = map[string]any{"a": 1}
-				m["requirements"].(map[string]any)["future_requirement"] = "x"
-				if c, ok := m["components"].(map[string]any); ok {
-					c["future_component_field"] = true
-				}
-			})
-			must(t, checkRelease(dir))
+			dir := writeComponentsRelease(t)
+			must(t, checkRelease(dir)) // valid before the change
+			rewriteManifest(t, dir, edit)
+			wantRejected(t, checkRelease(dir), "unknown field")
 		})
 	}
 }

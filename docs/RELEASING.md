@@ -30,7 +30,7 @@ The release tooling knows two bundle shapes. `bundlegen check` accepts exactly t
 
 **The release workflow still builds the legacy shape, and it does until G6.3.** Neither `ci.yml` nor `release.yml` sets anything that selects the components shape, `install/install.sh` still requires exactly five entries and cannot install a components bundle, and no helper or unit file exists in the repository yet. The legacy bundle and manifest are byte-identical to what the tooling produced before G6.2; `scripts/bundlegen/testdata/legacy/` holds the reference output of the tool before the change and a test compares against it. The tooling for the components shape is therefore exercised by tests with fake files only; it is not evidence that a helper works.
 
-Additive manifest fields (all optional, all absent from a legacy manifest, `schema_version` stays 1; fields a reader does not know are ignored):
+Additive manifest fields (all optional, all absent from a legacy manifest, `schema_version` stays 1; the readers on the device (the update helper and the service, later steps) ignore fields they do not know, while `bundlegen check` rejects them):
 
 | Field | Type and rule | Meaning |
 |---|---|---|
@@ -52,7 +52,7 @@ Building the components shape. `bundlegen bundle` takes the four files, the prot
 
 `scripts/release-bundle.sh` passes these through only when the caller sets environment variables: `OARFISH_COMPONENTS_DIR` (a directory that holds the four files under their names), `OARFISH_COMPONENTS_PROTOCOL`, `OARFISH_COMPONENTS_KEY_ID`, and, independently, `OARFISH_MIN_INSTALLED_VERSION` and `OARFISH_REQUIRES_HELPER_PROTOCOL`. Unset, nothing changes.
 
-`bundlegen check` rejects, in addition to everything it rejected before: a missing or extra tarball entry in either shape, a wrong mode, a helper that is not an ARM64 ELF (the installer's header check: 64-bit, little-endian, machine `0xB7`), `components` without the files or the files without `components`, a malformed `key_id`, a protocol below 1, `requirements.helper_protocol` greater than `components.protocol`, an invalid or too new `min_installed_version`, a path listed or stored twice, and any difference between `contents` and the tarball. It does not reject unknown manifest fields (before G6.2 it did): additive changes must stay readable, as the update helper will treat them (ADR 0010, U4). The main binary is still not checked for its ELF header by `bundlegen`; the installer does that.
+`bundlegen check` rejects, in addition to everything it rejected before: a missing or extra tarball entry in either shape, a wrong mode, a helper that is not an ARM64 ELF (the installer's header check: 64-bit, little-endian, machine `0xB7`), `components` without the files or the files without `components`, a malformed `key_id`, a protocol below 1, `requirements.helper_protocol` greater than `components.protocol`, an invalid or too new `min_installed_version`, a path listed or stored twice, and any difference between `contents` and the tarball. It also rejects unknown manifest fields, as before G6.2: it validates the manifest the release tooling wrote, so every field must be one this tool knows. This is not the rule for the readers on the device, which ignore unknown fields so that additive changes stay compatible (ADR 0010, U4). The main binary is still not checked for its ELF header by `bundlegen`; the installer does that.
 
 ## One-time setup: signing key (maintainer, local machine)
 
