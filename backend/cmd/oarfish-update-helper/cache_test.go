@@ -372,38 +372,84 @@ func TestCacheOpenErrorMapping(t *testing.T) {
 	}
 }
 
+// swapAfterLstat installs hookAfterLstat so that swap runs once, between the
+// Lstat and the open of the cache file with the given name, and returns a
+// function that reports whether it ran. swap gets the path of the file and what
+// Lstat saw. The hook is removed when the test ends.
+func swapAfterLstat(t *testing.T, name string, swap func(path string, orig os.FileInfo)) (ran func() bool) {
+	t.Helper()
+	done := false
+	hookAfterLstat = func(root *os.Root, n string) {
+		if !strings.HasSuffix(n, "/"+name) || done {
+			return
+		}
+		done = true
+		orig, err := root.Lstat(n)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		swap(filepath.Join(root.Name(), n), orig)
+	}
+	t.Cleanup(func() { hookAfterLstat = nil })
+	return func() bool { return done }
+}
+
 // The name is swapped between the Lstat and the open: a FIFO must not block
-// the open (O_NONBLOCK), and neither a link nor another file is read (the
-// descriptor must be the file that Lstat saw).
+// the open (O_NONBLOCK), and neither a link to another file nor another regular
+// file is read (the descriptor must be the file that Lstat saw).
+//
+// The original is kept alive (renamed to a side name) while the replacement is
+// created, so the replacement can never get the original's inode: on ext4 a
+// removed file's inode is reused at once by the next file created, and the
+// same-file check cannot tell the two apart (see
+// TestCacheFileSwappedForOtherContent). The test checks that the identity
+// really differs before it relies on it.
 func TestCacheFileSwappedBetweenLstatAndOpen(t *testing.T) {
-	for _, kind := range []string{"fifo", "symlink inside", "another regular file"} {
+	for _, kind := range []string{"fifo", "symlink to another file", "another regular file"} {
 		t.Run(kind, func(t *testing.T) {
 			v := newTenv(t)
 			v.stageable("1.1.0")
 			dir := filepath.Join(v.cacheDir, "update", "1.1.0")
-			swapped := false
-			hookAfterLstat = func(root *os.Root, name string) {
-				if !strings.HasSuffix(name, "/"+nameManifest) || swapped {
+			ran := swapAfterLstat(t, nameManifest, func(path string, orig os.FileInfo) {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Error(err)
 					return
 				}
-				swapped = true
-				path := filepath.Join(root.Name(), name)
-				data, _ := os.ReadFile(path)
-				os.Remove(path)
+				if err := os.Rename(path, filepath.Join(dir, "kept")); err != nil {
+					t.Error(err)
+					return
+				}
 				switch kind {
 				case "fifo":
-					syscall.Mkfifo(path, 0o644)
-				case "symlink inside":
-					os.WriteFile(filepath.Join(dir, "real"), data, 0o644)
-					os.Symlink("real", path)
+					if err := syscall.Mkfifo(path, 0o644); err != nil {
+						t.Error(err)
+					}
+				case "symlink to another file":
+					if err := os.WriteFile(filepath.Join(dir, "other"), data, 0o644); err != nil {
+						t.Error(err)
+					}
+					if err := os.Symlink("other", path); err != nil {
+						t.Error(err)
+					}
 				case "another regular file":
-					os.WriteFile(path, data, 0o644)
+					if err := os.WriteFile(path, data, 0o644); err != nil {
+						t.Error(err)
+					}
 				}
-			}
-			defer func() { hookAfterLstat = nil }()
+				now, err := os.Stat(path) // follows the link: what the open will reach
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if os.SameFile(orig, now) {
+					t.Errorf("the test did not produce a different identity: %s", kind)
+				}
+			})
 			before := openFDs(t)
 			wantErrCode(t, v.stageWithin2s("1.1.0"), codeNotFound)
-			if !swapped {
+			if !ran() {
 				t.Fatal("the hook did not run")
 			}
 			if after := openFDs(t); after != before {
@@ -414,5 +460,107 @@ func TestCacheFileSwappedBetweenLstatAndOpen(t *testing.T) {
 				t.Fatal("wrote after a refused cache file")
 			}
 		})
+	}
+}
+
+// The name is swapped between the Lstat and the open for a file with other
+// content, by remove and create. The kernel may give the new file the inode of
+// the removed one (ext4 does, APFS usually does not), and then the same-file
+// check passes: it is defence in depth and cannot detect inode reuse. The test
+// therefore asserts no inode relation and no particular error code. What must
+// hold on every file system is that the other bytes never become a staged
+// release: they are verified against the signed values after the copy.
+func TestCacheFileSwappedForOtherContent(t *testing.T) {
+	for _, which := range []string{nameChecksums, nameSignature, nameManifest, "bundle"} {
+		t.Run(which, func(t *testing.T) {
+			v := newTenv(t)
+			_, b := v.stageable("1.1.0")
+			name := which
+			if name == "bundle" {
+				name = b.BundleName
+			}
+			ran := swapAfterLstat(t, name, func(path string, orig os.FileInfo) {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				other := append([]byte(nil), data...)
+				other[0] ^= 0xff // same size, other content
+				if err := os.Remove(path); err != nil {
+					t.Error(err)
+					return
+				}
+				if err := os.WriteFile(path, other, 0o644); err != nil {
+					t.Error(err)
+				}
+			})
+			r := parseReply(t, v.stageWithin2s("1.1.0"))
+			if !ran() {
+				t.Fatal("the hook did not run")
+			}
+			if r.OK {
+				t.Fatal("a swapped file with other content was staged")
+			}
+			v.wantClean()
+			assertNoStageLeft(t, v)
+		})
+	}
+}
+
+// The name is swapped for a FIFO by remove and create. Where the FIFO gets the
+// inode of the removed file (ext4 may do that) the same-file check passes and
+// only the type check on the opened descriptor refuses it; where it does not,
+// the same-file check refuses it. Either way the answer is not_found and the
+// open does not block.
+func TestCacheFileSwappedForFifoByRemoveAndCreate(t *testing.T) {
+	v := newTenv(t)
+	v.stageable("1.1.0")
+	ran := swapAfterLstat(t, nameManifest, func(path string, orig os.FileInfo) {
+		if err := os.Remove(path); err != nil {
+			t.Error(err)
+			return
+		}
+		if err := syscall.Mkfifo(path, 0o644); err != nil {
+			t.Error(err)
+		}
+	})
+	before := openFDs(t)
+	wantErrCode(t, v.stageWithin2s("1.1.0"), codeNotFound)
+	if !ran() {
+		t.Fatal("the hook did not run")
+	}
+	if after := openFDs(t); after != before {
+		t.Fatalf("descriptors: %d before, %d after", before, after)
+	}
+	v.wantClean()
+}
+
+// A link inside the cache that leads to the very file that was checked is
+// accepted, by design: the opened descriptor is the file Lstat saw, so the
+// bytes read are the ones that are then verified, and where the name points
+// does not matter. The original is renamed (the inode stays) and a link takes
+// its place.
+func TestCacheLinkToTheCheckedFileIsAccepted(t *testing.T) {
+	v := newTenv(t)
+	v.stageable("1.1.0")
+	dir := filepath.Join(v.cacheDir, "update", "1.1.0")
+	ran := swapAfterLstat(t, nameManifest, func(path string, orig os.FileInfo) {
+		if err := os.Rename(path, filepath.Join(dir, "real")); err != nil {
+			t.Error(err)
+			return
+		}
+		if err := os.Symlink("real", path); err != nil {
+			t.Error(err)
+			return
+		}
+		now, err := os.Stat(path)
+		if err != nil || !os.SameFile(orig, now) {
+			t.Errorf("the link does not lead to the checked file: %v", err)
+		}
+	})
+	wantOK(t, v.stageWithin2s("1.1.0"))
+	if !ran() {
+		t.Fatal("the hook did not run")
 	}
 }
