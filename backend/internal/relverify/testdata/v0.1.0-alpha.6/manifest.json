@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "name": "oarfish",
+  "version": "0.1.0-alpha.6",
+  "tag": "v0.1.0-alpha.6",
+  "prerelease": true,
+  "commit": "d4300bd2d0e4db7d7051f09f0aa8eb2171acda38",
+  "build_date": "2026-10-31T16:05:06Z",
+  "os": "linux",
+  "architecture": "arm64",
+  "requirements": {
+    "os": "linux",
+    "architecture": "arm64",
+    "cpu": "ARMv8-A 64-bit (aarch64)",
+    "libc": "none (static binary, CGO_ENABLED=0)",
+    "runtime_dependencies": []
+  },
+  "bundle": {
+    "file": "oarfish_0.1.0-alpha.6_linux_arm64.tar.gz",
+    "sha256": "e02113fb50cfb6bfb54db7a35e33eb66d37aacd15c3f5651ed565b4ae6fb1f3e",
+    "size": 3008284
+  },
+  "contents": [
+    {
+      "path": "oarfish_0.1.0-alpha.6_linux_arm64/LICENSE",
+      "mode": "0644",
+      "size": 11358,
+      "sha256": "c95bae1d1ce0235ecccd3560b772ec1efb97f348a79f0fbe0a634f0c2ccefe2c"
+    },
+    {
+      "path": "oarfish_0.1.0-alpha.6_linux_arm64/THIRD_PARTY_NOTICES.txt",
+      "mode": "0644",
+      "size": 6777,
+      "sha256": "c54e8dcfd907cf27f97ec11e1823985463f773aa14c9f94edc0663a04c2d61ca"
+    },
+    {
+      "path": "oarfish_0.1.0-alpha.6_linux_arm64/oarfish",
+      "mode": "0755",
+      "size": 7274656,
+      "sha256": "0deefc1944f9991c04cef3bb3e4423da7676eeea1d8bec004908e9811a0fcd98"
+    },
+    {
+      "path": "oarfish_0.1.0-alpha.6_linux_arm64/oarfish.service",
+      "mode": "0644",
+      "size": 1651,
+      "sha256": "a68d5eddd1c98166c4252ff0aa2e8f64331b27d1feb92feb8c55ab044812f178"
+    }
+  ]
+}

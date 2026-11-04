@@ -16,7 +16,7 @@ FUZZTIME ?= 10s
 .PHONY: help dev dev-backend dev-frontend deps test test-backend test-frontend test-release-tools \
 	lint lint-backend lint-frontend fuzz frontend-build build build-arm64 bench-arm64 \
 	release-bundle check-reproducible test-signing test-installer lint-shell clean \
-	build-helper test-helper check-helper
+	build-helper test-helper check-helper test-relverify-producer
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -58,7 +58,7 @@ lint-backend:
 lint-frontend:
 	cd frontend && npm run check
 
-fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash and update-helper request parsers (FUZZTIME=10s each)
+fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash, update-helper request and release-verification parsers (FUZZTIME=10s each)
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseOSRelease$$' -fuzztime $(FUZZTIME) ./internal/platform/operating_system
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseCompatible$$' -fuzztime $(FUZZTIME) ./internal/platform/hardware
 	@for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes; do \
@@ -66,6 +66,9 @@ fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash and update-hel
 	done
 	cd backend && go test -run '^$$' -fuzz '^FuzzParsePHC$$' -fuzztime $(FUZZTIME) ./internal/auth
 	cd backend && go test -run '^$$' -fuzz '^FuzzDecodeRequest$$' -fuzztime $(FUZZTIME) ./cmd/oarfish-update-helper
+	@for f in FuzzParseSignature FuzzParseChecksums FuzzParseManifest FuzzVersion FuzzInspectTar; do \
+		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./internal/relverify) || exit 1; \
+	done
 
 frontend-build:
 	cd frontend && npm run build
@@ -109,6 +112,9 @@ check-helper: test-helper build-helper ## Everything CI checks for the update he
 	scripts/check-helper-key.sh
 	scripts/check-units.sh
 	scripts/check-units.sh --self-test
+
+test-relverify-producer: ## relverify accepts what scripts/bundlegen produces, both bundle shapes, signed with a throwaway minisign key (needs minisign and bash; the signing job of CI runs it)
+	cd backend && OARFISH_RELVERIFY_PRODUCER=1 go test -race -count=1 -run '^TestProducerCompatibility$$' -v ./internal/relverify
 
 clean: ## Remove build outputs (keeps the tracked embed placeholder)
 	rm -rf bin dist build
