@@ -24,10 +24,13 @@ var hookAfterLstat func(root *os.Root, name string)
 // is therefore checked with Lstat first, which does not follow the last
 // element, then opened with O_NONBLOCK (a FIFO can not block the open) and
 // O_NOFOLLOW (kept for the platforms and versions that honour it), and the
-// opened descriptor must be the same regular file as the one Lstat saw. A name
-// that is swapped for a link between the two calls is refused by the
-// SameFile check; one swapped after it can only lead to another file inside
-// the root, and its bytes are hashed against the signed values anyway.
+// opened descriptor must be the same regular file as the one Lstat saw. These
+// checks are defence in depth: SameFile compares device and inode and can not
+// detect inode reuse (a file created right after a removal may get the inode
+// of the removed one), and a link to the very file that was checked is
+// accepted. The integrity boundary is the verification of the bytes that the
+// caller reads from the returned descriptor, which is never opened again by
+// name; other bytes fail the signed hashes.
 func openRegular(root *os.Root, name string) (*os.File, os.FileInfo, error) {
 	before, err := root.Lstat(name)
 	if err != nil {
