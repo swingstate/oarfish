@@ -65,7 +65,9 @@ fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash, update-helper
 		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./internal/metrics/parse) || exit 1; \
 	done
 	cd backend && go test -run '^$$' -fuzz '^FuzzParsePHC$$' -fuzztime $(FUZZTIME) ./internal/auth
-	cd backend && go test -run '^$$' -fuzz '^FuzzDecodeRequest$$' -fuzztime $(FUZZTIME) ./cmd/oarfish-update-helper
+	@for f in FuzzDecodeRequest FuzzDecodeState; do \
+		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./cmd/oarfish-update-helper) || exit 1; \
+	done
 	@for f in FuzzParseSignature FuzzParseChecksums FuzzParseManifest FuzzVersion FuzzInspectTar; do \
 		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./internal/relverify) || exit 1; \
 	done

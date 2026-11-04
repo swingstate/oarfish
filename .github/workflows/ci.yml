@@ -71,7 +71,9 @@ jobs:
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/metrics/parse
           done
           go test -run '^$' -fuzz '^FuzzParsePHC$' -fuzztime 5s ./internal/auth
-          go test -run '^$' -fuzz '^FuzzDecodeRequest$' -fuzztime 5s ./cmd/oarfish-update-helper
+          for f in FuzzDecodeRequest FuzzDecodeState; do
+            go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./cmd/oarfish-update-helper
+          done
           for f in FuzzParseSignature FuzzParseChecksums FuzzParseManifest FuzzVersion FuzzInspectTar; do
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/relverify
           done
