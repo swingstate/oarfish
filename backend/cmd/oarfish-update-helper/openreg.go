@@ -10,6 +10,11 @@ import (
 // directory, a FIFO, a socket or a device.
 var errNotRegular = errors.New("not a regular file")
 
+// hookAfterLstat is a test seam between the Lstat and the open of openRegular,
+// so that a test can swap the name at exactly that instant. It is nil in
+// production and set by tests only.
+var hookAfterLstat func(root *os.Root, name string)
+
 // openRegular opens a regular file below root for reading.
 //
 // os.Root.OpenFile does not honour O_NOFOLLOW for the last path element: it
@@ -30,6 +35,9 @@ func openRegular(root *os.Root, name string) (*os.File, os.FileInfo, error) {
 	}
 	if !before.Mode().IsRegular() {
 		return nil, nil, errNotRegular
+	}
+	if hookAfterLstat != nil {
+		hookAfterLstat(root, name)
 	}
 	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {

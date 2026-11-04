@@ -371,3 +371,48 @@ func TestCacheOpenErrorMapping(t *testing.T) {
 		}
 	}
 }
+
+// The name is swapped between the Lstat and the open: a FIFO must not block
+// the open (O_NONBLOCK), and neither a link nor another file is read (the
+// descriptor must be the file that Lstat saw).
+func TestCacheFileSwappedBetweenLstatAndOpen(t *testing.T) {
+	for _, kind := range []string{"fifo", "symlink inside", "another regular file"} {
+		t.Run(kind, func(t *testing.T) {
+			v := newTenv(t)
+			v.stageable("1.1.0")
+			dir := filepath.Join(v.cacheDir, "update", "1.1.0")
+			swapped := false
+			hookAfterLstat = func(root *os.Root, name string) {
+				if !strings.HasSuffix(name, "/"+nameManifest) || swapped {
+					return
+				}
+				swapped = true
+				path := filepath.Join(root.Name(), name)
+				data, _ := os.ReadFile(path)
+				os.Remove(path)
+				switch kind {
+				case "fifo":
+					syscall.Mkfifo(path, 0o644)
+				case "symlink inside":
+					os.WriteFile(filepath.Join(dir, "real"), data, 0o644)
+					os.Symlink("real", path)
+				case "another regular file":
+					os.WriteFile(path, data, 0o644)
+				}
+			}
+			defer func() { hookAfterLstat = nil }()
+			before := openFDs(t)
+			wantErrCode(t, v.stageWithin2s("1.1.0"), codeNotFound)
+			if !swapped {
+				t.Fatal("the hook did not run")
+			}
+			if after := openFDs(t); after != before {
+				t.Fatalf("descriptors: %d before, %d after", before, after)
+			}
+			v.wantClean()
+			if len(v.fs.Ops()) != 0 {
+				t.Fatal("wrote after a refused cache file")
+			}
+		})
+	}
+}

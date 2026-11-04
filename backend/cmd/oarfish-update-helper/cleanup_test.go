@@ -265,6 +265,14 @@ func TestCleanupAfterFailuresDuringExtraction(t *testing.T) {
 			before := snapshot(t, v.root)
 			wantErrCode(t, v.stage("1.1.0"), tt.want)
 			wantNothingLeft(t, v, before)
+			// A failure of the first run (nil sink) is found before the sink wrote a file.
+			if strings.Contains(tt.name, "(first run)") {
+				for _, op := range v.fs.Ops() {
+					if op.Kind == "create" && strings.Contains(op.Path, "/release/") {
+						t.Fatalf("the sink was used although the verifying run fails: %v", op)
+					}
+				}
+			}
 			if got := v.journal.String(); !strings.Contains(got, "phase=staging") || !strings.Contains(got, "phase=idle to=1.1.0 from=1.0.0 cid="+testCID+" result="+string(tt.want)) {
 				t.Fatalf("journal:\n%s", got)
 			}
