@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"schema_version\":1,\"helper_version\":\"0.2.0\",\"previous_version\":\"0.9.0\",\"transaction\":{\"id\":\"00000000000000aa\",\"phase\":\"staged\",\"to\":\"1.1.0\",\"from\":\"1.0.0\",\"correlation_id\":\"0123456789abcdef\",\"staged_at_uptime_s\":1234},\"cooldown\":{\"refuse_version\":\"1.1.0\",\"refuse_until_uptime_s\":2000,\"refuse_set_at_uptime_s\":1100},\"last_result\":{\"outcome\":\"aborted\",\"reason_code\":\"stage_expired\",\"to\":\"1.0.0\",\"finished_at\":\"2023-11-14T22:13:20Z\",\"acknowledged\":true}}")

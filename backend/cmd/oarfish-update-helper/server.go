@@ -25,7 +25,7 @@ var errListener = errors.New("listener failed")
 type server struct {
 	uid             uint32
 	peerUID         func(net.Conn) (uint32, error)
-	status          statusSource
+	h               *handler
 	idle            time.Duration
 	requestDeadline time.Duration
 	maxConnections  int
@@ -38,11 +38,11 @@ type server struct {
 	lastActive time.Time
 }
 
-func newServer(o options, uid uint32, status statusSource) *server {
+func newServer(o options, uid uint32, h *handler) *server {
 	return &server{
 		uid:             uid,
 		peerUID:         o.peerUID,
-		status:          status,
+		h:               h,
 		idle:            o.idle,
 		requestDeadline: o.requestDeadline,
 		maxConnections:  o.maxConnections,
@@ -121,39 +121,13 @@ func (s *server) handle(conn net.Conn) {
 	if line, err := readRequest(conn); err != nil {
 		out = errorBody(codeBadRequest)
 	} else {
-		out = s.respond(line)
+		out = s.h.respond(line)
 	}
 	conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 	if _, err := conn.Write(out); err != nil {
 		return
 	}
 	drain(conn)
-}
-
-// respond answers one request line. Only `status` is answered. stage,
-// activate, discard and ack are in the closed list of U2 but are not
-// implemented in G6.3a, so they get bad_request like an unknown op; they move
-// to their own handlers in G6.5 and G6.6.
-func (s *server) respond(line []byte) []byte {
-	req, err := decodeRequest(line)
-	if err != nil {
-		return errorBody(codeBadRequest)
-	}
-	switch *req.Op {
-	case opStatus:
-		body, code := s.status.body()
-		if code != "" {
-			return errorBody(code)
-		}
-		if len(body) > s.maxResponse {
-			return errorBody(codeInternal)
-		}
-		return body
-	case opStage, opActivate, opDiscard, opAck:
-		return errorBody(codeBadRequest)
-	default:
-		return errorBody(codeBadRequest)
-	}
 }
 
 // drain finishes the exchange: it signals the end of the answer, then reads

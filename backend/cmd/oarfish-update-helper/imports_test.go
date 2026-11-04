@@ -13,12 +13,15 @@ const modulePath = "github.com/swingstate/oarfish/backend/"
 
 // The helper is a root process: nothing that is not needed may be compiled
 // into it (ADR 0010 U1). Besides the standard library it may use this
-// repository's version and trustkey packages and nothing else; in particular
-// no net/http, no os/exec, no third-party module and nothing of the service's
-// web, auth, audit or server packages.
+// repository's version, trustkey and relverify packages and nothing else; in
+// particular no net/http, no os/exec, no third-party module (no golang.org/x
+// package: the copies vendored inside the standard library are named
+// vendor/golang.org/x and are part of it) and nothing of the service's web,
+// auth, audit, clock, securefile or server packages.
 func TestImports(t *testing.T) {
 	allowed := map[string]bool{
 		modulePath + "cmd/oarfish-update-helper": true,
+		modulePath + "internal/relverify":        true,
 		modulePath + "internal/trustkey":         true,
 		modulePath + "internal/version":          true,
 	}
@@ -45,6 +48,9 @@ func TestImports(t *testing.T) {
 					t.Fatalf("unexpected line %q", line)
 				}
 				seen++
+				if strings.HasPrefix(path, "golang.org/x") {
+					t.Errorf("the helper depends on %s", path)
+				}
 				for _, f := range forbidden {
 					if path == f || strings.HasPrefix(path, f+"/") {
 						t.Errorf("the helper depends on %s", path)

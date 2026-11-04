@@ -18,7 +18,8 @@ const (
 	maxResponseBytes = 8 << 10
 )
 
-// The closed list of requests (U2). Only opStatus is answered in the stub.
+// The closed list of requests (U2). status, stage and discard are answered;
+// activate and ack are bad_request until G6.6.
 const (
 	opStatus   = "status"
 	opStage    = "stage"
@@ -31,12 +32,12 @@ const (
 // the cause is not kept: an error must never echo the request.
 var errMalformed = errors.New("malformed request")
 
-// request is the stub's request: `v` and `op`. The arguments of stage,
-// activate, discard and ack (U2) are added with those requests in G6.5/G6.6;
-// until then they are unknown fields and the request is bad_request.
+// request is a decoded request. Only the members that the op takes are set.
 type request struct {
-	V  *int    `json:"v"`
-	Op *string `json:"op"`
+	V             int
+	Op            string
+	Version       string // stage, discard
+	CorrelationID string // stage
 }
 
 // readRequest reads one newline-terminated request of at most maxRequestBytes
@@ -64,61 +65,118 @@ func readRequest(r io.Reader) ([]byte, error) {
 	return nil, errMalformed
 }
 
+// opKeys is the exact member set of each op (U2): a request has these members
+// and no others. activate and ack are in the closed list but not implemented
+// (G6.6): they have no member set, so they are bad_request.
+var opKeys = map[string][]string{
+	opStatus:  {"v", "op"},
+	opStage:   {"v", "op", "version", "correlation_id"},
+	opDiscard: {"v", "op", "version"},
+}
+
 // decodeRequest is the strict decoder of U2. It rejects, with errMalformed:
-// anything that is not one JSON object, unknown fields
-// (DisallowUnknownFields), trailing data after the object, a missing or null
-// `v` or `op`, a `v` that is not an integer in the accepted range, and key
-// names that encoding/json would match loosely (see checkKeys).
+// anything that is not one JSON object, a member that is not one of the four
+// names (also a name in another letter case), a repeated member, trailing data
+// after the object, null, a member of the wrong type, a `v` that is not an
+// integer in the accepted range, an op that is unknown or not implemented, a
+// member set that is not exactly the op's, a version that does not match the
+// pattern of U2, and a correlation_id that is not 16 lowercase hexadecimal
+// digits.
 func decodeRequest(line []byte) (request, error) {
-	if len(line) >= maxRequestBytes || checkKeys(line) != nil {
+	if len(line) >= maxRequestBytes {
 		return request{}, errMalformed
 	}
-	dec := json.NewDecoder(bytes.NewReader(line))
-	dec.DisallowUnknownFields()
+	m, err := requestMembers(line)
+	if err != nil {
+		return request{}, err
+	}
 	var r request
-	if err := dec.Decode(&r); err != nil {
+	var v *int
+	var op *string
+	if json.Unmarshal(m["v"], &v) != nil || v == nil || *v < protocolMin || *v > protocolMax {
 		return request{}, errMalformed
 	}
-	if _, err := dec.Token(); err != io.EOF {
-		return request{}, errMalformed // trailing data
-	}
-	if r.V == nil || r.Op == nil || *r.V < protocolMin || *r.V > protocolMax {
+	if json.Unmarshal(m["op"], &op) != nil || op == nil {
 		return request{}, errMalformed
+	}
+	r.V, r.Op = *v, *op
+	want, ok := opKeys[r.Op]
+	if !ok || len(m) != len(want) {
+		return request{}, errMalformed
+	}
+	for _, k := range want {
+		if _, present := m[k]; !present {
+			return request{}, errMalformed
+		}
+	}
+	if _, has := m["version"]; has {
+		var ver *string
+		if json.Unmarshal(m["version"], &ver) != nil || ver == nil || !validVersion(*ver) {
+			return request{}, errMalformed
+		}
+		r.Version = *ver
+	}
+	if _, has := m["correlation_id"]; has {
+		var cid *string
+		if json.Unmarshal(m["correlation_id"], &cid) != nil || cid == nil || !isHex(16)(*cid) {
+			return request{}, errMalformed
+		}
+		r.CorrelationID = *cid
 	}
 	return r, nil
 }
 
-// checkKeys closes two gaps of encoding/json: it matches object keys
-// case-insensitively ("OP" would set `op`) and lets the last of two equal keys
-// win. The request must be an object whose keys are exactly the known names,
-// each at most once.
-func checkKeys(line []byte) error {
+// requestMembers splits the line into its members. It closes two gaps of
+// encoding/json: it matches object keys case-insensitively ("OP" would set
+// `op`) and lets the last of two equal keys win. The request must be one
+// object whose keys are exactly known names, each at most once, with nothing
+// after it.
+func requestMembers(line []byte) (map[string]json.RawMessage, error) {
 	dec := json.NewDecoder(bytes.NewReader(line))
 	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
-		return errMalformed
+		return nil, errMalformed
 	}
-	seen := map[string]bool{}
+	m := map[string]json.RawMessage{}
 	for dec.More() {
 		t, err := dec.Token()
 		key, ok := t.(string)
-		if err != nil || !ok || (key != "v" && key != "op") || seen[key] {
-			return errMalformed
+		if err != nil || !ok {
+			return nil, errMalformed
 		}
-		seen[key] = true
+		switch key {
+		case "v", "op", "version", "correlation_id":
+		default:
+			return nil, errMalformed
+		}
+		if _, dup := m[key]; dup {
+			return nil, errMalformed
+		}
 		var value json.RawMessage
 		if err := dec.Decode(&value); err != nil {
-			return errMalformed
+			return nil, errMalformed
 		}
+		m[key] = value
 	}
-	return nil
+	if t, err := dec.Token(); err != nil || t != json.Delim('}') {
+		return nil, errMalformed
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errMalformed // trailing data
+	}
+	if _, ok := m["v"]; !ok {
+		return nil, errMalformed
+	}
+	if _, ok := m["op"]; !ok {
+		return nil, errMalformed
+	}
+	return m, nil
 }
 
 // errorCode is one of the closed codes of U2.
 type errorCode string
 
-// The closed set of error codes (U2). The stub produces bad_request, io_error
-// and internal; the others are listed because the set is closed, and
-// TestErrorCodesMatchTheADR compares the list with the ADR.
+// The closed set of error codes (U2). TestErrorCodesMatchTheADR compares the
+// list with the ADR.
 const (
 	codeBadRequest           errorCode = "bad_request"
 	codeBusy                 errorCode = "busy"
@@ -169,27 +227,52 @@ var errorTexts = map[errorCode]string{
 	codeInternal:             "An internal error occurred.",
 }
 
-// errorResponse is the answer to a request that failed.
+// errorResponse is the answer to a request that failed. Differs is set only
+// for installer_required: the names, from the closed list of U2, of the
+// components of the release that differ from the installed ones.
 type errorResponse struct {
 	V       int       `json:"v"`
 	OK      bool      `json:"ok"`
 	Error   errorCode `json:"error"`
 	Message string    `json:"message"`
+	Differs []string  `json:"differs,omitempty"`
 }
 
-// statusResponse is the answer to `status` in the stub: a subset of U2.
-// Field names follow the ADR text (state.json, manifest) and may only be
-// extended additively (U15 rule 6). See docs/ARCHITECTURE.md for each field.
+// statusResponse is the answer to `status`: the members of the stub and the
+// additive members of G6.5. Field names follow the ADR text (state.json,
+// manifest) and may only be extended additively (U15 rule 6). See
+// docs/ARCHITECTURE.md for each field.
 type statusResponse struct {
+	V                int             `json:"v"`
+	OK               bool            `json:"ok"`
+	ProtocolMin      int             `json:"protocol_min"`
+	ProtocolMax      int             `json:"protocol_max"`
+	HelperVersion    string          `json:"helper_version"`
+	KeyID            string          `json:"key_id"`
+	InstalledVersion string          `json:"installed_version"`
+	Phase            string          `json:"phase"`
+	StagedVersion    string          `json:"staged_version"`
+	PreviousVersion  string          `json:"previous_version"`
+	LastResult       *jsonLastResult `json:"last_result"`
+	NeedsAttention   bool            `json:"needs_attention"`
+	FreeBytes        uint64          `json:"free_bytes"`
+}
+
+// stageResponse is the answer to a successful `stage`. ComponentsDiffer is
+// always false in G6.5: a difference is installer_required. The member exists
+// for G6.10.
+type stageResponse struct {
 	V                int    `json:"v"`
 	OK               bool   `json:"ok"`
-	ProtocolMin      int    `json:"protocol_min"`
-	ProtocolMax      int    `json:"protocol_max"`
-	HelperVersion    string `json:"helper_version"`
-	KeyID            string `json:"key_id"`
-	InstalledVersion string `json:"installed_version"`
-	Phase            string `json:"phase"`
-	FreeBytes        uint64 `json:"free_bytes"`
+	Version          string `json:"version"`
+	Commit           string `json:"commit"`
+	ComponentsDiffer bool   `json:"components_differ"`
+}
+
+// okResponse is the answer to a successful `discard`.
+type okResponse struct {
+	V  int  `json:"v"`
+	OK bool `json:"ok"`
 }
 
 // encode returns the newline-terminated JSON of v. The values it is used for
@@ -204,4 +287,9 @@ func encode(v any) []byte {
 
 func errorBody(c errorCode) []byte {
 	return encode(errorResponse{V: protocolMax, OK: false, Error: c, Message: errorTexts[c]})
+}
+
+// differsBody is the installer_required answer with the differing names.
+func differsBody(names []string) []byte {
+	return encode(errorResponse{V: protocolMax, OK: false, Error: codeInstallerRequired, Message: errorTexts[codeInstallerRequired], Differs: names})
 }

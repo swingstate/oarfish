@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"schema_version\":1,\"transaction\":{\"staged_at_uptime_s\":-1}}")

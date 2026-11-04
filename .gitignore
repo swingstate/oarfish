@@ -17,6 +17,11 @@
 bin/
 /dist/
 /build/
+# A plain `go build` inside cmd/oarfish-update-helper writes the program next to
+# its sources; the Makefile and scripts/build-helper.sh write to bin/.
+/backend/cmd/oarfish-update-helper/oarfish-update-helper
+/backend/cmd/oarfish-update-helper/oarfish-update-helper.exe
+/backend/cmd/oarfish-update-helper/*.test
 
 # State of the development backend (make dev): account, setup token, audit
 /.dev-state/

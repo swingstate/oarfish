@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"schema_version\":1,\"future\":{\"a\":[1,2,3]},\"transaction\":{\"phase\":\"c_verified\",\"later\":true}}")
