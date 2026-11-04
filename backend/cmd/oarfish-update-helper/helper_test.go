@@ -50,6 +50,9 @@ func testRoot(t *testing.T) string {
 // testOptions are options with a fake peer check that reports testUID.
 func testOptions(root string) options {
 	return options{
+		stateDir:        root + "-state-does-not-exist",
+		cacheDir:        root + "-cache-does-not-exist",
+		arch:            "arm64",
 		getenv:          func(string) string { return "" },
 		pid:             os.Getpid(),
 		lookupUID:       func(string) (uint32, error) { return testUID, nil },
@@ -75,6 +78,7 @@ func startServer(t *testing.T, mutate func(*options)) *testServer {
 	t.Helper()
 	root := testRoot(t)
 	o := testOptions(root)
+	o.stateDir = shortDir(t)
 	if mutate != nil {
 		mutate(&o)
 	}
@@ -87,7 +91,10 @@ func startServer(t *testing.T, mutate func(*options)) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := newServer(o, uid, statusSource{helperVersion: o.helperVersion, keyID: testKeyID, root: o.root})
+	key := newTestKey(t, "release key")
+	h := newHandler(o, key.key)
+	h.keyID = testKeyID
+	srv := newServer(o, uid, h)
 	ts := &testServer{path: path, srv: srv, done: make(chan error, 1), ln: ln}
 	go func() { ts.done <- srv.serve(ln) }()
 	t.Cleanup(func() {
@@ -136,13 +143,36 @@ type reply struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
 
-	ProtocolMin      int    `json:"protocol_min"`
-	ProtocolMax      int    `json:"protocol_max"`
-	HelperVersion    string `json:"helper_version"`
-	KeyID            string `json:"key_id"`
-	InstalledVersion string `json:"installed_version"`
-	Phase            string `json:"phase"`
-	FreeBytes        uint64 `json:"free_bytes"`
+	Differs []string `json:"differs"`
+
+	// stage
+	Version          string `json:"version"`
+	Commit           string `json:"commit"`
+	ComponentsDiffer bool   `json:"components_differ"`
+
+	// status
+	ProtocolMin      int          `json:"protocol_min"`
+	ProtocolMax      int          `json:"protocol_max"`
+	HelperVersion    string       `json:"helper_version"`
+	KeyID            string       `json:"key_id"`
+	InstalledVersion string       `json:"installed_version"`
+	Phase            string       `json:"phase"`
+	StagedVersion    string       `json:"staged_version"`
+	PreviousVersion  string       `json:"previous_version"`
+	LastResult       *lastResult2 `json:"last_result"`
+	NeedsAttention   bool         `json:"needs_attention"`
+	FreeBytes        uint64       `json:"free_bytes"`
+}
+
+type lastResult2 struct {
+	Outcome       string `json:"outcome"`
+	ReasonCode    string `json:"reason_code"`
+	To            string `json:"to"`
+	From          string `json:"from"`
+	CorrelationID string `json:"correlation_id"`
+	TransactionID string `json:"transaction_id"`
+	Acknowledged  bool   `json:"acknowledged"`
+	FinishedAt    string `json:"finished_at"`
 }
 
 // parseReply requires exactly one newline-terminated JSON object.

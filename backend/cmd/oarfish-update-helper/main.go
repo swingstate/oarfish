@@ -1,17 +1,18 @@
 // Command oarfish-update-helper is the privileged update helper of ADR 0010.
 //
-// This is the stub of step G6.3a. It is a repository artifact only: no bundle,
-// installer or unit installs it yet (G6.3b). It answers the request `status`
-// and nothing else; `stage`, `activate`, `discard` and `ack` are known names
-// that are answered with bad_request until G6.5 and G6.6, and `recover`
-// touches nothing.
+// This is the helper core of step G6.5: the strict request decoder, the peer
+// check, `status`, `stage` and `discard`, the state file and the shared lock.
+// `activate` and `ack` are known names that are answered with bad_request
+// until G6.6, and `recover` still touches nothing (G6.6). Nothing here has
+// been run on a device.
 //
 // The helper has exactly two subcommands. `serve` runs only when started by
 // socket activation (U1, U2); `recover` is the boot-time recovery (U7).
 //
-// It is standard library only. It must not import net/http, os/exec, a
-// third-party module or the service's web, auth, audit or server packages;
-// TestImports checks this against `go list -deps`.
+// It is standard library plus this repository's relverify, trustkey and version
+// packages. It must not import net/http, os/exec, a third-party module or the
+// service's web, auth, audit, clock, securefile or server packages; TestImports
+// checks this against `go list -deps`.
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"net"
 	"os"
 	"os/user"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"time"
@@ -61,7 +63,11 @@ type options struct {
 	pid             int
 	lookupUID       func(name string) (uint32, error)
 	peerUID         func(net.Conn) (uint32, error)
-	root            string
+	root            string // /opt/oarfish
+	stateDir        string // /var/lib/oarfish-update
+	cacheDir        string // /var/cache/oarfish
+	arch            string
+	journal         io.Writer
 	helperVersion   string
 	idle            time.Duration
 	requestDeadline time.Duration
@@ -76,6 +82,10 @@ func productionOptions() options {
 		lookupUID:       lookupUID,
 		peerUID:         peerUID,
 		root:            releaseRoot,
+		stateDir:        stateDirPath,
+		cacheDir:        cacheDirPath,
+		arch:            runtime.GOARCH,
+		journal:         os.Stderr,
 		helperVersion:   version.Version,
 		idle:            idleExit,
 		requestDeadline: requestDeadline,
@@ -122,7 +132,7 @@ func serve(stderr io.Writer, o options) int {
 		fmt.Fprintln(stderr, "oarfish-update-helper: the embedded release key is unusable")
 		return 1
 	}
-	s := newServer(o, uid, statusSource{helperVersion: o.helperVersion, keyID: key.ID(), root: o.root})
+	s := newServer(o, uid, newHandler(o, key))
 	if err := s.serve(ln); err != nil {
 		fmt.Fprintln(stderr, "oarfish-update-helper: the listening socket failed")
 		return 1

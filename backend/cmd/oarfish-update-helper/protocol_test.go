@@ -63,12 +63,12 @@ func TestProtocol(t *testing.T) {
 		{name: "op missing", in: []byte(`{"v":1}` + "\n"), want: codeBadRequest},
 		{name: "status with trailing space in the name", in: []byte(`{"v":1,"op":"status "}` + "\n"), want: codeBadRequest},
 
-		// The four known requests that the stub does not implement.
-		{name: "stage (not implemented)", in: []byte(`{"v":1,"op":"stage"}` + "\n"), want: codeBadRequest},
-		{name: "stage with arguments (not implemented)", in: []byte(`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcdef"}` + "\n"), want: codeBadRequest},
+		// activate and ack are in the closed list and not implemented in G6.5.
 		{name: "activate (not implemented)", in: []byte(`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":false}` + "\n"), want: codeBadRequest},
-		{name: "discard (not implemented)", in: []byte(`{"v":1,"op":"discard","version":"1.2.3"}` + "\n"), want: codeBadRequest},
+		{name: "activate without arguments (not implemented)", in: []byte(`{"v":1,"op":"activate"}` + "\n"), want: codeBadRequest},
 		{name: "ack (not implemented)", in: []byte(`{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}` + "\n"), want: codeBadRequest},
+		{name: "ack without arguments (not implemented)", in: []byte(`{"v":1,"op":"ack"}` + "\n"), want: codeBadRequest},
+		{name: "status with an argument", in: []byte(`{"v":1,"op":"status","version":"1.2.3"}` + "\n"), want: codeBadRequest},
 
 		{name: "array", in: []byte(`[{"v":1,"op":"status"}]` + "\n"), want: codeBadRequest},
 		{name: "empty array", in: []byte("[]\n"), want: codeBadRequest},
@@ -154,17 +154,27 @@ func TestSlowSenderWithinTheDeadlineIsServed(t *testing.T) {
 
 func TestResponseSizeBound(t *testing.T) {
 	// The real status answer is far below the bound, even with the longest
-	// version the pattern allows.
+	// version the pattern allows in every version member and a last result.
 	long := "1.2." + strings.Repeat("9", 60) // 64 characters
-	src := statusSource{helperVersion: long, keyID: testKeyID, root: testRoot(t)}
-	body, code := src.body()
-	if code != "" || len(body) > maxResponseBytes/4 {
-		t.Fatalf("status answer: code %q, %d bytes", code, len(body))
+	v := newTenv(t)
+	v.h.helperVersion = long
+	st := freshState(long)
+	st.Previous = long
+	st.Txn = txn{ID: "0123456789abcdef", Phase: phaseStaged, To: long, From: long, CorrelationID: testCID, StagedAtUptimeS: 1000}
+	st.Last = &lastResult{TransactionID: testCID, To: long, From: long, Outcome: "components_rolled_back",
+		ReasonCode: strings.Repeat("a", 32), CorrelationID: testCID, FinishedAt: "2023-11-14T22:13:20.123456789+01:00"}
+	v.writeState(st)
+	body := v.request([]byte(okStatus))
+	if r := parseReply(t, body); !r.OK || len(body) > maxResponseBytes/4 {
+		t.Fatalf("status answer: %d bytes: %s", len(body), body)
 	}
 	for c := range errorTexts {
 		if n := len(errorBody(c)); n > 256 {
 			t.Errorf("error answer %s is %d bytes", c, n)
 		}
+	}
+	if n := len(differsBody(componentNames)); n > 512 {
+		t.Errorf("installer_required answer is %d bytes", n)
 	}
 
 	// A status answer above the bound is replaced by an error, not truncated.
@@ -177,28 +187,25 @@ func TestResponseSizeBound(t *testing.T) {
 }
 
 func TestStatusAnswer(t *testing.T) {
-	root := testRoot(t)
-	src := statusSource{helperVersion: "test-1", keyID: testKeyID, root: root}
-	body, code := src.body()
-	if code != "" {
-		t.Fatal(code)
-	}
-	free, err := freeBytes(root)
+	v := newTenv(t)
+	free, err := freeBytes(v.root)
 	if err != nil {
 		t.Fatal(err)
+	}
+	body := v.request([]byte(okStatus))
+	// Exactly these members, in this order.
+	want := `{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"test-1",` +
+		`"key_id":"11f1c52777090bfc","installed_version":"1.0.0","phase":"idle","staged_version":"",` +
+		`"previous_version":"","last_result":null,"needs_attention":false,"free_bytes":`
+	if got := string(body); !strings.HasPrefix(got, want) || !regexp.MustCompile(`^\d+\}\n$`).MatchString(got[len(want):]) {
+		t.Fatalf("status answer:\n got %s\nwant %s<digits>}", got, want)
 	}
 	var m map[string]any
 	if err := json.Unmarshal(body, &m); err != nil {
 		t.Fatal(err)
 	}
-	// Exactly these members, in this order.
-	want := `{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"test-1",` +
-		`"key_id":"11f1c52777090bfc","installed_version":"0.1.0-alpha.8","phase":"idle","free_bytes":`
-	if got := string(body); !strings.HasPrefix(got, want) || !regexp.MustCompile(`^\d+\}\n$`).MatchString(got[len(want):]) {
-		t.Fatalf("status answer:\n got %s\nwant %s<digits>}", got, want)
-	}
-	if len(m) != 9 {
-		t.Fatalf("%d members, want 9", len(m))
+	if len(m) != 13 {
+		t.Fatalf("%d members, want 13", len(m))
 	}
 	if m["free_bytes"].(float64) <= 0 || free == 0 {
 		t.Fatalf("free_bytes %v", m["free_bytes"])
@@ -206,14 +213,13 @@ func TestStatusAnswer(t *testing.T) {
 }
 
 func TestStatusWithoutInstalledVersionAndWithUnreadableRoot(t *testing.T) {
-	empty := shortDir(t)
-	body, code := statusSource{helperVersion: "x", keyID: testKeyID, root: empty}.body()
-	if code != "" || !strings.Contains(string(body), `"installed_version":""`) {
-		t.Fatalf("code %q, body %q", code, body)
+	v := newTenv(t)
+	os.Remove(v.root + "/current")
+	if r := v.status(); r.InstalledVersion != "" || !r.OK {
+		t.Fatalf("status without current: %+v", r)
 	}
-	if _, code := (statusSource{root: empty + "/does-not-exist"}).body(); code != codeIOError {
-		t.Fatalf("code %q, want io_error", code)
-	}
+	v.h.root = v.root + "/does-not-exist"
+	wantErrCode(t, v.request([]byte(okStatus)), codeIOError)
 }
 
 func TestInstalledVersion(t *testing.T) {
@@ -328,6 +334,14 @@ func TestRequestNamesMatchTheADR(t *testing.T) {
 // Seeds run as a normal test; `go test -fuzz FuzzDecodeRequest` explores.
 func FuzzDecodeRequest(f *testing.F) {
 	seeds := []string{
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcdef"}` + "\n",
+		`{"v":1,"op":"discard","version":"0.1.0-alpha.8"}` + "\n",
+		`{"v":1,"op":"stage","version":"1.2.3"}`, `{"v":1,"op":"discard","version":"../x"}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":true}`,
+		`{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789ABCDEF"}`,
+		`{"v":1,"op":"stage","Version":"1.2.3","correlation_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"stage","version":null,"correlation_id":"0123456789abcdef"}`,
 		okStatus, `{"v":1,"op":"status"}`, "\n", "", "{}", "[]", "null", `"x"`, "42",
 		`{"v":1,"op":"status","x":1}` + "\n", `{"v":1,"op":"status"}{}` + "\n",
 		`{"v":2,"op":"status"}` + "\n", `{"v":1,"op":"stage","version":"1.2.3"}` + "\n",
@@ -356,18 +370,150 @@ func FuzzDecodeRequest(f *testing.F) {
 			}
 			return
 		}
-		if req.V == nil || req.Op == nil || *req.V != 1 {
+		if req.V != 1 || (req.Op != opStatus && req.Op != opStage && req.Op != opDiscard) {
 			t.Fatalf("accepted a request without a valid v and op: %q", data)
+		}
+		if (req.Op != opStatus) != validVersion(req.Version) || (req.Op == opStage) != isHex(16)(req.CorrelationID) {
+			t.Fatalf("accepted arguments that do not fit the op: %q -> %+v", data, req)
 		}
 		// An accepted request is one plain object: its canonical form is
 		// accepted again and means the same.
-		canon, err := json.Marshal(req)
+		m := map[string]any{"v": req.V, "op": req.Op}
+		if req.Version != "" {
+			m["version"] = req.Version
+		}
+		if req.CorrelationID != "" {
+			m["correlation_id"] = req.CorrelationID
+		}
+		canon, err := json.Marshal(m)
 		if err != nil {
 			t.Fatal(err)
 		}
 		again, err := decodeRequest(canon)
-		if err != nil || *again.V != *req.V || *again.Op != *req.Op {
+		if err != nil || again != req {
 			t.Fatalf("canonical form %q of an accepted request is not accepted again (%v)", canon, err)
 		}
 	})
+}
+
+// ---- the per-op decoder (G6.5) --------------------------------------------
+
+func TestDecodeRequestPerOp(t *testing.T) {
+	const cid = `"0123456789abcdef"`
+	good := map[string]request{
+		`{"v":1,"op":"status"}`: {V: 1, Op: "status"},
+		`{"op":"status","v":1}`: {V: 1, Op: "status"},
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":` + cid + `}`:         {V: 1, Op: "stage", Version: "1.2.3", CorrelationID: "0123456789abcdef"},
+		`{"correlation_id":` + cid + `,"version":"0.1.0-alpha.8","op":"stage","v":1}`: {V: 1, Op: "stage", Version: "0.1.0-alpha.8", CorrelationID: "0123456789abcdef"},
+		`{"v":1,"op":"discard","version":"10.20.30-rc.1"}`:                            {V: 1, Op: "discard", Version: "10.20.30-rc.1"},
+	}
+	for in, want := range good {
+		got, err := decodeRequest([]byte(in))
+		if err != nil || got != want {
+			t.Errorf("%s: got %+v, %v; want %+v", in, got, err, want)
+		}
+	}
+
+	bad := []string{
+		// status accepts exactly v and op
+		`{"v":1,"op":"status","version":"1.2.3"}`,
+		`{"v":1,"op":"status","correlation_id":` + cid + `}`,
+		// stage accepts exactly v, op, version, correlation_id
+		`{"v":1,"op":"stage"}`,
+		`{"v":1,"op":"stage","version":"1.2.3"}`,
+		`{"v":1,"op":"stage","correlation_id":` + cid + `}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":` + cid + `,"components_confirmed":true}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":` + cid + `,"transaction_id":` + cid + `}`,
+		// discard accepts exactly v, op, version
+		`{"v":1,"op":"discard"}`,
+		`{"v":1,"op":"discard","version":"1.2.3","correlation_id":` + cid + `}`,
+		// rules of the stub decoder, for the new members too
+		`{"v":1,"op":"stage","version":"1.2.3","version":"1.2.4","correlation_id":` + cid + `}`,
+		`{"v":1,"op":"stage","Version":"1.2.3","correlation_id":` + cid + `}`,
+		`{"v":1,"op":"stage","version":"1.2.3","CORRELATION_ID":` + cid + `}`,
+		`{"v":1,"op":"stage","version":null,"correlation_id":` + cid + `}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":null}`,
+		`{"v":1,"op":"stage","version":1,"correlation_id":` + cid + `}`,
+		`{"v":1,"op":"stage","version":["1.2.3"],"correlation_id":` + cid + `}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":16}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":` + cid + `} {}`,
+		`{"v":1,"op":"discard","version":"1.2.3"}x`,
+		// version rules of U2
+		`{"v":1,"op":"discard","version":""}`,
+		`{"v":1,"op":"discard","version":"v1.2.3"}`,
+		`{"v":1,"op":"discard","version":"1.2"}`,
+		`{"v":1,"op":"discard","version":"01.2.3"}`,
+		`{"v":1,"op":"discard","version":"1.2.3+build"}`,
+		`{"v":1,"op":"discard","version":"1.2.3-a..b"}`,
+		`{"v":1,"op":"discard","version":"../1.2.3"}`,
+		`{"v":1,"op":"discard","version":"1.2.3/../../x"}`,
+		`{"v":1,"op":"discard","version":"1.2.3/x"}`,
+		`{"v":1,"op":"discard","version":"1.2.3\n"}`,
+		`{"v":1,"op":"discard","version":"1.2.3 "}`,
+		`{"v":1,"op":"discard","version":"1.2.3-` + strings.Repeat("a", 59) + `"}`, // 65 characters
+		// correlation_id: exactly 16 lowercase hexadecimal digits
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":""}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcde"}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcdef0"}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789ABCDEF"}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcdeg"}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcde\n"}`,
+		// not implemented in this gate
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":` + cid + `,"components_confirmed":true}`,
+		`{"v":1,"op":"ack","transaction_id":` + cid + `}`,
+	}
+	for _, in := range bad {
+		if got, err := decodeRequest([]byte(in)); err == nil {
+			t.Errorf("accepted %s as %+v", in, got)
+		}
+	}
+	// 64 characters is the longest version.
+	long := "1.2.3-" + strings.Repeat("a", 58)
+	if _, err := decodeRequest([]byte(`{"v":1,"op":"discard","version":"` + long + `"}`)); err != nil {
+		t.Errorf("64-character version refused: %v", err)
+	}
+}
+
+// activate and ack stay bad_request in this gate, on the wire too.
+func TestActivateAndAckAreBadRequest(t *testing.T) {
+	v := newTenv(t)
+	for _, line := range []string{
+		`{"v":1,"op":"activate","version":"1.1.0","correlation_id":"0123456789abcdef","components_confirmed":false}`,
+		`{"v":1,"op":"activate","version":"1.1.0","correlation_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"ack"}`,
+	} {
+		wantErrCode(t, v.request([]byte(line+"\n")), codeBadRequest)
+	}
+	if _, ok := v.readState(); ok {
+		t.Fatal("a refused request wrote the state file")
+	}
+}
+
+func TestErrorAnswersDoNotEchoTheRequest(t *testing.T) {
+	v := newTenv(t)
+	for _, line := range []string{
+		`{"v":1,"op":"stage","version":"` + marker + `","correlation_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"` + marker + `"}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"` + marker + `"}`,
+	} {
+		raw := v.request([]byte(line + "\n"))
+		wantErrCode(t, raw, codeBadRequest)
+		if strings.Contains(string(raw), marker) {
+			t.Fatalf("echoed: %s", raw)
+		}
+	}
+}
+
+// installer_required may carry one extra member, the differing names, taken
+// from the closed list.
+func TestInstallerRequiredBodyCarriesOnlyDiffers(t *testing.T) {
+	raw := differsBody([]string{"oarfish-update-helper", "oarfish.service"})
+	want := `{"v":1,"ok":false,"error":"installer_required","message":"This release must be installed with the installer.","differs":["oarfish-update-helper","oarfish.service"]}` + "\n"
+	if string(raw) != want {
+		t.Fatalf("got %s", raw)
+	}
+	if got := string(errorBody(codeBusy)); strings.Contains(got, "differs") {
+		t.Fatalf("other errors carry no differs: %s", got)
+	}
 }

@@ -69,3 +69,34 @@ func TestProductionOptions(t *testing.T) {
 		t.Fatalf("service user %q", serviceUser)
 	}
 }
+
+func TestProductionOptionsG65(t *testing.T) {
+	o := productionOptions()
+	if o.stateDir != "/var/lib/oarfish-update" || o.cacheDir != "/var/cache/oarfish" || o.arch == "" || o.journal != os.Stderr {
+		t.Fatalf("production options: %+v", o)
+	}
+}
+
+// The production handler has no test seam set and uses the real clocks.
+func TestProductionHandlerHasNoSeams(t *testing.T) {
+	key := newTestKey(t, "k")
+	h := newHandler(productionOptions(), key.key)
+	if h.wrapFS != nil || h.onChunk != nil {
+		t.Fatal("a test seam is set in production")
+	}
+	if h.deadline.Seconds() != 180 || h.uptime == nil || h.monotonic == nil || h.wall == nil || h.newID == nil || h.freeBytes == nil {
+		t.Fatalf("handler: %+v", h)
+	}
+	if h.keyID != key.key.ID() || h.root != "/opt/oarfish" {
+		t.Fatalf("handler: %+v", h)
+	}
+	a, b := h.monotonic(), h.monotonic()
+	if b < a {
+		t.Fatal("the deadline clock goes backwards")
+	}
+	id, err := h.newID()
+	id2, _ := h.newID()
+	if err != nil || len(id) != 16 || id == id2 || !isHex(16)(id) {
+		t.Fatalf("ids %q %q: %v", id, id2, err)
+	}
+}

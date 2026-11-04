@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -171,4 +172,103 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// serveEnv serves the handler of a test environment on a fresh socket, with a
+// fake peer check.
+func serveEnv(t *testing.T, v *tenv, peer func(net.Conn) (uint32, error)) *testServer {
+	t.Helper()
+	o := testOptions(v.root)
+	o.peerUID = peer
+	path := filepath.Join(shortDir(t), "s")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := newServer(o, testUID, v.h)
+	ts := &testServer{path: path, srv: srv, done: make(chan error, 1), ln: ln}
+	go func() { ts.done <- srv.serve(ln) }()
+	t.Cleanup(func() {
+		ln.Close()
+		select {
+		case <-ts.done:
+		case <-time.After(10 * time.Second):
+			t.Error("server did not stop")
+		}
+	})
+	return ts
+}
+
+// The peer check runs before any byte of the request body is decoded. For all
+// five request names and garbage, a peer with the wrong uid gets the
+// connection closed without an answer; the state file is not read or written
+// (the file system is never even opened), and nothing is created on disk.
+func TestPeerCheckBeforeAnyRequestByte(t *testing.T) {
+	payloads := map[string][]byte{
+		"status":   []byte(okStatus),
+		"stage":    stageLine("1.1.0", testCID),
+		"discard":  discardLine("1.1.0"),
+		"activate": []byte(`{"v":1,"op":"activate","version":"1.1.0","correlation_id":"0123456789abcdef","components_confirmed":true}` + "\n"),
+		"ack":      []byte(`{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}` + "\n"),
+		"garbage":  []byte(marker + "\x00\xff{{{\n"),
+		"oversize": append(make([]byte, 5000), '\n'),
+		"empty":    {},
+	}
+	peers := map[string]func(net.Conn) (uint32, error){
+		"other uid":      func(net.Conn) (uint32, error) { return testUID + 1, nil },
+		"root":           func(net.Conn) (uint32, error) { return 0, nil },
+		"uid max":        func(net.Conn) (uint32, error) { return ^uint32(0), nil },
+		"uid unreadable": func(net.Conn) (uint32, error) { return testUID, net.ErrClosed },
+	}
+	for pname, peer := range peers {
+		for name, payload := range payloads {
+			t.Run(pname+"/"+name, func(t *testing.T) {
+				v := newTenv(t)
+				v.stageable("1.1.0")
+				// A staged release and an expired one would be touched by status.
+				opened := 0
+				v.h.wrapFS = func(inner fsops) fsops { opened++; return inner }
+				ts := serveEnv(t, v, peer)
+				snapRoot, snapState, snapCache := snapshot(t, v.root), snapshot(t, v.stateDir), snapshot(t, v.cacheDir)
+				if raw := ts.exchange(t, payload, false); len(raw) != 0 {
+					t.Fatalf("a refused peer got an answer: %q", raw)
+				}
+				// The server closed without reading: let the handler goroutine finish.
+				waitFor(t, "the connection to end", func() bool { return ts.srv.active.Load() == 0 })
+				if opened != 0 {
+					t.Fatalf("the file system was opened %d times for a refused peer", opened)
+				}
+				for what, pair := range map[string][2]map[string]string{
+					"release tree": {snapRoot, snapshot(t, v.root)}, "state directory": {snapState, snapshot(t, v.stateDir)}, "cache": {snapCache, snapshot(t, v.cacheDir)},
+				} {
+					if d := diffSnapshots(pair[0], pair[1]); len(d) != 0 {
+						t.Fatalf("%s changed: %v", what, d)
+					}
+				}
+			})
+		}
+	}
+	// The same server with the right uid answers, so the test above is not
+	// passing because nothing works.
+	v := newTenv(t)
+	ts := serveEnv(t, v, func(net.Conn) (uint32, error) { return testUID, nil })
+	if r := parseReply(t, ts.exchange(t, []byte(okStatus), false)); !r.OK {
+		t.Fatal("no answer for the right uid")
+	}
+	wantErrCode(t, ts.exchange(t, []byte(`{"v":1,"op":"activate"}`+"\n"), false), codeBadRequest)
+}
+
+// A full stage over the socket, with the right uid.
+func TestStageOverTheSocket(t *testing.T) {
+	v := newTenv(t)
+	v.stageable("1.1.0")
+	ts := serveEnv(t, v, func(net.Conn) (uint32, error) { return testUID, nil })
+	r := wantOK(t, ts.exchange(t, stageLine("1.1.0", testCID), false))
+	if r.Version != "1.1.0" {
+		t.Fatalf("%+v", r)
+	}
+	if s := parseReply(t, ts.exchange(t, []byte(okStatus), false)); s.Phase != phaseStaged || s.StagedVersion != "1.1.0" {
+		t.Fatalf("%+v", s)
+	}
+	wantOK(t, ts.exchange(t, discardLine("1.1.0"), false))
 }
