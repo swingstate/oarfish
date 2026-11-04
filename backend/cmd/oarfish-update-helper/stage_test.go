@@ -273,6 +273,25 @@ func TestStageDeadline(t *testing.T) {
 			}
 		})
 	}
+	// The copy loop stops at the deadline: no further chunk is read once it has passed.
+	t.Run("the copy stops between two chunks", func(t *testing.T) {
+		v := newTenv(t)
+		_, b := v.bigRelease("1.1.0")
+		var seen []int64
+		v.h.onChunk = func(file string, copied int64) {
+			if file == b.BundleName {
+				seen = append(seen, copied)
+				if copied == chunk {
+					v.mono.Store(int64(stageDeadline))
+				}
+			}
+		}
+		wantErrCode(t, v.stage("1.1.0"), codeIOError)
+		if len(seen) != 2 || seen[1] != chunk {
+			t.Fatalf("the copy went on after the deadline: chunks started at %v", seen)
+		}
+		v.wantClean()
+	})
 	t.Run("just under the deadline", func(t *testing.T) {
 		v := newTenv(t)
 		v.stageable("1.1.0")

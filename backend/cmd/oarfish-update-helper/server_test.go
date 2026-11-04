@@ -230,8 +230,14 @@ func TestPeerCheckBeforeAnyRequestByte(t *testing.T) {
 				v.h.wrapFS = func(inner fsops) fsops { opened++; return inner }
 				ts := serveEnv(t, v, peer)
 				snapRoot, snapState, snapCache := snapshot(t, v.root), snapshot(t, v.stateDir), snapshot(t, v.cacheDir)
+				start := time.Now()
 				if raw := ts.exchange(t, payload, false); len(raw) != 0 {
 					t.Fatalf("a refused peer got an answer: %q", raw)
+				}
+				// The server closes at once. It does not wait for the request (the
+				// request deadline of these tests is 2 s) because it checks the peer first.
+				if elapsed := time.Since(start); elapsed > time.Second {
+					t.Fatalf("the refused connection stayed open for %v", elapsed)
 				}
 				// The server closed without reading: let the handler goroutine finish.
 				waitFor(t, "the connection to end", func() bool { return ts.srv.active.Load() == 0 })

@@ -448,6 +448,13 @@ func TestDecodeRequestPerOp(t *testing.T) {
 		`{"v":1,"op":"discard","version":"../1.2.3"}`,
 		`{"v":1,"op":"discard","version":"1.2.3/../../x"}`,
 		`{"v":1,"op":"discard","version":"1.2.3/x"}`,
+		`{"v":1,"op":"discard","version":"1.2.3-a/b"}`,
+		`{"v":1,"op":"discard","version":"1.2.3-/"}`,
+		`{"v":1,"op":"discard","version":"1.2.3-a\\b"}`,
+		`{"v":1,"op":"discard","version":"1.2.3-a b"}`,
+		`{"v":1,"op":"discard","version":"1.2.3-a:b"}`,
+		`{"v":1,"op":"discard","version":"1.2.3-\u00e9"}`,
+		`{"v":1,"op":"discard","version":"1.2.3-a\u0000b"}`,
 		`{"v":1,"op":"discard","version":"1.2.3\n"}`,
 		`{"v":1,"op":"discard","version":"1.2.3 "}`,
 		`{"v":1,"op":"discard","version":"1.2.3-` + strings.Repeat("a", 59) + `"}`, // 65 characters
@@ -515,5 +522,22 @@ func TestInstallerRequiredBodyCarriesOnlyDiffers(t *testing.T) {
 	}
 	if got := string(errorBody(codeBusy)); strings.Contains(got, "differs") {
 		t.Fatalf("other errors carry no differs: %s", got)
+	}
+}
+
+// validVersion is the version pattern of U2; the prerelease part may hold
+// letters, digits, dots and hyphens and nothing else (no separator, no space).
+func TestValidVersion(t *testing.T) {
+	for _, v := range []string{"0.0.0", "1.2.3", "10.20.30", "1.2.3-a", "1.2.3-a.b-c", "0.1.0-alpha.6.1", "1.2.3-0", "1.2.3-A-z.9"} {
+		if !validVersion(v) {
+			t.Errorf("%q refused", v)
+		}
+	}
+	for _, v := range []string{"", "1", "1.2", "1.2.3.4", "01.2.3", "1.02.3", "1.2.03", "v1.2.3", "1.2.3-", "1.2.3+b", "1.2.3-a+b", "1.2.3-a..b",
+		"1.2.3-a/b", "1.2.3-/", "1.2.3/", "/1.2.3", "1.2.3-a\\b", "1.2.3-a b", "1.2.3 ", " 1.2.3", "1.2.3\n", "1.2.3-a:b", "1.2.3-a;b", "1.2.3-a_b",
+		"1.2.3-\u00e9", "1.2.3-a\x00b", "../1.2.3", "..", "1.2.3-" + strings.Repeat("a", 59)} {
+		if validVersion(v) {
+			t.Errorf("%q accepted", v)
+		}
 	}
 }
