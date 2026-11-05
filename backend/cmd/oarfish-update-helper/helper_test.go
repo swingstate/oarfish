@@ -162,6 +162,11 @@ type reply struct {
 	LastResult       *lastResult2 `json:"last_result"`
 	NeedsAttention   bool         `json:"needs_attention"`
 	FreeBytes        uint64       `json:"free_bytes"`
+
+	CooldownVersion    string `json:"cooldown_version"`
+	CooldownRemainingS int64  `json:"cooldown_remaining_s"`
+	TransactionID      string `json:"transaction_id"`
+	Status             string `json:"status"`
 }
 
 type lastResult2 struct {

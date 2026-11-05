@@ -360,6 +360,9 @@ func (d deadlineReader) Read(p []byte) (int, error) {
 // verifies again so a change between the runs is caught as well.
 func (r *stageRun) extract(dir, bundleName string, m *relverify.Manifest) errorCode {
 	e := r.e
+	// The private copy was created by this request with O_EXCL in a 0700
+	// directory. os.Root gives no no-follow on the last path element (A10.1),
+	// so O_NOFOLLOW is only a request, not a guarantee.
 	f, err := e.opt.OpenFile(dir+"/"+bundleName, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return codeIOError

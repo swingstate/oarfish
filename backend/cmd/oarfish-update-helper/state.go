@@ -27,31 +27,50 @@ const (
 
 // The phases of U7 and, for a newer file, the component phases of U15 rule 4.
 const (
-	phaseIdle    = "idle"
-	phaseStaging = "staging"
-	phaseStaged  = "staged"
+	phaseIdle           = "idle"
+	phaseStaging        = "staging"
+	phaseStaged         = "staged"
+	phaseSwitching      = "switching"
+	phaseVerifying      = "verifying"
+	phaseCommitted      = "committed"
+	phaseRollingBack    = "rolling_back"
+	phaseRollbackFailed = "rollback_failed"
 )
 
 var knownPhases = map[string]bool{
 	phaseIdle: true, phaseStaging: true, phaseStaged: true,
-	"switching": true, "verifying": true, "committed": true, "rolling_back": true,
-	"rolled_back": true, "rollback_failed": true,
+	phaseSwitching: true, phaseVerifying: true, phaseCommitted: true, phaseRollingBack: true,
+	"rolled_back": true, phaseRollbackFailed: true,
 	"c_switching": true, "c_switched": true, "c_verified": true, "c_committed": true, "c_rolling_back": true,
 }
 
 // The outcomes of a finished transaction (U2).
 const (
-	outcomeAborted = "aborted"
+	outcomeSuccess        = "success"
+	outcomeRolledBack     = "rolled_back"
+	outcomeRollbackFailed = "rollback_failed"
+	outcomeAborted        = "aborted"
 )
 
 var knownOutcomes = map[string]bool{
-	"success": true, "rolled_back": true, "components_rolled_back": true, "rollback_failed": true, outcomeAborted: true,
+	outcomeSuccess: true, outcomeRolledBack: true, "components_rolled_back": true, outcomeRollbackFailed: true, outcomeAborted: true,
 }
 
 // Reason codes written by this gate.
 const (
 	reasonInterrupted  = "interrupted"
 	reasonStageExpired = "stage_expired"
+	// G6.6.
+	reasonSwitchFailed   = "switch_failed"
+	reasonRestartFailed  = "restart_failed"
+	reasonStartFailed    = "start_failed"
+	reasonHealthTimeout  = "health_timeout"
+	reasonTargetDamaged  = "rollback_target_damaged"
+	reasonRollbackUnheal = "rollback_unhealthy"
+	reasonCurrentUnknown = "current_unknown"
+	reasonStateRebuilt   = "state_rebuilt"
+	reasonUnknownPhase   = "unknown_phase"
+	reasonRecordFailed   = "state_write_failed"
 )
 
 var reasonPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
@@ -64,9 +83,13 @@ type state struct {
 	// staging recovery never touch its directory. U8 lists no member for it,
 	// so this one is added (additively).
 	Previous string
-	Txn      txn
-	Cool     cooldown
-	Last     *lastResult
+	// NeedsAttention is set when a human has to look (a failed rollback, a
+	// state file rebuilt from the disk) and cleared by `ack` of the last
+	// result. U8 lists no member for it, so this one is added (additively).
+	NeedsAttention bool
+	Txn            txn
+	Cool           cooldown
+	Last           *lastResult
 }
 
 type txn struct {
@@ -121,6 +144,7 @@ type jsonState struct {
 	SchemaVersion   int             `json:"schema_version"`
 	HelperVersion   string          `json:"helper_version"`
 	PreviousVersion string          `json:"previous_version"`
+	NeedsAttention  bool            `json:"needs_attention"`
 	Transaction     jsonTxn         `json:"transaction"`
 	Cooldown        jsonCooldown    `json:"cooldown"`
 	LastResult      *jsonLastResult `json:"last_result"`
@@ -170,7 +194,7 @@ func toJSONLast(l *lastResult) *jsonLastResult {
 // encodeState returns the bytes of state.json.
 func encodeState(s *state) []byte {
 	js := jsonState{
-		SchemaVersion: stateSchema, HelperVersion: s.HelperVersion, PreviousVersion: s.Previous,
+		SchemaVersion: stateSchema, HelperVersion: s.HelperVersion, PreviousVersion: s.Previous, NeedsAttention: s.NeedsAttention,
 		Transaction: jsonTxn(s.Txn), Cooldown: jsonCooldown(s.Cool), LastResult: toJSONLast(s.Last),
 	}
 	b, err := json.MarshalIndent(js, "", "  ")
@@ -309,7 +333,7 @@ func decodeState(data []byte) (*state, error) {
 	if len(data) > maxStateBytes {
 		return nil, errStateInvalid
 	}
-	top, err := object(data, "schema_version", "helper_version", "previous_version", "transaction", "cooldown", "last_result")
+	top, err := object(data, "schema_version", "helper_version", "previous_version", "needs_attention", "transaction", "cooldown", "last_result")
 	if err != nil {
 		return nil, err
 	}
@@ -326,6 +350,9 @@ func decodeState(data []byte) (*state, error) {
 		return nil, err
 	}
 	if err := str(top, "previous_version", okVersion, &s.Previous); err != nil {
+		return nil, err
+	}
+	if err := flag(top, "needs_attention", &s.NeedsAttention); err != nil {
 		return nil, err
 	}
 	if raw, ok := top["transaction"]; ok {

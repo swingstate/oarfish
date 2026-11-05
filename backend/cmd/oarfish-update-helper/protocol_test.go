@@ -63,11 +63,12 @@ func TestProtocol(t *testing.T) {
 		{name: "op missing", in: []byte(`{"v":1}` + "\n"), want: codeBadRequest},
 		{name: "status with trailing space in the name", in: []byte(`{"v":1,"op":"status "}` + "\n"), want: codeBadRequest},
 
-		// activate and ack are in the closed list and not implemented in G6.5.
-		{name: "activate (not implemented)", in: []byte(`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":false}` + "\n"), want: codeBadRequest},
-		{name: "activate without arguments (not implemented)", in: []byte(`{"v":1,"op":"activate"}` + "\n"), want: codeBadRequest},
-		{name: "ack (not implemented)", in: []byte(`{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}` + "\n"), want: codeBadRequest},
-		{name: "ack without arguments (not implemented)", in: []byte(`{"v":1,"op":"ack"}` + "\n"), want: codeBadRequest},
+		// activate and ack decode; the test server has an empty state directory, so a
+		// well-formed one is not_found and a malformed one bad_request.
+		{name: "activate, nothing staged", in: []byte(`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":false}` + "\n"), want: codeNotFound},
+		{name: "activate without arguments", in: []byte(`{"v":1,"op":"activate"}` + "\n"), want: codeBadRequest},
+		{name: "ack, no last result", in: []byte(`{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}` + "\n"), want: codeNotFound},
+		{name: "ack without arguments", in: []byte(`{"v":1,"op":"ack"}` + "\n"), want: codeBadRequest},
 		{name: "status with an argument", in: []byte(`{"v":1,"op":"status","version":"1.2.3"}` + "\n"), want: codeBadRequest},
 
 		{name: "array", in: []byte(`[{"v":1,"op":"status"}]` + "\n"), want: codeBadRequest},
@@ -197,15 +198,16 @@ func TestStatusAnswer(t *testing.T) {
 	want := `{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"test-1",` +
 		`"key_id":"11f1c52777090bfc","installed_version":"1.0.0","phase":"idle","staged_version":"",` +
 		`"previous_version":"","last_result":null,"needs_attention":false,"free_bytes":`
-	if got := string(body); !strings.HasPrefix(got, want) || !regexp.MustCompile(`^\d+\}\n$`).MatchString(got[len(want):]) {
+	if got := string(body); !strings.HasPrefix(got, want) ||
+		!regexp.MustCompile(`^\d+,"cooldown_version":"","cooldown_remaining_s":0\}\n$`).MatchString(got[len(want):]) {
 		t.Fatalf("status answer:\n got %s\nwant %s<digits>}", got, want)
 	}
 	var m map[string]any
 	if err := json.Unmarshal(body, &m); err != nil {
 		t.Fatal(err)
 	}
-	if len(m) != 13 {
-		t.Fatalf("%d members, want 13", len(m))
+	if len(m) != 15 {
+		t.Fatalf("%d members, want 15", len(m))
 	}
 	if m["free_bytes"].(float64) <= 0 || free == 0 {
 		t.Fatalf("free_bytes %v", m["free_bytes"])
@@ -370,10 +372,13 @@ func FuzzDecodeRequest(f *testing.F) {
 			}
 			return
 		}
-		if req.V != 1 || (req.Op != opStatus && req.Op != opStage && req.Op != opDiscard) {
+		if req.V != 1 || (req.Op != opStatus && req.Op != opStage && req.Op != opDiscard && req.Op != opActivate && req.Op != opAck) {
 			t.Fatalf("accepted a request without a valid v and op: %q", data)
 		}
-		if (req.Op != opStatus) != validVersion(req.Version) || (req.Op == opStage) != isHex(16)(req.CorrelationID) {
+		hasVersion := req.Op == opStage || req.Op == opDiscard || req.Op == opActivate
+		hasCID := req.Op == opStage || req.Op == opActivate
+		if hasVersion != validVersion(req.Version) || hasCID != isHex(16)(req.CorrelationID) ||
+			(req.Op == opAck) != isHex(16)(req.TransactionID) || (req.Confirmed && req.Op != opActivate) {
 			t.Fatalf("accepted arguments that do not fit the op: %q -> %+v", data, req)
 		}
 		// An accepted request is one plain object: its canonical form is
@@ -384,6 +389,12 @@ func FuzzDecodeRequest(f *testing.F) {
 		}
 		if req.CorrelationID != "" {
 			m["correlation_id"] = req.CorrelationID
+		}
+		if req.Op == opActivate {
+			m["components_confirmed"] = req.Confirmed
+		}
+		if req.TransactionID != "" {
+			m["transaction_id"] = req.TransactionID
 		}
 		canon, err := json.Marshal(m)
 		if err != nil {
@@ -403,9 +414,12 @@ func TestDecodeRequestPerOp(t *testing.T) {
 	good := map[string]request{
 		`{"v":1,"op":"status"}`: {V: 1, Op: "status"},
 		`{"op":"status","v":1}`: {V: 1, Op: "status"},
-		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":` + cid + `}`:         {V: 1, Op: "stage", Version: "1.2.3", CorrelationID: "0123456789abcdef"},
-		`{"correlation_id":` + cid + `,"version":"0.1.0-alpha.8","op":"stage","v":1}`: {V: 1, Op: "stage", Version: "0.1.0-alpha.8", CorrelationID: "0123456789abcdef"},
-		`{"v":1,"op":"discard","version":"10.20.30-rc.1"}`:                            {V: 1, Op: "discard", Version: "10.20.30-rc.1"},
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":` + cid + `}`:                                 {V: 1, Op: "stage", Version: "1.2.3", CorrelationID: "0123456789abcdef"},
+		`{"correlation_id":` + cid + `,"version":"0.1.0-alpha.8","op":"stage","v":1}`:                         {V: 1, Op: "stage", Version: "0.1.0-alpha.8", CorrelationID: "0123456789abcdef"},
+		`{"v":1,"op":"discard","version":"10.20.30-rc.1"}`:                                                    {V: 1, Op: "discard", Version: "10.20.30-rc.1"},
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":` + cid + `,"components_confirmed":true}`:  {V: 1, Op: "activate", Version: "1.2.3", CorrelationID: "0123456789abcdef", Confirmed: true},
+		`{"components_confirmed":false,"correlation_id":` + cid + `,"version":"1.2.3","op":"activate","v":1}`: {V: 1, Op: "activate", Version: "1.2.3", CorrelationID: "0123456789abcdef"},
+		`{"v":1,"op":"ack","transaction_id":` + cid + `}`:                                                     {V: 1, Op: "ack", TransactionID: "0123456789abcdef"},
 	}
 	for in, want := range good {
 		got, err := decodeRequest([]byte(in))
@@ -465,9 +479,22 @@ func TestDecodeRequestPerOp(t *testing.T) {
 		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789ABCDEF"}`,
 		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcdeg"}`,
 		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcde\n"}`,
-		// not implemented in this gate
-		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":` + cid + `,"components_confirmed":true}`,
-		`{"v":1,"op":"ack","transaction_id":` + cid + `}`,
+		// activate and ack: exact member sets and types
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":"true"}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":1}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":null}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":true,"x":1}`,
+		`{"v":1,"op":"activate","version":"1.2.3","components_confirmed":true}`,
+		`{"v":1,"op":"activate","correlation_id":"0123456789abcdef","components_confirmed":true}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":true,"transaction_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"ack"}`,
+		`{"v":1,"op":"ack","transaction_id":null}`,
+		`{"v":1,"op":"ack","transaction_id":"0123456789ABCDEF"}`,
+		`{"v":1,"op":"ack","transaction_id":"0123456789abcde"}`,
+		`{"v":1,"op":"ack","transaction_id":"0123456789abcdef","version":"1.2.3"}`,
+		`{"v":1,"op":"stage","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":true}`,
+		`{"v":1,"op":"discard","version":"1.2.3","transaction_id":"0123456789abcdef"}`,
 	}
 	for _, in := range bad {
 		if got, err := decodeRequest([]byte(in)); err == nil {
@@ -481,14 +508,15 @@ func TestDecodeRequestPerOp(t *testing.T) {
 	}
 }
 
-// activate and ack stay bad_request in this gate, on the wire too.
-func TestActivateAndAckAreBadRequest(t *testing.T) {
+// The members of a malformed activate or ack are bad_request on the wire, and a
+// refused request writes nothing.
+func TestMalformedActivateAndAckAreBadRequest(t *testing.T) {
 	v := newTenv(t)
 	for _, line := range []string{
-		`{"v":1,"op":"activate","version":"1.1.0","correlation_id":"0123456789abcdef","components_confirmed":false}`,
 		`{"v":1,"op":"activate","version":"1.1.0","correlation_id":"0123456789abcdef"}`,
-		`{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"activate","version":"1.1.0","correlation_id":"0123456789abcdef","components_confirmed":"no"}`,
 		`{"v":1,"op":"ack"}`,
+		`{"v":1,"op":"ack","transaction_id":"nothex"}`,
 	} {
 		wantErrCode(t, v.request([]byte(line+"\n")), codeBadRequest)
 	}
@@ -540,4 +568,78 @@ func TestValidVersion(t *testing.T) {
 			t.Errorf("%q accepted", v)
 		}
 	}
+}
+
+// ---- fuzzing the decoders of activate and ack (G6.6) -----------------------
+
+func FuzzDecodeActivate(f *testing.F) {
+	for _, s := range []string{
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":false}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":true}`,
+		`{"components_confirmed":true,"op":"activate","correlation_id":"0123456789abcdef","version":"0.1.0-alpha.8","v":1}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":null}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":"true"}`,
+		`{"v":1,"op":"activate","version":"1.2.3","correlation_id":"0123456789abcdef","components_confirmed":true,"components_confirmed":false}`,
+		`{"v":1,"op":"activate","version":"../1.2.3","correlation_id":"0123456789abcdef","components_confirmed":true}`,
+		`{"v":1,"op":"activate"}`, `{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}`, `{"V":1,"OP":"activate"}`, `[]`, `null`, ``,
+	} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		req, err := decodeRequest(data)
+		if err != nil {
+			if err != errMalformed {
+				t.Fatalf("error %v", err)
+			}
+			return
+		}
+		if req.Op != opActivate {
+			return
+		}
+		if req.V != 1 || !validVersion(req.Version) || !isHex(16)(req.CorrelationID) || req.TransactionID != "" {
+			t.Fatalf("accepted %q as %+v", data, req)
+		}
+		// Exactly the five members, once each, in any order: the canonical form
+		// is accepted again and means the same.
+		canon := []byte(`{"v":1,"op":"activate","version":` + mustJSON(t, req.Version) + `,"correlation_id":` + mustJSON(t, req.CorrelationID) +
+			`,"components_confirmed":` + mustJSON(t, req.Confirmed) + `}`)
+		again, err := decodeRequest(canon)
+		if err != nil || again != req {
+			t.Fatalf("canonical form %q not accepted again (%v)", canon, err)
+		}
+	})
+}
+
+func FuzzDecodeAck(f *testing.F) {
+	for _, s := range []string{
+		`{"v":1,"op":"ack","transaction_id":"0123456789abcdef"}`,
+		`{"transaction_id":"fedcba9876543210","op":"ack","v":1}`,
+		`{"v":1,"op":"ack","transaction_id":"0123456789ABCDEF"}`,
+		`{"v":1,"op":"ack","transaction_id":null}`,
+		`{"v":1,"op":"ack","transaction_id":"0123456789abcdef","transaction_id":"0123456789abcdef"}`,
+		`{"v":1,"op":"ack","transaction_id":"0123456789abcdef","x":1}`,
+		`{"v":1,"op":"ack"}`, `{"v":1,"op":"ack","transaction_id":"0123456789abcdef\u0000"}`, `{"v":1,"op":"status"}`, ``, `{`,
+	} {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		req, err := decodeRequest(data)
+		if err != nil {
+			if err != errMalformed {
+				t.Fatalf("error %v", err)
+			}
+			return
+		}
+		if req.Op != opAck {
+			return
+		}
+		if req.V != 1 || !isHex(16)(req.TransactionID) || req.Version != "" || req.CorrelationID != "" || req.Confirmed {
+			t.Fatalf("accepted %q as %+v", data, req)
+		}
+		canon := []byte(`{"v":1,"op":"ack","transaction_id":` + mustJSON(t, req.TransactionID) + `}`)
+		again, err := decodeRequest(canon)
+		if err != nil || again != req {
+			t.Fatalf("canonical form %q not accepted again (%v)", canon, err)
+		}
+	})
 }

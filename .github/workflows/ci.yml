@@ -46,7 +46,9 @@ jobs:
       # The update helper stub (ADR 0010, G6.3a) is a root program of its own: it
       # must build for both architectures, and its tests (including the import
       # check against go list -deps and the re-executed socket-activation
-      # tests) run with the race detector and without the test cache.
+      # tests) run with the race detector and without the test cache. -v puts
+      # the names of the Linux-only tests (clock, peer credentials, the recover
+      # subcommand as a process) into the log.
       - name: Update helper stub (not shipped) vet, build and test
         working-directory: backend
         run: |
@@ -54,7 +56,7 @@ jobs:
             GOOS=linux GOARCH=$arch CGO_ENABLED=0 go vet ./cmd/oarfish-update-helper ./internal/trustkey
             GOOS=linux GOARCH=$arch CGO_ENABLED=0 go build -trimpath -o /dev/null ./cmd/oarfish-update-helper
           done
-          go test -race -count=1 ./cmd/oarfish-update-helper ./internal/trustkey
+          go test -race -count=1 -v ./cmd/oarfish-update-helper ./internal/trustkey
       # ADR 0009 E1, ORB-NFR-001: the resident size after Argon2id hashes on
       # Linux. Without the race detector, whose shadow memory would hide it.
       - name: Hash memory is returned to the OS (Linux, no race detector)

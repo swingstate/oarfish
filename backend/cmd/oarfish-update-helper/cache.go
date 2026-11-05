@@ -89,6 +89,12 @@ func cacheOpenError(err error) errorCode {
 // openCache opens the four files of a version. All four are opened and
 // checked before anything is written (U3). On any error nothing stays open.
 func openCache(cacheDir, version string) (*cacheSet, errorCode) {
+	// The version is parsed before the first Lstat, so a malformed name never
+	// reaches the file system.
+	v, err := relverify.ParseVersion(version)
+	if err != nil {
+		return nil, codeBadRequest
+	}
 	top, err := os.OpenRoot(cacheDir)
 	if err != nil {
 		return nil, cacheOpenError(err)
@@ -107,10 +113,6 @@ func openCache(cacheDir, version string) (*cacheSet, errorCode) {
 	defer upd.Close()
 	if code := requireDir(upd, version); code != "" {
 		return nil, code
-	}
-	v, err := relverify.ParseVersion(version)
-	if err != nil {
-		return nil, codeBadRequest
 	}
 	set := &cacheSet{
 		checksums: cacheFile{name: nameChecksums, cap: maxSmallFile},
