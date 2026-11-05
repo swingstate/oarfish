@@ -31,6 +31,7 @@ type tenv struct {
 	ids    atomic.Int64
 
 	installed string
+	sd        *fakeSystemd
 }
 
 type syncBuffer struct {

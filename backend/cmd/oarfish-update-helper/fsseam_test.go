@@ -54,7 +54,7 @@ func TestNoMutationOutsideFsops(t *testing.T) {
 			recv := text(sel.X)
 			where := fset.Position(call.Pos()).String()
 			// The seam itself: e.fs.Mkdir, fs.Create, ...
-			if strings.HasSuffix(recv, ".fs") || recv == "fs" {
+			if strings.HasSuffix(recv, ".fs") || recv == "fs" || strings.HasSuffix(recv, ".fsops") {
 				return true
 			}
 			if mutatingNames[sel.Sel.Name] {
@@ -311,7 +311,7 @@ func TestWriteTargetTableMatchesTheADR(t *testing.T) {
 	for p, want := range map[string]bool{
 		"releases/1.2.3": true, "releases/.stage.0123456789abcdef/release/oarfish": true, "releases/.trash.0123456789abcdef": true,
 		"releases/1.2.3/oarfish": false, "releases/.stage.xyz": false, "releases/.stage.": false, "releases/..": false,
-		"current": false, ".current.new.0123456789abcdef": false, "components/1.0.0": false, "components/active": false,
+		"current": true, ".current.new.0123456789abcdef": true, ".current.new.xyz": false, "components/1.0.0": false, "components/active": false,
 		"components/.new.0123456789abcdef": false, "releases/v1.2.3": false, "": false, "/etc/passwd": false, "../x": false,
 	} {
 		if got := allowedTarget(treeOpt, p); got != want {

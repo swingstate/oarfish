@@ -18,8 +18,7 @@ const (
 	maxResponseBytes = 8 << 10
 )
 
-// The closed list of requests (U2). status, stage and discard are answered;
-// activate and ack are bad_request until G6.6.
+// The closed list of requests (U2).
 const (
 	opStatus   = "status"
 	opStage    = "stage"
@@ -36,8 +35,10 @@ var errMalformed = errors.New("malformed request")
 type request struct {
 	V             int
 	Op            string
-	Version       string // stage, discard
-	CorrelationID string // stage
+	Version       string // stage, activate, discard
+	CorrelationID string // stage, activate
+	Confirmed     bool   // activate: components_confirmed
+	TransactionID string // ack
 }
 
 // readRequest reads one newline-terminated request of at most maxRequestBytes
@@ -66,22 +67,23 @@ func readRequest(r io.Reader) ([]byte, error) {
 }
 
 // opKeys is the exact member set of each op (U2): a request has these members
-// and no others. activate and ack are in the closed list but not implemented
-// (G6.6): they have no member set, so they are bad_request.
+// and no others.
 var opKeys = map[string][]string{
-	opStatus:  {"v", "op"},
-	opStage:   {"v", "op", "version", "correlation_id"},
-	opDiscard: {"v", "op", "version"},
+	opStatus:   {"v", "op"},
+	opStage:    {"v", "op", "version", "correlation_id"},
+	opActivate: {"v", "op", "version", "correlation_id", "components_confirmed"},
+	opDiscard:  {"v", "op", "version"},
+	opAck:      {"v", "op", "transaction_id"},
 }
 
 // decodeRequest is the strict decoder of U2. It rejects, with errMalformed:
 // anything that is not one JSON object, a member that is not one of the four
 // names (also a name in another letter case), a repeated member, trailing data
 // after the object, null, a member of the wrong type, a `v` that is not an
-// integer in the accepted range, an op that is unknown or not implemented, a
-// member set that is not exactly the op's, a version that does not match the
-// pattern of U2, and a correlation_id that is not 16 lowercase hexadecimal
-// digits.
+// integer in the accepted range, an op that is unknown, a member set that is
+// not exactly the op's, a version that does not match the pattern of U2, a
+// correlation_id or transaction_id that is not 16 lowercase hexadecimal digits
+// and a components_confirmed that is not a JSON boolean.
 func decodeRequest(line []byte) (request, error) {
 	if len(line) >= maxRequestBytes {
 		return request{}, errMalformed
@@ -123,6 +125,20 @@ func decodeRequest(line []byte) (request, error) {
 		}
 		r.CorrelationID = *cid
 	}
+	if _, has := m["transaction_id"]; has {
+		var tid *string
+		if json.Unmarshal(m["transaction_id"], &tid) != nil || tid == nil || !isHex(16)(*tid) {
+			return request{}, errMalformed
+		}
+		r.TransactionID = *tid
+	}
+	if _, has := m["components_confirmed"]; has {
+		var c *bool
+		if json.Unmarshal(m["components_confirmed"], &c) != nil || c == nil {
+			return request{}, errMalformed
+		}
+		r.Confirmed = *c
+	}
 	return r, nil
 }
 
@@ -144,7 +160,7 @@ func requestMembers(line []byte) (map[string]json.RawMessage, error) {
 			return nil, errMalformed
 		}
 		switch key {
-		case "v", "op", "version", "correlation_id":
+		case "v", "op", "version", "correlation_id", "components_confirmed", "transaction_id":
 		default:
 			return nil, errMalformed
 		}
@@ -256,6 +272,10 @@ type statusResponse struct {
 	LastResult       *jsonLastResult `json:"last_result"`
 	NeedsAttention   bool            `json:"needs_attention"`
 	FreeBytes        uint64          `json:"free_bytes"`
+	// Cooldown (G6.6): the version that is refused and the seconds left of the
+	// longer of the two markers; 0 when no marker holds.
+	CooldownVersion    string `json:"cooldown_version"`
+	CooldownRemainingS int64  `json:"cooldown_remaining_s"`
 }
 
 // stageResponse is the answer to a successful `stage`. ComponentsDiffer is
@@ -267,6 +287,15 @@ type stageResponse struct {
 	Version          string `json:"version"`
 	Commit           string `json:"commit"`
 	ComponentsDiffer bool   `json:"components_differ"`
+}
+
+// activateResponse is the answer to an accepted `activate`: the transaction
+// continues in the helper without the caller.
+type activateResponse struct {
+	V             int    `json:"v"`
+	OK            bool   `json:"ok"`
+	Status        string `json:"status"`
+	TransactionID string `json:"transaction_id"`
 }
 
 // okResponse is the answer to a successful `discard`.

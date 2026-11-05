@@ -105,13 +105,17 @@ lint-shell: ## shellcheck the installer (POSIX sh, all severities) and the repos
 build-helper: ## Cross-build the update helper stub, reproducibly, to bin/oarfish-update-helper-linux-arm64 (part of the default release bundle since G6.3b)
 	scripts/build-helper.sh --twice
 
-test-helper: ## Update helper stub and its key package: vet and tests with -race
+test-helper: ## Update helper and its key package: vet (also linux/arm64, linux/amd64 and the faulthooks test build) and tests with -race
 	cd backend && go vet ./cmd/oarfish-update-helper ./internal/trustkey
 	cd backend && GOOS=linux GOARCH=arm64 go vet ./cmd/oarfish-update-helper ./internal/trustkey
+	cd backend && GOOS=linux GOARCH=amd64 go vet ./cmd/oarfish-update-helper ./internal/trustkey
+	cd backend && go vet -tags faulthooks ./cmd/oarfish-update-helper
 	cd backend && go test -race -count=1 ./cmd/oarfish-update-helper ./internal/trustkey
+	cd backend && go test -count=1 -tags faulthooks -run '^TestFaultHooks' ./cmd/oarfish-update-helper
 
-check-helper: test-helper build-helper ## Everything CI checks for the update helper stub (tests, key copy, unit texts and their mutation test, reproducible build)
+check-helper: test-helper build-helper ## Everything CI checks for the update helper (tests, key copy, no fault hooks in the release binary, unit texts and their mutation test, reproducible build)
 	scripts/check-helper-key.sh
+	scripts/check-helper-hooks.sh bin/oarfish-update-helper-linux-arm64
 	scripts/check-units.sh
 	scripts/check-units.sh --self-test
 

@@ -1,0 +1,322 @@
+package main
+
+import (
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestParseShow(t *testing.T) {
+	good := "ActiveState=active\nSubState=running\nMainPID=412\nNRestarts=2\nExecStart={ path=/x ; argv[]=/x -listen 127.0.0.1:9 ; ignore_errors=no }\n"
+	p, err := parseShow([]byte(good))
+	if err != nil || p.Active != "active" || p.Sub != "running" || p.MainPID != 412 || p.NRestarts != 2 || !strings.Contains(p.ExecStart, "-listen") {
+		t.Fatalf("%+v %v", p, err)
+	}
+	for name, in := range map[string]string{
+		"empty":           "",
+		"missing":         "ActiveState=active\nSubState=running\nMainPID=1\nNRestarts=0\n",
+		"negative":        "ActiveState=a\nSubState=b\nMainPID=-1\nNRestarts=0\nExecStart=\n",
+		"not a number":    "ActiveState=a\nSubState=b\nMainPID=x\nNRestarts=0\nExecStart=\n",
+		"line without =":  "ActiveState=a\nSubState=b\nMainPID=1\nNRestarts=0\nExecStart=\nfoo\n",
+		"huge":            "ActiveState=a\nSubState=b\nMainPID=99999999999999999999\nNRestarts=0\nExecStart=\n",
+		"only whitespace": "\n\n",
+	} {
+		if _, err := parseShow([]byte(in)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestListenAddress(t *testing.T) {
+	ex := func(argv string) string {
+		return "{ path=/x ; argv[]=" + argv + " ; ignore_errors=no ; start_time=[n/a] }"
+	}
+	for _, tt := range []struct{ in, want string }{
+		{ex("/x"), defaultListen},
+		{ex("/x -listen 127.0.0.1:9000"), "127.0.0.1:9000"},
+		{ex("/x -listen=127.0.0.1:9000"), "127.0.0.1:9000"},
+		{ex("/x --listen 127.0.0.2:81"), "127.0.0.2:81"},
+		{ex("/x -listen [::1]:8484"), "[::1]:8484"},
+		{ex("/x -listen 0.0.0.0:8484"), defaultListen},
+		{ex("/x -listen :8484"), defaultListen},
+		{ex("/x -listen localhost:8484"), defaultListen},
+		{ex("/x -listen 192.168.1.2:8484"), defaultListen},
+		{ex("/x -listen example.com:80"), defaultListen},
+		{ex("/x -listen 127.0.0.1"), defaultListen},
+		{ex("/x -listen 127.0.0.1:0"), defaultListen},
+		{ex("/x -listen"), defaultListen},
+		{ex("/x -listen http://127.0.0.1:1"), defaultListen},
+		{"", defaultListen},
+		{"garbage", defaultListen},
+	} {
+		if got := listenAddress(tt.in); got != tt.want {
+			t.Errorf("%q -> %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+// The unit's own listen address is what the check connects to.
+func TestHealthUsesTheListenAddressFromExecStart(t *testing.T) {
+	v := newActiveEnv(t)
+	v.sd.listen = "127.0.0.1:9191"
+	wantOK(t, v.activate("1.1.0"))
+	if len(v.sd.healthCalls) == 0 {
+		t.Fatal("no health call")
+	}
+	for _, c := range v.sd.healthCalls {
+		if c != "127.0.0.1:9191/healthz" {
+			t.Fatalf("health call %q", c)
+		}
+	}
+	v2 := newActiveEnv(t)
+	v2.sd.listen = "10.0.0.5:80" // not loopback: the default is used
+	wantOK(t, v2.activate("1.1.0"))
+	for _, c := range v2.sd.healthCalls {
+		if c != "127.0.0.1:8484/healthz" {
+			t.Fatalf("health call %q", c)
+		}
+	}
+}
+
+func TestHTTPGetAgainstALoopbackServer(t *testing.T) {
+	serve := func(answer string) string {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Skip("no loopback")
+		}
+		t.Cleanup(func() { ln.Close() })
+		go func() {
+			for {
+				c, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				buf := make([]byte, 1024)
+				c.Read(buf)
+				c.Write([]byte(answer))
+				c.Close()
+			}
+		}()
+		return ln.Addr().String()
+	}
+	body := `{"status":"ok","version":"1.2.3"}`
+	code, got, err := httpGet(serve("HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n"+body), "/healthz")
+	if err != nil || code != 200 || string(got) != body {
+		t.Fatalf("%d %q %v", code, got, err)
+	}
+	code, _, err = httpGet(serve("HTTP/1.1 503 Service Unavailable\r\n\r\n{}"), "/healthz")
+	if err != nil || code != 503 {
+		t.Fatalf("%d %v", code, err)
+	}
+	for _, bad := range []string{"", "garbage", "HTTP/1.1 abc\r\n\r\n", "SMTP/1.1 200 OK\r\n\r\n"} {
+		if _, _, err := httpGet(serve(bad), "/healthz"); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+	// Nothing listens.
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := ln.Addr().String()
+	ln.Close()
+	if _, _, err := httpGet(addr, "/healthz"); err == nil {
+		t.Fatal("connected to a closed port")
+	}
+	// A very large body is cut at the bound.
+	_, got, err = httpGet(serve("HTTP/1.0 200 OK\r\n\r\n"+strings.Repeat("x", 100000)), "/healthz")
+	if err != nil || len(got) > maxHTTPBytes {
+		t.Fatalf("body of %d bytes, %v", len(got), err)
+	}
+}
+
+// The health criteria one by one (U6), against a fake that changes between
+// polls. The check passes only when every criterion holds for 3 polls and 10 s.
+func TestWaitHealthyCriteria(t *testing.T) {
+	type tc struct {
+		name   string
+		setup  func(f *fakeSystemd)
+		params healthParams
+		want   healthResult
+		minSec int
+	}
+	base := healthParams{version: "1.1.0", prevPID: 100, baseRestarts: 0, deadline: healthDeadline, polls: healthPolls, window: healthStability}
+	for _, c := range []tc{
+		{"all hold", func(f *fakeSystemd) { f.running, f.pid = "1.1.0", 101 }, base, healthOK, 9},
+		{"same MainPID as before", func(f *fakeSystemd) { f.running, f.pid = "1.1.0", 100 }, base, healthTimeout, 45},
+		{"MainPID 0", func(f *fakeSystemd) { f.running, f.pid = "1.1.0", 0 }, base, healthTimeout, 45},
+		{"not running", func(f *fakeSystemd) { f.running, f.pid, f.sub = "1.1.0", 101, "exited" }, base, healthTimeout, 45},
+		{"activating", func(f *fakeSystemd) { f.running, f.pid, f.active = "1.1.0", 101, "activating" }, base, healthTimeout, 45},
+		{"failed", func(f *fakeSystemd) { f.running, f.pid, f.active = "1.1.0", 101, "failed" }, base, healthFailFast, 0},
+		{"NRestarts increased", func(f *fakeSystemd) { f.running, f.pid, f.nrest = "1.1.0", 101, 1 }, base, healthFailFast, 0},
+		{"wrong version", func(f *fakeSystemd) { f.running, f.pid = "1.0.0", 101 }, base, healthTimeout, 45},
+		{"no version member", func(f *fakeSystemd) { f.running, f.pid = "1.1.0", 101; f.beh["1.1.0"] = bNoVersion }, base, healthTimeout, 45},
+		{"no 200", func(f *fakeSystemd) { f.running, f.pid = "1.1.0", 101; f.beh["1.1.0"] = bHang }, base, healthTimeout, 45},
+		{"show fails", func(f *fakeSystemd) { f.running, f.pid = "1.1.0", 101; f.showFail = true }, base, healthTimeout, 45},
+		{"pre-check ignores PID and counter", func(f *fakeSystemd) { f.running, f.pid, f.nrest = "1.1.0", 100, 5 },
+			healthParams{version: "1.1.0", prevPID: -1, baseRestarts: -1, deadline: precheckLimit, polls: precheckPolls}, healthOK, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			v := newTenv(t)
+			f := v.fakeSystemd()
+			c.setup(f)
+			got, _ := v.h.waitHealthy(c.params)
+			if got != c.want {
+				t.Fatalf("result %d, want %d", got, c.want)
+			}
+			if el := int(time.Duration(v.mono.Load()) / time.Second); el < c.minSec {
+				t.Fatalf("returned after %d s, want at least %d", el, c.minSec)
+			}
+		})
+	}
+}
+
+// A single bad poll restarts the stability window.
+func TestStabilityWindowRestartsOnABadPoll(t *testing.T) {
+	v := newTenv(t)
+	f := v.fakeSystemd()
+	f.running, f.pid = "1.1.0", 101
+	polls := 0
+	inner := v.h.healthGet
+	v.h.healthGet = func(a, p string) (int, []byte, error) {
+		polls++
+		if polls == 8 {
+			return 503, nil, nil
+		}
+		return inner(a, p)
+	}
+	res, _ := v.h.waitHealthy(healthParams{version: "1.1.0", prevPID: 100, baseRestarts: 0, deadline: healthDeadline, polls: healthPolls, window: healthStability})
+	if res != healthOK {
+		t.Fatal("not healthy")
+	}
+	if el := time.Duration(v.mono.Load()); el < 17*time.Second {
+		t.Fatalf("passed after %v: the window did not restart", el)
+	}
+}
+
+func TestSystemctlClosedShapes(t *testing.T) {
+	v := newTenv(t)
+	f := v.fakeSystemd()
+	for _, bad := range [][]string{
+		nil, {}, {"restart"}, {"restart", "oarfish-update-helper.service"}, {"restart", "oarfish-update-helper.socket"},
+		{"restart", "oarfish.service", "--no-block"}, {"stop", "oarfish.service"}, {"start", "oarfish.service"},
+		{"enable", "oarfish.service"}, {"reset-failed"}, {"reset-failed", "other.service"}, {"daemon-reload", "x"},
+		{"show", "oarfish.service"}, {"show", "oarfish.service", "--property=MainPID", "--no-pager"},
+		{"show", "oarfish.service", "--no-pager", "--property=ActiveState,SubState,MainPID,NRestarts,ExecStart"},
+		{"--user", "restart", "oarfish.service"}, {"restart", "oarfish.service\n"}, {"RESTART", "oarfish.service"},
+		{"reboot"}, {"poweroff"}, {"-H", "x", "restart", "oarfish.service"},
+	} {
+		if _, err := v.h.systemctl(bad...); err == nil {
+			t.Errorf("ran %q", bad)
+		}
+	}
+	if len(f.Calls()) != 0 {
+		t.Fatalf("the runner saw %v", f.Calls())
+	}
+	for _, ok := range systemctlShapes {
+		if _, err := v.h.systemctl(ok...); err != nil && ok[0] != "daemon-reload" && ok[0] != "restart" {
+			// the fake knows restart, show and reset-failed only
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+	// The shape passed to the runner is a copy.
+	v.h.sysrun = func(args []string) ([]byte, error) { args[0] = "poweroff"; return nil, nil }
+	v.h.systemctl(sysRestart...)
+	if sysRestart[0] != "restart" {
+		t.Fatal("the closed list was changed through the runner")
+	}
+}
+
+// The production runner: no shell, a cleared environment, bounded output, a
+// fixed error.
+func TestRunProgram(t *testing.T) {
+	t.Setenv("OARFISH_TEST_SECRET", "s3cret")
+	out, err := runProgram("/usr/bin/env", nil)
+	if err != nil || len(out) != 0 {
+		t.Fatalf("environment not cleared: %q %v", out, err)
+	}
+	out, err = runProgram("/usr/bin/head", []string{"-c", "100000", "/dev/zero"})
+	if err != nil || len(out) != maxSystemctlOutput {
+		t.Fatalf("output %d bytes, %v", len(out), err)
+	}
+	if _, err := runProgram("/usr/bin/false", nil); err == nil {
+		t.Fatal("exit status 1 was not an error")
+	}
+	if _, err := runProgram("/nonexistent/systemctl", nil); err == nil {
+		t.Fatal("a missing program was not an error")
+	}
+	// No shell: a metacharacter is just an argument.
+	dir := t.TempDir()
+	out, err = runProgram("/bin/echo", []string{"a;touch " + filepath.Join(dir, "x") + "|b"})
+	if err != nil || !strings.Contains(string(out), ";touch") {
+		t.Fatalf("%q %v", out, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "x")); err == nil {
+		t.Fatal("a shell ran")
+	}
+	if systemctlPath != "/usr/bin/systemctl" {
+		t.Fatal("path")
+	}
+	_ = exec.ErrNotFound
+}
+
+// The closed list of programs and argument shapes is the table of U2.
+func TestSystemctlShapesMatchTheADR(t *testing.T) {
+	adr, err := os.ReadFile("../../../docs/adr/0010-update-helper.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row string
+	for _, l := range strings.Split(string(adr), "\n") {
+		if strings.HasPrefix(l, "  | Programs executed |") {
+			row = l
+		}
+	}
+	if row == "" {
+		t.Fatal("no row for the programs in the ADR")
+	}
+	if !strings.Contains(row, "`/usr/bin/systemctl` only (absolute path, cleared environment, no shell)") {
+		t.Fatal("the ADR names another program")
+	}
+	_, after, _ := strings.Cut(row, "argument shapes: ")
+	after, _, _ = strings.Cut(after, " |")
+	var want []string
+	for _, part := range strings.Split(after, ";") {
+		_, rest, ok := strings.Cut(part, "`")
+		if !ok {
+			continue
+		}
+		shape, _, _ := strings.Cut(rest, "`")
+		want = append(want, shape)
+	}
+	var have []string
+	for _, s := range systemctlShapes {
+		have = append(have, strings.Join(s, " "))
+	}
+	if strings.Join(have, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("shapes in the code:\n%s\nshapes in the ADR:\n%s", strings.Join(have, "\n"), strings.Join(want, "\n"))
+	}
+	if len(want) != 5 {
+		t.Fatalf("%d shapes in the ADR", len(want))
+	}
+}
+
+// The requests, error codes and unit names of the closed lists.
+func TestClosedRequestListMatchesTheADR(t *testing.T) {
+	adr, _ := os.ReadFile("../../../docs/adr/0010-update-helper.md")
+	var row string
+	for _, l := range strings.Split(string(adr), "\n") {
+		if strings.HasPrefix(l, "  | Requests |") {
+			row = l
+		}
+	}
+	for _, op := range []string{opStatus, opStage, opActivate, opDiscard, opAck} {
+		if !strings.Contains(row, "`"+op+"`") {
+			t.Errorf("the ADR row does not list %s", op)
+		}
+	}
+	if len(opKeys) != 5 {
+		t.Fatalf("%d ops in the decoder", len(opKeys))
+	}
+}

@@ -17,7 +17,9 @@ const modulePath = "github.com/swingstate/oarfish/backend/"
 // particular no net/http, no os/exec, no third-party module (no golang.org/x
 // package: the copies vendored inside the standard library are named
 // vendor/golang.org/x and are part of it) and nothing of the service's web,
-// auth, audit, clock, securefile or server packages.
+// auth, audit, clock, securefile or server packages. os/exec is allowed for the
+// one function that runs systemctl (G6.6); TestOnlySystemctlExecutes pins it to
+// systemctl.go.
 func TestImports(t *testing.T) {
 	allowed := map[string]bool{
 		modulePath + "cmd/oarfish-update-helper": true,
@@ -25,7 +27,7 @@ func TestImports(t *testing.T) {
 		modulePath + "internal/trustkey":         true,
 		modulePath + "internal/version":          true,
 	}
-	forbidden := []string{"net/http", "os/exec", "plugin"}
+	forbidden := []string{"net/http", "plugin"}
 	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
 	if _, err := os.Stat(goTool); err != nil {
 		goTool = "go"
@@ -64,5 +66,32 @@ func TestImports(t *testing.T) {
 				t.Fatalf("only %d packages listed: %s", seen, out)
 			}
 		})
+	}
+}
+
+// Only systemctl.go imports os/exec, and nothing in the helper starts a process
+// anywhere else (ADR 0010 U2: one program, one function).
+func TestOnlySystemctlExecutes(t *testing.T) {
+	files, _ := filepath.Glob("*.go")
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(src)
+		if name != "systemctl.go" {
+			for _, bad := range []string{`"os/exec"`, "syscall.ForkExec", "syscall.Exec(", "os.StartProcess"} {
+				if strings.Contains(text, bad) {
+					t.Errorf("%s uses %s", name, bad)
+				}
+			}
+		}
+	}
+	src, _ := os.ReadFile("systemctl.go")
+	if n := strings.Count(string(src), "exec.CommandContext("); n != 1 {
+		t.Errorf("systemctl.go starts a process %d times, want once", n)
 	}
 }

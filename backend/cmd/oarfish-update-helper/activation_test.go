@@ -27,6 +27,11 @@ func childMain(mode string) int {
 	o := productionOptions()
 	o.lookupUID = func(string) (uint32, error) { return uint32(os.Getuid()), nil }
 	o.root = os.Getenv("OARFISH_TEST_ROOT")
+	if d := os.Getenv("OARFISH_TEST_STATE"); d != "" {
+		o.stateDir = d
+	} else {
+		o.stateDir = o.root + "-no-state" // never the real /var/lib/oarfish-update
+	}
 	o.idle = 500 * time.Millisecond
 	if os.Getenv("OARFISH_TEST_LISTEN_PID") == "self" {
 		// The parent cannot know the child's pid before it starts.

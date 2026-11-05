@@ -13,7 +13,7 @@ import (
 // implementation to prove the write-target table and the crash behaviour.
 //
 // Names are relative to one of two trees, never absolute: treeOpt is
-// /opt/oarfish (releases and, from G6.6, the links and component sets) and
+// /opt/oarfish (releases, the current link and, from G6.10, the component sets) and
 // treeState is /var/lib/oarfish-update. The production implementation uses
 // os.Root for both, so a name can not leave its tree.
 type fsops interface {
@@ -23,9 +23,14 @@ type fsops interface {
 	// Chmod sets the mode of a file or directory through an open descriptor
 	// (fchmod), not through the name.
 	Chmod(t tree, name string, perm os.FileMode) error
-	// Create creates a new file (O_CREATE|O_EXCL|O_WRONLY|O_NOFOLLOW), made
-	// 0600 and then set to perm with fchmod, whatever the umask.
+	// Create creates a new file (O_CREATE|O_EXCL|O_WRONLY), made 0600 and then
+	// set to perm with fchmod, whatever the umask. O_EXCL refuses an existing
+	// name, a link included.
 	Create(t tree, name string, perm os.FileMode) (wfile, error)
+	// Symlink creates a link whose text is target (a relative path). The
+	// switch of `current` is a Symlink to a temporary name followed by a Rename
+	// over the old link.
+	Symlink(t tree, target, name string) error
 	Rename(t tree, oldname, newname string) error
 	RemoveAll(t tree, name string) error
 	// SyncDir flushes a directory ("." is the tree itself).
@@ -54,10 +59,12 @@ func (r realFS) Mkdir(t tree, name string, perm os.FileMode) error {
 	return r.roots[t].Mkdir(name, perm)
 }
 
-// Chmod opens the name without following a final link and calls fchmod on
-// the descriptor. os.Root.Chmod would do the same by name, but the standard
-// library documents a race there (a regular file replaced by a link while the
-// call runs); the descriptor has no such window.
+// Chmod opens the name and calls fchmod on the descriptor. os.Root.Chmod would
+// do the same by name, but the standard library documents a race there (the
+// target replaced by a link while the call runs); the descriptor has no such
+// window. O_NOFOLLOW is passed but os.Root gives no no-follow on the last path
+// element (a link that stays inside the root is followed, A10.1); the trees are
+// root-owned, so no unprivileged process can place a link there.
 func (r realFS) Chmod(t tree, name string, perm os.FileMode) error {
 	f, err := r.roots[t].OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if err != nil {
@@ -77,6 +84,10 @@ func (r realFS) Create(t tree, name string, perm os.FileMode) (wfile, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+func (r realFS) Symlink(t tree, target, name string) error {
+	return r.roots[t].Symlink(target, name)
 }
 
 func (r realFS) Rename(t tree, oldname, newname string) error {

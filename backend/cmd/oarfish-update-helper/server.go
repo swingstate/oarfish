@@ -68,7 +68,7 @@ func (s *server) wake() time.Time {
 // accepted before a slot is free, so it waits in the socket backlog.
 //
 // Idle means no connection accepted and none being served. A connection that
-// is being served keeps the helper alive; a transaction will, too (U1).
+// is being served keeps the helper alive, and so does a transaction (U1).
 func (s *server) serve(ln *net.UnixListener) error {
 	slots := make(chan struct{}, s.maxConnections)
 	var wg sync.WaitGroup
@@ -82,7 +82,7 @@ func (s *server) serve(ln *net.UnixListener) error {
 			<-slots
 			switch {
 			case errors.Is(err, os.ErrDeadlineExceeded):
-				if s.active.Load() == 0 {
+				if s.active.Load() == 0 && s.h.running.Load() == 0 {
 					return nil
 				}
 				s.touch()

@@ -109,6 +109,13 @@ func (f *testFS) Create(t tree, name string, perm os.FileMode) (wfile, error) {
 	return &testFile{fs: f, w: w, t: t, name: name}, nil
 }
 
+func (f *testFS) Symlink(t tree, target, name string) error {
+	if err := f.step(fsOp{Kind: "symlink", Tree: t, Path: name, Path2: target}); err != nil {
+		return err
+	}
+	return f.inner.Symlink(t, target, name)
+}
+
 func (f *testFS) Rename(t tree, oldname, newname string) error {
 	if err := f.step(fsOp{Kind: "rename", Tree: t, Path: oldname, Path2: newname}); err != nil {
 		return err
@@ -165,8 +172,11 @@ func allowedTarget(t tree, p string) bool {
 	if t == treeState {
 		return p == "." || p == stateFile || strings.HasPrefix(p, stateTempPrefix)
 	}
-	if p == "releases" {
-		return true // fsync of the directory only
+	if p == "releases" || p == "." || p == "current" {
+		return true // fsync of a directory; the current link
+	}
+	if id, ok := strings.CutPrefix(p, tempLinkPrefix); ok {
+		return isHex(16)(id)
 	}
 	rest, ok := strings.CutPrefix(p, "releases/")
 	if !ok {

@@ -1,10 +1,9 @@
 // Command oarfish-update-helper is the privileged update helper of ADR 0010.
 //
-// This is the helper core of step G6.5: the strict request decoder, the peer
-// check, `status`, `stage` and `discard`, the state file and the shared lock.
-// `activate` and `ack` are known names that are answered with bad_request
-// until G6.6, and `recover` still touches nothing (G6.6). Nothing here has
-// been run on a device.
+// Steps G6.5 and G6.6: the strict request decoder, the peer check, `status`,
+// `stage`, `discard`, `activate` and `ack`, the release transaction with its
+// health check and rollback, the boot recovery, the state file and the shared
+// lock. Nothing here has been run on a device.
 //
 // The helper has exactly two subcommands. `serve` runs only when started by
 // socket activation (U1, U2); `recover` is the boot-time recovery (U7).
@@ -103,8 +102,7 @@ func run(args []string, stderr io.Writer, o options) int {
 	}
 	switch args[0] {
 	case "recover":
-		// The stub touches nothing. Recovery is G6.6.
-		return 0
+		return recoverMain(stderr, o)
 	case "serve":
 		return serve(stderr, o)
 	default:
@@ -132,12 +130,24 @@ func serve(stderr io.Writer, o options) int {
 		fmt.Fprintln(stderr, "oarfish-update-helper: the embedded release key is unusable")
 		return 1
 	}
-	s := newServer(o, uid, newHandler(o, key))
-	if err := s.serve(ln); err != nil {
+	h := newHandler(o, key)
+	s := newServer(o, uid, h)
+	h.startupRecovery()
+	err = s.serve(ln)
+	h.wait() // a transaction that is running is finished before the process ends
+	if err != nil {
 		fmt.Fprintln(stderr, "oarfish-update-helper: the listening socket failed")
 		return 1
 	}
 	return 0
+}
+
+// recoverMain is the recover subcommand (U7). It needs no socket, no service
+// user and no key: recovery verifies no release, so an unusable embedded key
+// must not stop it.
+func recoverMain(stderr io.Writer, o options) int {
+	var key trustkey.Key
+	return newHandler(o, key).recoverBoot(stderr)
 }
 
 // lookupUID looks the user up once at start (U2). With CGO_ENABLED=0 this

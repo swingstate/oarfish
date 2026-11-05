@@ -278,3 +278,22 @@ func TestStageOverTheSocket(t *testing.T) {
 	}
 	wantOK(t, ts.exchange(t, discardLine("1.1.0"), false))
 }
+
+// A running transaction keeps the helper alive past the idle time (U1).
+func TestTransactionKeepsTheHelperAlive(t *testing.T) {
+	ts := startServer(t, func(o *options) { o.idle = 200 * time.Millisecond })
+	ts.srv.h.running.Add(1)
+	select {
+	case <-ts.done:
+		ts.done <- nil
+		t.Fatal("exited while a transaction was running")
+	case <-time.After(700 * time.Millisecond):
+	}
+	ts.srv.h.running.Add(-1)
+	select {
+	case <-ts.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("no idle exit after the transaction")
+	}
+	ts.done <- nil // the cleanup waits for a value
+}

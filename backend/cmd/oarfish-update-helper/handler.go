@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -47,9 +49,18 @@ type handler struct {
 	freeBytes func(*os.File) (uint64, error) // space of the file system of an open directory
 	journal   io.Writer
 
-	// Test seams. They are nil in production.
-	wrapFS  func(fsops) fsops
-	onChunk func(file string, copied int64) // between two chunks of a copy
+	// Transactions that run after "accepted" (activate, and a recovery that
+	// serve starts). The server does not exit on its idle timer while one runs.
+	running atomic.Int32
+	wg      sync.WaitGroup
+
+	// Test seams. They are nil (or false) in production.
+	wrapFS    func(fsops) fsops
+	onChunk   func(file string, copied int64) // between two chunks of a copy
+	sysrun    func(args []string) ([]byte, error)
+	healthGet func(addr, path string) (int, []byte, error)
+	sleep     func(time.Duration)
+	syncTxn   bool // run a transaction inline instead of in a goroutine
 }
 
 func newHandler(o options, key trustkey.Key) *handler {
@@ -120,7 +131,7 @@ func (h *handler) open(needState bool) (*env, errorCode) {
 	if st != nil {
 		roots[treeState] = st
 	}
-	var f fsops = realFS{roots: roots}
+	var f fsops = wrapFaults(realFS{roots: roots})
 	if h.wrapFS != nil {
 		f = h.wrapFS(f)
 	}
@@ -168,6 +179,10 @@ func (h *handler) respond(line []byte) []byte {
 		out = h.stage(req)
 	case opDiscard:
 		out = h.discard(req)
+	case opActivate:
+		out = h.activate(req)
+	case opAck:
+		out = h.ack(req)
 	default:
 		return errorBody(codeBadRequest)
 	}
@@ -195,12 +210,35 @@ func (h *handler) status() []byte {
 		V: protocolMax, OK: true, ProtocolMin: protocolMin, ProtocolMax: protocolMax,
 		HelperVersion: h.helperVersion, KeyID: h.keyID, InstalledVersion: installedVersion(h.root),
 		Phase: st.Txn.Phase, PreviousVersion: st.Previous, LastResult: toJSONLast(st.Last),
-		NeedsAttention: needs || st.Txn.Phase == "rollback_failed", FreeBytes: free,
+		NeedsAttention: needs || st.NeedsAttention || st.Txn.Phase == phaseRollbackFailed, FreeBytes: free,
 	}
+	resp.CooldownVersion, resp.CooldownRemainingS = h.cooldownView(st)
 	if st.Txn.Phase == phaseStaged {
 		resp.StagedVersion = st.Txn.To
 	}
 	return encode(resp)
+}
+
+// cooldownView reports the version that is refused and the seconds left of the
+// longer of the two markers (U6). It is 0 and empty when no marker holds, or
+// when the boot clock can not be read.
+func (h *handler) cooldownView(st *state) (string, int64) {
+	now, err := h.uptime()
+	if err != nil {
+		return "", 0
+	}
+	var left int64
+	version := ""
+	if st.Cool.RefuseVersion != "" && st.Cool.refuse().active(now) {
+		left, version = st.Cool.RefuseUntilUptimeS-now, st.Cool.RefuseVersion
+	}
+	if st.Cool.LastActivateSetAtUptimeS > 0 {
+		m := cooldownMarker{SetAtUptimeS: st.Cool.LastActivateSetAtUptimeS, UntilUptimeS: st.Cool.LastActivateUptimeS + cooldownAnyS}
+		if m.active(now) && m.UntilUptimeS-now > left {
+			left = m.UntilUptimeS - now
+		}
+	}
+	return version, left
 }
 
 // statusState reads the state. A file that is not valid is reported as idle

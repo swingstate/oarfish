@@ -8,7 +8,10 @@
 #                  bundle carries the helper since G6.3b, and the test then checks
 #                  that one without an argument. With an argument the given binary
 #                  is checked as well. For each helper the test checks that `recover`
-#                  exits 0 and that `serve` without socket activation exits non-zero.
+#                  on a machine without /var/lib/oarfish-update exits 1 with its fixed
+#                  message and touches nothing (the helper has no option for another
+#                  path, so run this on a machine without an installed helper), and
+#                  that `serve` without socket activation exits non-zero.
 #   OARFISH_SMOKE_EMULATOR  command prefix; default qemu-aarch64 unless the host is
 #                         linux/arm64. Set to "none" to run the binary directly.
 #   OARFISH_SMOKE_PORT      default 18484
@@ -112,9 +115,9 @@ for HELPER_UNDER_TEST in ${helpers[@]+"${helpers[@]}"}; do
   helper() { (cd "$TMP/helper-cwd" && env -u LISTEN_PID -u LISTEN_FDS -u LISTEN_FDNAMES "${run[@]}" "$HELPER_UNDER_TEST" "$@"); }
 
   rc=0; out="$(helper recover 2>&1)" || rc=$?
-  [ "$rc" = 0 ] || fail "helper recover exited $rc"
-  [ -z "$out" ] || fail "helper recover printed: $out"
-  echo "helper recover        -> exit 0, no output"
+  [ "$rc" = 1 ] || fail "helper recover exited $rc, expected 1 without a state directory"
+  [ "$out" = "oarfish-update-helper: recovery did not run: A storage error occurred." ] || fail "helper recover printed: $out"
+  echo "helper recover        -> exit 1 without /var/lib/oarfish-update, fixed message"
 
   rc=0; out="$(helper serve 2>&1)" || rc=$?
   [ "$rc" != 0 ] || fail "helper serve without socket activation exited 0"
@@ -132,7 +135,7 @@ for HELPER_UNDER_TEST in ${helpers[@]+"${helpers[@]}"}; do
   echo "helper status         -> exit 2, usage line"
 
   [ -z "$(ls -A "$TMP/helper-cwd")" ] || fail "the helper created files"
-  helper_summary="$helper_summary The update helper stub ($label) answered as specified: \`recover\` exit 0, \`serve\` without socket activation exit 1, unknown subcommand exit 2."
+  helper_summary="$helper_summary The update helper stub ($label) answered as specified: \`recover\` exit 1 with its fixed message where no state directory exists, \`serve\` without socket activation exit 1, unknown subcommand exit 2."
 done
 
 echo "SMOKE TEST PASSED (${emu})"

@@ -161,13 +161,18 @@ if [ "$SHAPE" = components ]; then
   [ "$(own "$R/var/lib/oarfish-update")" = "root:root 700" ] || fail "/var/lib/oarfish-update is $(own "$R/var/lib/oarfish-update")"
   [ "$(own "$R/usr/libexec")" = "root:root 755" ] || fail "/usr/libexec is $(own "$R/usr/libexec")"
   ok "ownership and modes of the component set, the helper, the units, /usr/libexec and /var/lib/oarfish-update"
-  # The helper stub is a real arm64 program here (the whole container is emulated).
+  # The helper is a real arm64 program here (the whole container is emulated).
+  # It has fixed production paths, and the installer ran under the fake root $R,
+  # so /var/lib/oarfish-update does not exist where the helper looks: `recover`
+  # must refuse with its fixed message and change nothing.
   H="$R/opt/oarfish/components/active/oarfish-update-helper"
   rc=0; "$H" recover >/tmp/h1.out 2>&1 || rc=$?
-  if [ "$rc" != 0 ] || [ -s /tmp/h1.out ]; then fail "helper recover exited $rc: $(cat /tmp/h1.out)"; fi
+  if [ "$rc" != 1 ] || [ "$(cat /tmp/h1.out)" != "oarfish-update-helper: recovery did not run: A storage error occurred." ]; then
+    fail "helper recover exited $rc: $(cat /tmp/h1.out)"
+  fi
   rc=0; "$H" serve >/tmp/h2.out 2>&1 </dev/null || rc=$?
   [ "$rc" = 1 ] || fail "helper serve without socket activation exited $rc, expected 1"
-  ok "the installed helper stub runs: recover exits 0, serve without socket activation exits 1"
+  ok "the installed helper runs: recover without its state directory exits 1 with the fixed message, serve without socket activation exits 1"
   flock -x -n "$R/var/lib/oarfish-update" true || fail "the lock on /var/lib/oarfish-update is still held after the installer ended"
   ok "the lock is free after the run (real flock on the directory)"
   [ -f /tmp/fake-systemd/active.oarfish-update-helper.socket ] || fail "the helper socket was not started"

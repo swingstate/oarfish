@@ -45,20 +45,52 @@ func (e *env) removeRelease(version, installed, previous string) error {
 	return e.trash(releasePath(version))
 }
 
-// sweep removes every releases/.stage.* and releases/.trash.* directory.
+// sweep removes every releases/.stage.* and releases/.trash.* directory, every
+// .current.new.* link at the top of the tree and every temporary state file
+// that a crash left in the state directory (U7 row 11: the temporary file is
+// ignored and deleted).
 func (e *env) sweep() error {
-	d, err := e.opt.Open("releases")
-	if err != nil {
-		return err
+	if e.state != nil {
+		d, err := e.state.Open(".")
+		if err != nil {
+			return err
+		}
+		entries, err := d.ReadDir(-1)
+		d.Close()
+		if err != nil {
+			return err
+		}
+		for _, ent := range entries {
+			if strings.HasPrefix(ent.Name(), stateTempPrefix) {
+				if err := e.fs.RemoveAll(treeState, ent.Name()); err != nil {
+					return err
+				}
+			}
+		}
 	}
-	entries, err := d.ReadDir(-1)
-	d.Close()
-	if err != nil {
-		return err
-	}
-	for _, ent := range entries {
-		if n := ent.Name(); strings.HasPrefix(n, ".stage.") || strings.HasPrefix(n, ".trash.") {
-			if err := e.fs.RemoveAll(treeOpt, "releases/"+n); err != nil {
+	for _, dir := range []string{".", "releases"} {
+		d, err := e.opt.Open(dir)
+		if err != nil {
+			return err
+		}
+		entries, err := d.ReadDir(-1)
+		d.Close()
+		if err != nil {
+			return err
+		}
+		for _, ent := range entries {
+			n := ent.Name()
+			if !isLeftover(n) {
+				continue
+			}
+			if dir == "releases" && strings.HasPrefix(n, tempLinkPrefix) || dir == "." && !strings.HasPrefix(n, tempLinkPrefix) {
+				continue
+			}
+			path := n
+			if dir != "." {
+				path = dir + "/" + n
+			}
+			if err := e.fs.RemoveAll(treeOpt, path); err != nil {
 				return err
 			}
 		}
@@ -80,7 +112,7 @@ func (e *env) abortedResult(t txn, reason string) *lastResult {
 // removes every .stage.* directory (and .trash.*, which only the stage
 // sequence creates), removes releases/<to> unless it is the installed or the
 // recorded previous version, and sets idle with the last result aborted,
-// reason interrupted. The boot-time recover subcommand is G6.6.
+// reason interrupted. The boot-time recover subcommand calls it as well.
 func (e *env) recoverStaging(st *state, installed string) errorCode {
 	if err := e.sweep(); err != nil {
 		return codeIOError

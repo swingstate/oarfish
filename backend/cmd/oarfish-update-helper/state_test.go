@@ -45,7 +45,7 @@ func TestStateFieldSet(t *testing.T) {
 		}
 		return strings.Join(sortStrings(ks), ",")
 	}
-	if got, want := keys(m), "cooldown,helper_version,last_result,previous_version,schema_version,transaction"; got != want {
+	if got, want := keys(m), "cooldown,helper_version,last_result,needs_attention,previous_version,schema_version,transaction"; got != want {
 		t.Fatalf("top-level members %s, want %s", got, want)
 	}
 	if got, want := keys(m["transaction"]), "components_from,components_to,correlation_id,from,from_binary_sha256,id,known_good_sha256,phase,socket_restart_pending,staged_at_uptime_s,to"; got != want {

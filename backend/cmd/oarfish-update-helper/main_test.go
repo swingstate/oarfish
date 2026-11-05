@@ -24,29 +24,24 @@ func TestUsage(t *testing.T) {
 	}
 }
 
-// In the stub, recover touches nothing: no output, no environment, no user
-// lookup, no socket, no file.
-func TestRecoverTouchesNothing(t *testing.T) {
+// recover needs no environment, no user lookup and no socket; on a state
+// directory that does not exist it fails with a fixed message and creates
+// nothing.
+func TestRecoverWithoutAStateDirectory(t *testing.T) {
 	dir := shortDir(t)
-	wd, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chdir(wd)
-
 	o := testOptions(dir)
 	o.getenv = func(string) string { t.Fatal("read the environment"); return "" }
 	o.lookupUID = func(string) (uint32, error) { t.Fatal("looked up a user"); return 0, nil }
 	o.peerUID = nil
 	var stderr bytes.Buffer
-	if code := run([]string{"recover"}, &stderr, o); code != 0 {
-		t.Fatalf("exit %d, want 0", code)
+	if code := run([]string{"recover"}, &stderr, o); code != 1 {
+		t.Fatalf("exit %d, want 1", code)
 	}
-	if stderr.Len() != 0 {
-		t.Fatalf("stderr %q", stderr.String())
+	if got := stderr.String(); got != "oarfish-update-helper: recovery did not run: A storage error occurred.\n" {
+		t.Fatalf("stderr %q", got)
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
-		t.Fatalf("recover created %d entries", len(entries))
+		t.Fatalf("recover changed the release root: %d entries", len(entries))
 	}
 }
 
