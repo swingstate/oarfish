@@ -120,7 +120,7 @@ Adding a dependency should be justified in the change that adds it.
 | `test-installer.sh` | installer tests against a fake root |
 | `test-installer-container.sh`, `installer-container/` | installer end to end in an arm64 container under qemu |
 | `check-budgets.sh` | enforces and reports the size budgets; with a second argument it also reports the update helper's size (no budget of its own; the bundle has carried one since G6.3b) |
-| `smoke-test-arm64.sh` | extracts the bundle, starts the binary, checks `/healthz` and `/`; with a second argument also runs the update helper stub (`recover` exits 0, `serve` without socket activation exits 1, an unknown subcommand exits 2) |
+| `smoke-test-arm64.sh` | extracts the bundle, starts the binary, checks `/healthz` and `/`; with a second argument also runs the update helper stub (`recover` on a machine without `/var/lib/oarfish-update` exits 1 with its fixed message, `serve` without socket activation exits 1, an unknown subcommand exits 2) |
 | `check-reproducible.sh` | double build and SHA-256 comparison |
 
 ### Size budgets
