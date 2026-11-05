@@ -7,6 +7,7 @@
 - Recorded in `docs/DECISIONS.md` as D-C53 to D-C63 and the open decision D-D12; amends ADR 0009 by amendment A6; aligns the specification in version 0.3.5
 - Amended after the G6.1 device spike (applied 2026-11-03, `docs/DECISIONS.md` D-C64): amendments A1 to A8 and one residual-risk sentence in T1, listed in "Amendments after the G6.1 spike" below; the specification follows in version 0.3.6. The status above and the decisions D-C53 to D-C63 are unchanged.
 - Amended after the G6.3a stub (applied 2026-11-03, `docs/DECISIONS.md` D-C66): amendment A9, listed in "Amendment after G6.3a" below. It changes the recover unit text, one sentence about the socket, U11 item 4 and the T14 row; the specification is not changed.
+- Amended after G6.5 (applied 2026-11-05, `docs/DECISIONS.md` D-C67): amendment A10, listed in "Amendment after G6.5" below. It corrects the assumption V5 about `O_NOFOLLOW` through `os.Root` and records the limits of `os.Root`, the `previous_version` member of the state and the one mutation seam; the specification is not changed.
 
 ## How to read this ADR
 
@@ -696,6 +697,33 @@ Label for every statement here: **device observation (G6.3 owner stop, 2026-11-0
 8. *Uninstall without `--purge`.* It removed the `/opt/oarfish` tree, the cache, the helper link, the units and the wants links, and kept `/etc/oarfish`, `/var/lib/oarfish`, `/var/lib/oarfish-update` and the user; no failed units; the account hash was unchanged. The official `v0.1.0-alpha.6` installer then restored the original state.
 
 **Not exercised on the device:** `--purge`; a first installation without any previous release; the installer rollback after a failed health check; the production-key path; Ubuntu; another Pi model; a cold power cycle; a crash loop up to the start limit and a helper that does not start; two installer runs at the same time (tested only against the fake root); a helper that holds the lock (the stub takes none).
+
+## Amendment after G6.5
+
+Step G6.5 (the helper core: `stage`, `discard`, `status`, the lock, the cache access, the staging recovery) showed places where the accepted text and the behaviour of the Go standard library differ, and places where the ADR is silent. The project owner accepted the gap rules and the implementation decisions after the review of PR #28. They are recorded as D-C67 in `docs/DECISIONS.md`. The decisions D-C53 to D-C66, the status of this ADR and the owner decisions Q1 to Q7 are not changed; the specification is not changed. The statements below describe the code at the merge commit of PR #28.
+
+**Evidence label.** Everything in A10 about the Go standard library and the file system was observed on the development machine (macOS) and on the GitHub-hosted Linux runner by the tests of the helper. Nothing is verified on a device, and `os.Root` is not verified on the kernel of the reference device.
+
+**A10. Opening cache files, the limits of `os.Root`, the state member for the previous version, the one mutation seam (amends U3, V5, U8; owner decision D-C67).**
+
+*A10.1 (U3, V5 corrected).* Accepted wording (assumption V5): opening a cache file with `O_NOFOLLOW` through `os.Root` refuses a link. New rule: on Linux the standard library's `Root.OpenFile` follows a link in the last path element that stays inside the root, even with `O_NOFOLLOW` (a link that leads out of the root is refused). The helper therefore opens each cache file with `openRegular`: `Lstat` (refuse a link, a FIFO, a directory, a device or a socket), open with `O_RDONLY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC`, then check on the descriptor that it is a regular file and the same file as `Lstat` saw. These checks are defence in depth: `os.SameFile` compares device and inode and cannot detect inode reuse, and a link to the very file that was checked is accepted. The integrity boundary is the verification of the bytes read from the one opened descriptor, which is never opened again by name: other bytes fail the signed hashes. The same function reads `state.json`.
+
+*A10.2 (U3).* `update/` and `update/<version>/` below the cache are checked with `Lstat`; a link there is refused (`not_found`) whatever it points to. The cache directory itself is opened with `os.OpenRoot`, which follows a link in the directory name; `/var/cache/oarfish` is created by the installer and `CacheDirectory=` as a directory.
+
+*A10.3 (other `os.Root` limits).* (a) `Root` has no `fchmod` by descriptor and the standard library documents a race for `Root.Chmod` on Unix (the target replaced by a link while the call runs), so the helper opens the name and calls `fchmod` on the descriptor. (b) `Root.Mkdir` is reduced by the umask, so each directory gets an explicit `chmod` after it. (c) Files are created with `O_CREATE|O_EXCL` at 0600 and set to the final mode by `fchmod`, whatever the umask. (d) `O_NOFOLLOW` on the last element has no effect through `Root` (A10.1); the helper's trees are root-owned, so no unprivileged process can place a link there. (e) The free space that gates `stage` comes from `fstatfs` on a directory opened through the root (`releases/`); `status` reports the free bytes with `statfs` on the path of the tree, for display only. (f) A directory sync is `Root.Open` plus `Sync`. (g) An escape from the root is recognised by the text `path escapes from parent` of the error and mapped to `not_found`; the text is compared and never returned. **Test coverage:** at this commit no test produces that error (the `Lstat` check refuses a link before the root could report an escape, so the branch is reachable only by a swap between `Lstat` and open), and the mapping test lists no escape entry; see the finding in the pull request.
+
+*A10.4 (U8).* U8 lists no member for the previous healthy version. `state.json` carries an explicit `previous_version` member (empty or a version matching the pattern of U2). The decoder is strict for the members it knows (type, range, pattern, phase and outcome names, no duplicate key, no key that differs from a known name only in letter case, at most 64 KiB, `schema_version` 1); unknown members are ignored at every level, as U15 rule 6 requires, and a missing member keeps its zero value.
+
+*A10.5.* All mutating file operations of the helper go through the `fsops` interface (`Mkdir`, `Chmod`, `Create`, `Rename`, `RemoveAll`, `SyncDir`). `TestNoMutationOutsideFsops` parses the non-test sources and fails on any other call of a mutating function of `os` or `syscall`, of a mutating method of `os.Root` or `os.File`, and on an open for writing. The helper takes the lock with `open` and `flock` on the state directory; that creates and changes nothing on disk.
+
+### Changes made in place
+
+| Section | Accepted wording | Now | Amendment |
+|---|---|---|---|
+| U3; V5 | `O_NOFOLLOW` through `os.Root` refuses a link in the last element | It does not; `Lstat`, open, descriptor checks, and verification of the bytes read are the boundary | A10.1 |
+| U3 | Links are refused | `update/` and `update/<version>/` checked with `Lstat` | A10.2 |
+| U8 | The state members listed in U8 | `previous_version` added; strict decoder, unknown members ignored | A10.4 |
+| U2, closed write targets | Writes only to the listed targets | Every write goes through one interface, checked by a source scan | A10.5 |
 
 ## Evidence and test plan for the later implementation
 
