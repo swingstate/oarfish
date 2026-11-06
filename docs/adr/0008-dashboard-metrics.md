@@ -2,6 +2,7 @@
 
 - Status: **Accepted** (2026-10-28, accepted by the project owner). Decision 8 is amended; see there.
 - Date: proposed 2026-10-27, accepted 2026-10-28
+- Amended after R1 (2026-11-06, `docs/DECISIONS.md` D-C72, D-C73): section "Amendment after R1" at the end (optional history, default route and DNS display).
 - Gate: G5
 
 ## Context
@@ -41,3 +42,23 @@ Gate G5 adds the Home page with live values of the device (spec 6.3, 7.2, 8.7). 
 - More than four browser windows on Home are refused until one closes. Browsers also limit connections per host; the cap keeps the device from being the one that gives.
 - The collector reads about 15 small files per sample. The benchmark in `internal/metrics` measures the work, not the time on the device. Idle CPU and RSS were measured on one Raspberry Pi Zero 2 W with `v0.1.0-alpha.4` (docs/INSTALL.md, docs/DASHBOARD.md "Verification status").
 - Not decided here: throttling and undervoltage warnings (ORB-DASH-004, needs a safe board adapter), the plugin and application summary (ORB-DASH-007), the resource view of external daemons (ORB-NFR-017), persisted history, configurable thresholds, authentication of the API (Gate G5.1).
+
+## Amendment after R1
+
+Recorded after the owner's requirements decisions of 2026-11-05 and 2026-11-06 (`docs/DECISIONS.md` D-C72 and D-C73; specification 0.4.0). Documentation only: no code, test, unit or workflow changed, and nothing here is verified on a device. Labels: **owner decision**, **fact**, **proposal**, **assumption**. Decisions 1 to 11 above are unchanged except where this section says so.
+
+**R1.1 Optional history (amends decision 5 and D-C35; refines decision 4).**
+
+- **Owner decision:** the live display and the live ring of decision 5 (60 points, memory only, cleared when the last client leaves) are unchanged. Sampling for the live display stays only while somebody watches (decision 4).
+- **Owner decision:** in addition there is an optional history of CPU usage, memory use and temperature. It is an additional, opt-in store beside the live ring, with a fixed upper bound, replaced atomically, never unbounded and never a metrics database (specification ORB-STO-007).
+- **Owner decision:** the background measurement for it runs only when the administrator switches it on. The default is off. With it off, nothing is measured without a watcher.
+- **Owner decision:** a setting is needed for the switch; the settings store belongs to the design stop H1 (D-C73).
+- **Assumption, not decided:** guideline of 24 hours at about 5 minutes. Intervals, number of points, size of a snapshot, write rhythm by medium type (rare on microSD and on an unknown medium, more often on eMMC and NVMe), idle CPU and write counts are open until H1 and a measurement on the device. An earlier size estimate of about 8 KB per snapshot is not measured.
+- **Open:** the write measurement and the medium-type detection on the reference device are part of the spike S1 and have not been done.
+
+**R1.2 Default route and DNS servers (ORB-NET-001; refines decision 2).**
+
+- **Owner decision:** the network display shows the default route and the DNS servers, plus SSID, signal strength and "IP details" (prefix, gateway and IPv6). The WLAN is shown only, never changed.
+- **Fact (repository, checked before this amendment):** the route parser skips routes that have a gateway, and the backend reads no DNS file. ORB-NET-001 is therefore not yet met.
+- **Owner decision:** D-C31 and D-C32 stay in force (no program, no netlink, files only) until a later amendment decides a source for the new values. No allow-list entry is added by this amendment.
+- **Open until the device spike S1:** the source of the SSID and the signal (if it can only be read through netlink, a further amendment must say so, read-only and with the address families of the unit) and the source of the DNS servers (a local resolver stub may hide the real servers; assumption, not checked).

@@ -22,14 +22,25 @@
 | G6.8 | Update page (Svelte). Stop point: the owner reviews the UI |
 | G6.9 | Hardware evidence for the base update on the reference device, and documentation. Stop point: the owner reviews the evidence; G6 stays open |
 | G6.10 | Replacement of the helper and its units by a GUI update (ADR 0010, U15): unit lint, component transaction, known-good copy, key rule, second confirmation. Until it is accepted, a release that changes the helper or a unit needs an installer run. Stop point: the owner decides whether G6 passes |
-| G7 | systemd, journal, processes, reboot, and shutdown; Privilege Broker with a fixed allowlist. Does not start before G6.10 is accepted (D-C63) |
+| (spike) S1 | Device spike, extended, no product code: wireless data (SSID, signal), storage type, write baseline, throttling files, cpufreq, the source of the DNS servers, feasibility of the operating system update display (D-C72, D-C74). Open until it has run |
+| (task) U1 | New UI shell (navigation of specification 7.2, "Dashboard" as the first entry, language choice, design tokens); `docs/UI.md` is changed in this step. No history, no WLAN display, no Files. The brand check comes before the logo (D-C71) |
+| (task) N0 | Default route and DNS display (ORB-NET-001, D-C72); needs the source decided after S1 and an ADR 0008 amendment |
+| (task) N1 | Network page with the WLAN display (SSID, signal, IP details); after S1, U1 and G6.8 (D-C72) |
+| (design stop) H1 | Dashboard history and settings store: intervals, write numbers, medium-dependent rhythm, file format, language setting (D-C73); needs S1 and a measurement on the device. (task) H2 is the implementation, after H1 and U1 |
+| G7 | systemd, journal, processes, reboot, and shutdown; Privilege Broker with a fixed allowlist. Journal and processes are reserve behind the MVP acceptance (ORB-LOG-001 is SOLL, D-C69). Does not start before G6.10 is accepted (D-C63) |
+| (design stop) F1 | Files, read-only: the fixed roots (open), block list, size limit and acceptance criteria, with an ADR; after G7, container roots also after G10 (D-C75). (task) F2 is the implementation |
 | G8 | Plugin runtime and permission model; broker capability check |
-| G9 | Tailscale plugin |
-| G10 | Docker and Podman plugin |
+| G9 | Tailscale plugin; installation through the GUI by a typed broker action, with its own design stop (D-C75) |
+| G10 | Docker and Podman plugin; the access of the unprivileged service to the engine is decided in a design stop before G10 (D-C75) |
 | G11 | Oarfish Assist, read-only MVP |
 | G12 | Ubuntu Server LTS ARM64 qualification |
-| (design stop) | LAN access and HTTPS design stop, before the MVP release, not before G6 (D-D10). Not a gate; until then remote access is an SSH tunnel and the listen guard stays (D-C48) |
+| (design stop) D-D10 | LAN access and HTTPS, after G6.10 and before the MVP release and before any test with outside users. Direction decided (D-C70): self-signed certificate, installer option, never without TLS outside loopback; the design is open (certificate, host and origin checks, setup token handover, installer size budget). Not a gate; until then remote access is an SSH tunnel and the listen guard stays (D-C48) |
+| (design stop) D-D12 (rest) | Key rotation: revocation of a leaked signing key and the key embedded in the helper. Alpha devices are installed again (D-C76). Touches the installer and the embedded key, so it runs next to D-D10; before G13 |
 | G13 | Hardening and MVP acceptance |
 | Post-MVP | Armbian, Rockchip, additional boards, and external plugins |
+
+Implementation order after G8: G10, then G9, then G11; the identifiers stay unchanged (D-C75).
+
+Reserve, which may follow the MVP acceptance (D-C69): the journal view and the process view (ORB-LOG-001 is SOLL, ORB-PRC-001). Later and not part of this plan: throttling and undervoltage warnings (ORB-DASH-004, task T1).
 
 Each gate receives its own prompt for the implementation agent. A later gate must not be implemented early unless the specification is formally changed.

@@ -2,9 +2,9 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.3.7
-- Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G4 abgenommen)
-- Stand: 3. November 2026
+- Dokumentversion: 0.4.0
+- Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G5.1 abgenommen)
+- Stand: 6. November 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
@@ -140,7 +140,7 @@ Armbian ist eine zentrale Produktanalogie für den SBC-Fokus. Armbian adressiert
 | Self-Update | Neue signierte Releases lassen sich über die GUI installieren und bei Fehler automatisch zurückrollen. |
 | Erweiterbarkeit | Tailscale, Containers und Oarfish Assist sind vom Core sauber abgegrenzt. |
 | Sicherheit | Kein generischer Root-Executor, kein Shell-Tool für das LLM, keine Secrets in UI oder Logs. |
-| Nutzbarkeit | Zustand und nächste Handlung sind auf der Home-Seite innerhalb von 30 Sekunden erfassbar. |
+| Nutzbarkeit | Zustand und nächste Handlung sind auf der Dashboard-Seite innerhalb von 30 Sekunden erfassbar. |
 
 ## 2. Stakeholder, Nutzer und Einsatzkontext
 
@@ -305,9 +305,12 @@ Profile dürfen keine beliebigen Shellkommandos enthalten. Sie referenzieren aus
 - Architekturvorbereitung für Ubuntu Server LTS ARM64.
 - Lokale Anmeldung und sichere Sitzung für einen Administrator.
 - Geräteerkennung mit Board-, OS-, Kernel- und Architekturinformationen.
-- Home-Dashboard mit realen Ressourcen-, Temperatur-, Speicher- und Netzwerkdaten.
+- Dashboard mit realen Ressourcen-, Temperatur-, Speicher- und Netzwerkdaten.
 - Anzeige von Throttling, CPU-Frequenz und Power-Warnungen, soweit erkannt.
-- systemd-Dienste, Journal, Prozesse, Netzwerk- und Storage-Übersicht.
+- systemd-Dienste, Journal, Prozesse, Netzwerk- und Storage-Übersicht. Die Journal- und die Prozessansicht sind Reserve und dürfen nach der MVP-Abnahme folgen (ORB-LOG-001, ORB-PRC-001, 6.4).
+- Zugriff im lokalen Netz über HTTPS mit selbstsigniertem Zertifikat, ausdrücklich beim Installieren eingeschaltet.
+- Lesender Dateizugriff (Files) auf feste, vom Produkt vorgegebene Verzeichnisse.
+- Optionaler Verlauf von CPU, Arbeitsspeicher und Temperatur (Richtwert 24 Stunden; Intervalle und Schreibhäufigkeit sind bis zum Entwurfsstopp H1 offen).
 - Sicheres Reboot und Shutdown mit Bestätigung.
 - Plugin Manager mit versionierten Manifesten und Capability-Freigabe.
 - First-Party-Plugins für Tailscale, Containers und Oarfish Assist.
@@ -340,6 +343,10 @@ Der Core muss ohne alle Plugins vollständig starten. Tailscale ist weder für I
 - Self-hosted GitHub Runner auf MacBook oder SBC.
 - Öffentliche Internet-Exponierung des Management-UIs als Default.
 - Ubuntu Core oder nicht-systemd-basierte Distributionen.
+- Schreibender Dateizugriff, Hochladen, Löschen, Bearbeiten und vom Administrator freigegebene Verzeichnisse in Files.
+- Ändern der WLAN-Verbindung und Access Point.
+- Ausführen von Betriebssystem-Updates aus der GUI.
+- Mounten, Formatieren und Partitionieren von Datenträgern.
 
 ### 4.4 Ziel nach dem MVP
 
@@ -360,7 +367,7 @@ Der Core muss ohne alle Plugins vollständig starten. Tailscale ist weder für I
 | ID | Anwendungsfall | Kurzablauf | Ergebnis |
 |---|---|---|---|
 | UC-01 | Ersteinrichtung | Admin installiert Oarfish, öffnet die GUI, erstellt ein Konto und prüft die erkannte Plattform. | Geschütztes, einsatzbereites Gerät. |
-| UC-02 | Gerät verstehen | Home zeigt Boardmodell, OS, Temperatur, Last, Speicher und Warnungen. | Zustand ist ohne Shell verständlich. |
+| UC-02 | Gerät verstehen | Das Dashboard zeigt Boardmodell, OS, Temperatur, Last, Speicher und Warnungen. | Zustand ist ohne Shell verständlich. |
 | UC-03 | Thermisches Problem analysieren | Oarfish erkennt hohe Temperatur oder Throttling und zeigt Ursache und Maßnahmen. | Nutzer kann Kühlung oder Last gezielt prüfen. |
 | UC-04 | Dienst sicher neu starten | Dienst auswählen, Auswirkungen prüfen, bestätigen und verifizieren. | Aktion und Ergebnis sind auditiert. |
 | UC-05 | Tailscale einrichten | Plugin aktivieren, Berechtigungen bestätigen, anmelden und Status prüfen. | Gerät ist optional über das Tailnet erreichbar. |
@@ -399,10 +406,10 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-GEN-003 | Erweiterte Optionen müssen über Progressive Disclosure verfügbar sein. | MUSS | Erweiterte Felder erscheinen erst nach expliziter Auswahl. |
 | ORB-GEN-004 | Oarfish muss Funktionen anhand real erkannter Capabilities aktivieren. | MUSS | Nicht verfügbare Hardware- oder Pluginfunktionen werden nicht als aktive Aktion gezeigt. |
 | ORB-GEN-005 | Das Produkt muss vollständig ohne Container- oder AI-Plugin starten. | MUSS | Core-Dashboard, Anmeldung und Plugin Manager funktionieren. |
-| ORB-GEN-006 | Die GUI muss Deutsch unterstützen; Englisch muss technisch vorbereitet sein. | SOLL | UI-Texte stammen aus Übersetzungsressourcen. |
+| ORB-GEN-006 | Die GUI muss Deutsch und Englisch vollständig unterstützen. Die Sprache folgt zunächst der Browsersprache und ist in den Einstellungen änderbar. | SOLL | UI-Texte stammen aus Übersetzungsressourcen; beide Sprachen haben dieselben Schlüssel und sind vollständig übersetzt. |
 | ORB-ONB-001 | Der erste Start muss einen geführten Einrichtungsassistenten anbieten. | MUSS | Konto, Binding, Gerätename, erkannte Plattform und optionale Plugins werden in einem Ablauf gezeigt. |
 | ORB-ONB-002 | Beim ersten Start muss ein lokales Administratorkonto eingerichtet werden. | MUSS | Ohne Kontoanlage ist kein normaler Verwaltungszugriff möglich. |
-| ORB-ONB-003 | Oarfish muss standardmäßig auf Loopback oder einem explizit ausgewählten privaten Interface lauschen. | MUSS | Keine öffentliche Bindung ohne bewusste Warnung und Freigabe. |
+| ORB-ONB-003 | Oarfish muss standardmäßig auf Loopback oder einem explizit ausgewählten privaten Interface lauschen. | MUSS | Keine öffentliche Bindung ohne bewusste Warnung und Freigabe. Eine Bindung außerhalb von Loopback erfolgt nur durch ausdrückliche Wahl beim Installieren. |
 | ORB-ONB-004 | Plugins dürfen nicht ungefragt installiert oder aktiviert werden. | MUSS | Jede Installation zeigt Paketquelle, Berechtigungen und Auswirkungen. |
 | ORB-ONB-005 | AI-Funktionen müssen standardmäßig deaktiviert sein. | MUSS | Ohne Konfiguration erfolgt kein Provider-Aufruf. |
 
@@ -425,13 +432,14 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 
 | ID | Anforderung | Prio | Abnahmekriterium |
 |---|---|---|---|
-| ORB-DASH-001 | Home muss Hostname, Board, SoC, OS, Uptime, CPU, RAM, Storage und Netzwerk darstellen. | MUSS | Werte stammen vom realen Gerät und werden ohne Vollreload aktualisiert. |
+| ORB-DASH-001 | Das Dashboard muss Hostname, Board, SoC, OS, Uptime, CPU, RAM, Storage und Netzwerk darstellen. | MUSS | Werte stammen vom realen Gerät und werden ohne Vollreload aktualisiert. |
 | ORB-DASH-002 | Oarfish muss verfügbare Temperaturquellen anzeigen und sinnvoll benennen. | MUSS | Zero 2 W zeigt mindestens die SoC-Temperatur; weitere Boards werden nur nach Verifikation als unterstützt ausgewiesen. |
 | ORB-DASH-003 | Oarfish muss CPU-Frequenz und Governor anzeigen, soweit vom Kernel bereitgestellt. | SOLL | Aktuelle und maximale Frequenz sind nachvollziehbar. |
 | ORB-DASH-004 | Board-spezifische Throttling- oder Unterspannungswarnungen müssen angezeigt werden, wenn ein sicherer Adapter existiert. | SOLL | Pi-Warnstatus oder äquivalentes Board-Signal wird korrekt interpretiert. |
 | ORB-DASH-005 | Der Systemzustand muss kritische, relevante und informative Hinweise priorisieren. | MUSS | Warnungen nennen Ursache, Auswirkung und nächsten Schritt. |
-| ORB-DASH-006 | Metrikabfragen müssen adaptive Intervalle und keine hochfrequente Dauersammlung verwenden. | MUSS | Idle-CPU und Schreiblast bleiben innerhalb NFR-Budgets. |
-| ORB-DASH-007 | Oarfish muss laufende Plugins und Anwendungen zusammenfassen. | SOLL | Home verlinkt direkt zu Plugin- oder Containerdetails. |
+| ORB-DASH-006 | Metrikabfragen müssen adaptive Intervalle und keine hochfrequente Dauersammlung verwenden. Eine Hintergrundmessung für den Verlauf (Richtwert: etwa alle fünf Minuten, endgültig nach H1) ist nur zulässig, wenn der Administrator sie einschaltet. | MUSS | Idle-CPU und Schreiblast bleiben innerhalb NFR-Budgets, auch mit eingeschalteter Hintergrundmessung gemessen. |
+| ORB-DASH-007 | Oarfish muss laufende Plugins und Anwendungen zusammenfassen. | SOLL | Das Dashboard verlinkt direkt zu Plugin- oder Containerdetails. |
+| ORB-DASH-008 | Die Oberfläche soll einen optionalen Verlauf von CPU-Auslastung, Arbeitsspeicher und Temperatur anzeigen können (Richtwert: die letzten 24 Stunden bei etwa fünf Minuten Auflösung; endgültige Werte nach H1 und Messung auf dem Referenzgerät). Die Hintergrundmessung ist standardmäßig aus. | SOLL | Ausgeschaltet findet keine Messung ohne Zuschauer statt; eingeschaltet bleiben Idle-CPU und Schreiblast innerhalb der NFR-Budgets (Messung auf dem Referenzgerät). |
 | ORB-PWR-001 | Reboot und Shutdown müssen als bestätigungspflichtige GUI-Aktionen verfügbar sein. | MUSS | Aktion wird autorisiert und auditiert. |
 | ORB-PWR-002 | Ein Neustart muss wartende Aktionen und verbundene Benutzer sichtbar machen. | SOLL | Bestätigungsdialog nennt mögliche Auswirkungen. |
 
@@ -442,11 +450,11 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-SVC-001 | systemd-Dienste müssen filterbar gelistet werden. | MUSS | Name, Status, Startmodus und Kurzbeschreibung sind sichtbar. |
 | ORB-SVC-002 | Start, Stop und Neustart müssen mit Auswirkungsbeschreibung und Bestätigung möglich sein. | MUSS | Aktion wird autorisiert, protokolliert und verifiziert. |
 | ORB-SVC-003 | Kritische Systemdienste müssen besonders gekennzeichnet sein. | SOLL | Netzwerk, SSH, Oarfish und Containerengines zeigen zusätzliche Warnung. |
-| ORB-LOG-001 | Das Journal muss nach Zeit, Priorität, Unit und Freitext filterbar sein. | MUSS | Filter sind kombinierbar und Ergebnisse werden begrenzt nachgeladen. |
-| ORB-LOG-002 | Loganzeige muss Secrets und definierte sensible Muster maskieren. | MUSS | Testfälle decken Tokens, Keys und Passwörter ab. |
+| ORB-LOG-001 | Das Journal muss nach Zeit, Priorität, Unit und Freitext filterbar sein. | SOLL | Filter sind kombinierbar und Ergebnisse werden begrenzt nachgeladen. Reserve: darf nach der MVP-Abnahme folgen. |
+| ORB-LOG-002 | Loganzeige muss Secrets und definierte sensible Muster maskieren. Das gilt für jede Anzeige von Logs und Systemdateien. | MUSS | Testfälle decken Tokens, Keys und Passwörter ab. |
 | ORB-PRC-001 | Oarfish muss Prozesse nach CPU und RAM anzeigen. | SOLL | PID, Benutzer, Prozessname, CPU und RAM werden dargestellt. |
-| ORB-OSU-001 | APT-Updates müssen klassifiziert angezeigt werden. | SOLL | Sicherheits- und reguläre Updates sind getrennt. |
-| ORB-OSU-002 | OS-Updates benötigen Plan, Bestätigung und Ergebnisprüfung. | KANN | Pakete, Downloadgröße und Neustartbedarf erscheinen vor Ausführung. |
+| ORB-OSU-001 | APT-Updates müssen klassifiziert angezeigt werden, sofern die Anzeige ohne Programmaufruf und innerhalb des Speicherbudgets möglich ist (Prüfung im Geräte-Spike S1, offen). | SOLL | Sicherheits- und reguläre Updates sind getrennt. |
+| ORB-OSU-002 | OS-Updates benötigen Plan, Bestätigung und Ergebnisprüfung. Nach dem MVP. | KANN | Pakete, Downloadgröße und Neustartbedarf erscheinen vor Ausführung. |
 | ORB-OSU-003 | Kernel-, Bootloader- und Firmware-Updates dürfen nicht als generische Paketaktion behandelt werden. | MUSS | Board- oder OS-spezifische Risiken werden erkannt; unsichere Aktualisierung bleibt read-only. |
 
 ### 6.5 Storage, Bootmedium und Schreiblast
@@ -459,15 +467,15 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-STO-004 | Die GUI muss Hinweise auf geringe freie Kapazität und ungewöhnliche Schreiblast geben können. | SOLL | Schwellwerte sind dokumentiert und führen zu verständlicher Warnung. |
 | ORB-STO-005 | Oarfish darf ohne explizite Freigabe keine Partitionierung oder Dateisystemerstellung durchführen. | MUSS | MVP bietet diese Funktionen nicht oder nur read-only. |
 | ORB-STO-006 | Storage-Health wird nur angezeigt, wenn der zugrunde liegende Bus und das Tool verlässliche Daten liefern. | MUSS | Keine erfundenen SMART-Werte für microSD oder nicht unterstützte Medien. |
-| ORB-STO-007 | Eigene Logs und Konfigurationen müssen schreibarm und rotiert sein. | MUSS | Keine unbeschränkte lokale Historie oder Metrikdatenbank. |
+| ORB-STO-007 | Eigene Logs und Konfigurationen müssen schreibarm und rotiert sein. | MUSS | Keine unbeschränkte lokale Historie und keine Metrikdatenbank. Ein Verlauf mit fester Obergrenze, der atomar ersetzt wird, ist zulässig. |
 
 ### 6.6 Netzwerk und Konnektivität
 
 | ID | Anforderung | Prio | Abnahmekriterium |
 |---|---|---|---|
-| ORB-NET-001 | Interfaces, Adressen, Linkstatus, Standardroute und DNS müssen sichtbar sein. | MUSS | Aktueller Zustand wird ohne Konfigurationsänderung angezeigt. |
+| ORB-NET-001 | Interfaces, Adressen, Linkstatus, Standardroute und DNS müssen sichtbar sein. | MUSS | Aktueller Zustand wird ohne Konfigurationsänderung angezeigt, einschließlich Standardroute und DNS-Servern. |
 | ORB-NET-002 | WLAN-Status und Signalstärke sollen angezeigt werden, soweit verfügbar. | SOLL | Zero 2 W zeigt SSID, Signal und Verbindungsstatus ohne Secrets. |
-| ORB-NET-003 | Änderungen an primärer Konnektivität benötigen einen Rückfallmechanismus. | MUSS | Ohne sicheren Rollback werden Änderungen im MVP nicht angeboten. |
+| ORB-NET-003 | Änderungen an primärer Konnektivität benötigen einen Rückfallmechanismus. | MUSS | Ohne sicheren Rollback werden Änderungen im MVP nicht angeboten. Im MVP wird die WLAN-Verbindung nur angezeigt, nicht geändert. |
 | ORB-NET-004 | Remote-Zugriff ist kein Core-Zwang. | MUSS | Oarfish funktioniert lokal ohne Tailscale, VPN oder Cloudservice. |
 | ORB-NET-005 | Plugins dürfen Netzwerkfunktionen nur mit expliziter Capability-Freigabe verändern. | MUSS | Berechtigungsdialog nennt Dienste, Routen und Firewallauswirkungen. |
 
@@ -550,7 +558,8 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-SEC-007 | Audit und Logs dürfen keine Secrets enthalten. | MUSS | Redaction-Tests bestehen. |
 | ORB-SEC-008 | Drittanbieter-GitHub-Actions müssen auf unveränderliche Commit-SHAs gepinnt werden. | MUSS | Workflow-Review findet keine unversionierten produktiven Actions. |
 | ORB-SEC-009 | Abhängigkeiten und Artefakte müssen automatisiert geprüft werden. | SOLL | Go-, npm-, SBOM- und Vulnerability-Checks laufen in CI. |
-| ORB-SEC-010 | Oarfish darf nicht automatisch einen öffentlichen Managementport öffnen. | MUSS | Öffentliche Bindung erfordert explizite Konfiguration und Warnung. |
+| ORB-SEC-010 | Oarfish darf nicht automatisch einen öffentlichen Managementport öffnen. | MUSS | Öffentliche Bindung erfordert explizite Konfiguration und Warnung. Eine Bindung außerhalb von Loopback erfolgt nur durch ausdrückliche Wahl beim Installieren. |
+| ORB-SEC-011 | Bei einer Bindung an eine Adresse außerhalb von Loopback bedient Oarfish ausschließlich HTTPS. Der Fingerabdruck des Zertifikats ist in der Installer-Ausgabe und in den Einstellungen sichtbar. | MUSS | Ein Start mit nicht-lokaler Adresse ohne TLS schlägt fehl; der Fingerabdruck ist an beiden Stellen sichtbar. |
 
 ### 6.12 GitHub Actions, Releases, Installation und Self-Update
 
@@ -568,7 +577,7 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-INS-002 | Installer muss OS, Architektur, systemd, freien Speicher und benötigte Basistools prüfen. | MUSS | Ungeeignete Systeme werden ohne Teilerfolg abgelehnt. |
 | ORB-INS-003 | Installer muss einen dedizierten Systembenutzer, Verzeichnisse und systemd-Unit anlegen. | MUSS | Dienst läuft unprivilegiert und startet nach Reboot. |
 | ORB-INS-004 | Installer muss Release und Signatur vor Aktivierung prüfen. | MUSS | Manipuliertes Paket wird nicht installiert. |
-| ORB-UPD-001 | Oarfish muss neue Releases über GitHub Releases erkennen können. | MUSS | GUI zeigt installierte und verfügbare Version. |
+| ORB-UPD-001 | Oarfish muss neue Releases über GitHub Releases erkennen können. | MUSS | GUI zeigt installierte und verfügbare Version. Ein Update-Hinweis beim Aufruf der Oberfläche prüft höchstens einmal je 24 Stunden, nur mit gültiger Sitzung und ohne Timer; die Oberfläche zeigt ihn erst, wenn ein für den Benutzer sichtbarer Ausschalter existiert (ADR 0010, A11.1, D-C68). |
 | ORB-UPD-002 | Update muss durch den Administrator in der GUI bestätigt werden. | MUSS | Kein automatisches Upgrade ohne Policy und Freigabe im MVP. |
 | ORB-UPD-003 | Update muss in ein Staging- und danach versioniertes Release-Verzeichnis installieren. | MUSS | Aktive Version bleibt bis zur finalen Aktivierung unverändert. |
 | ORB-UPD-004 | Aktivierung muss atomar über den `current`-Symlink erfolgen. | MUSS | Kein halb aktualisierter Zustand. |
@@ -576,6 +585,18 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-UPD-006 | Bei Fehler muss automatisch zur vorherigen gesunden Version zurückgerollt werden. | MUSS | Rollback-Test besteht. |
 | ORB-UPD-007 | Der privilegierte Update Helper darf nur Oarfish-Releases verwalten. | MUSS | Kein generischer Shell- oder Paketmanagerzugriff. |
 | ORB-UPD-008 | Tailscale darf für Installation, Release-Erkennung oder Update nicht erforderlich sein. | MUSS | Vollständiger Test ohne Tailscale besteht. |
+
+### 6.13 Files (lesend)
+
+Files ist im MVP ein lesender Dateizugriff auf feste Wurzeln. Welche Wurzeln das Release vorgibt, ist offen und wird im Entwurfsstopp F1 entschieden. Schreibender Zugriff gehört nicht zum MVP (4.3).
+
+| ID | Anforderung | Prio | Abnahmekriterium |
+|---|---|---|---|
+| ORB-FIL-001 | Files zeigt Verzeichnisse und Dateien nur lesend und nur aus einer festen, vom Release vorgegebenen Liste von Wurzeln. | MUSS | Wird im Entwurfsstopp F1 festgelegt. |
+| ORB-FIL-002 | Eine feste Sperrliste (unter anderem `/etc`, `/usr`, `/boot`, `/opt/oarfish`, `/var/lib/oarfish*`, Secrets, `/proc`, `/sys`, `/dev`) ist nie lesbar oder schreibbar. | MUSS | Wird im Entwurfsstopp F1 festgelegt. |
+| ORB-FIL-003 | Pfade werden kanonisiert; kein Verlassen einer Wurzel, auch nicht über Symlinks. | MUSS | Wird im Entwurfsstopp F1 festgelegt. |
+| ORB-FIL-004 | Jeder Zugriff geschieht über eine typisierte, auditierte Operation; Secrets in Dateiinhalten werden maskiert; Übertragungen werden gestreamt und nach Größe begrenzt (Grenze in F1). | MUSS | Wird im Entwurfsstopp F1 festgelegt. |
+| ORB-FIL-005 | Wurzeln, die zu einem Plugin gehören, erscheinen nur bei aktivem Plugin. | SOLL | Wird im Entwurfsstopp F1 festgelegt. |
 
 ## 7. UX- und Interaktionsanforderungen
 
@@ -592,16 +613,20 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 
 ### 7.2 Informationsarchitektur
 
-| Bereich | Inhalt |
-|---|---|
-| Home | Board, Zustand, Temperatur, Ressourcen, Storage, Netzwerk, Alerts und Empfehlungen. |
-| Gerät | Modell, SoC, OS, Kernel, Supportstatus, Sensoren, Bootmedium und Capabilities. |
-| System | Dienste, Journal, Prozesse, Netzwerk, Storage, Updates, Reboot und Shutdown. |
-| Anwendungen | Beiträge des Containerplugins, Templates, Logs und Lifecycle. |
-| Konnektivität | Beiträge von Tailscale und später WireGuard oder Access Point. |
-| Erweiterungen | Plugins, Berechtigungen, Versionen, Updates und Kompatibilität. |
-| Oarfish Assist | Kontextuelle Diagnose und Erklärungen. |
-| Einstellungen | Konto, Binding, Sprache, Updatekanal und wenige produktrelevante Optionen. |
+| Gruppe | Eintrag | Inhalt |
+|---|---|---|
+| (oben) | Dashboard | Zustand, Hinweise, Karten und, falls eingeschaltet, Verlauf. |
+| (oben) | Gerät | Modell, SoC, OS, Kernel, Supportstatus, Fähigkeiten, Sensoren und Bootmedium. |
+| Workload | Apps | Beitrag des Containerplugins: Anwendungen, Templates, Logs und Lifecycle. |
+| Workload | Storage | Dateisysteme, Bootmedium, Belegung und Schreiblast-Hinweis; nur lesend. |
+| Workload | Files | Nur lesend, feste Wurzeln (6.13). |
+| System | Network | Schnittstellen, Standardroute, DNS und WLAN-Anzeige; Beitrag von Tailscale. |
+| System | Activity | Dienste, Neustart, Reboot und Shutdown; Journal und Prozesse als Reserve. |
+| System | Update | Oarfish-Update (9.5). |
+| System | Erweiterungen | Plugins, Berechtigungen, Versionen, Updates und Kompatibilität; Oarfish Assist erscheint als Beitrag, wenn das Plugin aktiv ist. |
+| System | Settings | Konto, Sprache, Zugriff und HTTPS, Verlauf und Update-Hinweis. |
+
+Einträge erscheinen erst, wenn die Funktion existiert (7.1, "Keine Fake-Funktion"). Die Umsetzung der Navigation ist ein eigener Schritt (U1); bis dahin gilt die vorhandene Oberfläche.
 
 ### 7.3 Plugin-UX
 
@@ -655,7 +680,7 @@ Eine Funktion gilt erst dann als fertig, wenn:
 | `/opt/oarfish/components/active`, `/opt/oarfish/components/known-good` | Atomare Symlinks auf je einen Komponentensatz: `active` für Binärdatei sowie Socket- und Dienst-Unit des Helpers, `known-good` für die Recover-Unit und deren Binärdatei. Beide sind unabhängig von `current` (ADR 0010, U15). |
 | `/etc/oarfish/config.json` | Validierte Hauptkonfiguration. |
 | `/etc/oarfish/secrets/` | Restriktiv geschützte Secrets, die der Betreiber bereitstellt; der Dienst liest sie nur. |
-| `/var/lib/oarfish/` | Pluginzustand, Profile und kleine persistente Daten, auch alle vom Dienst geschriebenen Geheimnisse und Zustände (Administratorkonto, Setup-Token, Auditdatei), weil der Dienst unter `/etc` nicht schreiben kann (`ProtectSystem=strict`). |
+| `/var/lib/oarfish/` | Pluginzustand, Profile und kleine persistente Daten, auch alle vom Dienst geschriebenen Geheimnisse und Zustände (Administratorkonto, Setup-Token, Auditdatei), weil der Dienst unter `/etc` nicht schreiben kann (`ProtectSystem=strict`), sowie Einstellungen, Verlaufsschnappschuss und TLS-Zertifikat samt Schlüssel (Rechte 0600). Einstellungen, Verlaufsschnappschuss und Zertifikat sind beschlossen, aber noch nicht umgesetzt; ihr Entwurf steht aus (H1, D-D10). |
 | `/var/lib/oarfish-update/` | Root-eigener Zustand des Update Helpers (D-C58, ADR 0010); der unprivilegierte Dienst kann ihn nicht ändern. |
 | `/var/cache/oarfish/` | Wiederherstellbare Caches und Release-Downloads. |
 | `/run/oarfish/` | Sockets, Locks und ephemere Zustände. |
@@ -1002,6 +1027,9 @@ Berechtigungen müssen eng, verständlich und widerrufbar sein. Eine Capability 
 | AT-025 | Accessibility | Kernpfade funktionieren ohne Maus. |
 | AT-026 | Offline-Betrieb | Core funktioniert nach Setup ohne Internet. |
 | AT-027 | Ubuntu Architecture Readiness | Adaptergrenzen und Fixtures zeigen, dass Ubuntu ohne Core-Rewrite integrierbar ist. |
+| AT-028 | LAN-Zugriff über HTTPS | Fingerabdruck sichtbar, kein Start ohne TLS bei nicht-lokaler Adresse. |
+| AT-029 | Files lesend | Kein Verlassen der Wurzel, Sperrliste, Symlinks, Maskierung. |
+| AT-030 | Verlauf | Schreiblast und Leerlauf-CPU mit eingeschalteter Hintergrundmessung. |
 
 ### 12.4 Nachweisführung
 
@@ -1030,6 +1058,8 @@ Im MVP müssen folgende Daten dokumentiert sicherbar sein:
 - Pluginmanifest und Pluginzustand,
 - lokale Boardprofil-Erweiterungen,
 - Auditkonfiguration.
+
+Im MVP ist das ein dokumentierter Kopierweg und keine unterstützte GUI-Aufgabe.
 
 Ein vollständiges Gerätebackup ist nicht Teil des MVP. Ein späteres Backup-Plugin darf System- und Anwendungsdaten getrennt behandeln.
 
@@ -1074,9 +1104,9 @@ Der Implementierungsagent muss vor jeder Arbeit:
 | G5.1 | Lokaler Zugriffsschutz und Audit-Grundlage | Erstkonto-Einrichtung (ORB-ONB-002), lokales Administratorkonto mit Anmeldung, Abmeldung und Passwortänderung (ORB-AUTH-001), serverseitig invalidierbare Sitzungen mit sicheren Cookies (ORB-AUTH-002), Rate-Limit für Anmeldeversuche (ORB-AUTH-003), CSRF- und Herkunftsschutz (ORB-SEC-004), restriktive Datei-Rechte (ORB-SEC-005), Audit-Log (ORB-SEC-006) ohne Secrets (ORB-SEC-007). G5.1 bleibt auf Loopback beschränkt; die explizite Konfiguration für nicht-lokale Bindung behandelt der Design-Stopp D-D10 vor dem MVP-Release (D-C48, ADR 0009). Design-Stopp mit ADR zu Passwort-Hashing, Sitzungsspeicher, Audit-Speicher unter Berücksichtigung der microSD-Schreiblast und Erstkonto-Einrichtung. | Zustandsändernde Endpunkte lehnen Anfragen ohne gültige Sitzung und ohne CSRF-Schutz ab; Audit-Einträge enthalten keine Secrets; Anmeldung auf dem Raspberry Pi verifiziert. |
 | G6 | Self-Update | GUI, Update Manager, Signaturprüfung, atomare Aktivierung und Rollback. Update Helper als separater privilegierter Prozess. Teilschritte G6.0 bis G6.10 nach ADR 0010 (D-C53, D-C63). | Erfolgs- und Fehlerupdate auf Pi verifiziert. G6 ist erst mit G6.10 abgeschlossen. |
 | G6.10 | Austausch von Update Helper und Units durch GUI-Update | Eigene Bestätigung, Prüfung der Unit-Dateien gegen fest einkompilierte Regeln, Rollback des Helpers, Schlüsselregel (D-C54, D-C60, ADR 0010, U15). | Austausch von Update Helper und Units mit dem Produktionsschlüssel auf dem Pi verifiziert; Fehlerfälle nachgewiesen und gekennzeichnet. |
-| G7 | System Core | Dienste, Journal, Prozesse, Reboot und Shutdown. Privilege Broker mit fester Allowlist (ORB-SEC-002). | Sicherer Dienstneustart End-to-End. |
+| G7 | System Core | Dienste, Journal, Prozesse, Reboot und Shutdown. Privilege Broker mit fester Allowlist (ORB-SEC-002). Journal und Prozesse sind Reserve nach der MVP-Abnahme. | Sicherer Dienstneustart End-to-End. |
 | G8 | Plugin Runtime | Manifest, Lifecycle, Capability-Modell und Beispielplugin. Capability-Prüfung im Broker (ORB-SEC-003). | Fehlerhaftes Plugin blockiert Core nicht. |
-| G9 | Tailscale Plugin | Setup, Login, Status, Enable/Disable und Audit. | Realer Workflow auf Pi. |
+| G9 | Tailscale Plugin | Setup, Login, Status, Enable/Disable und Audit. Installation per GUI über eine typisierte Broker-Aktion (eigener Entwurfsstopp). | Realer Workflow auf Pi. |
 | G10 | Containers Plugin | Engine Detection, Liste, Details, Logs und Lifecycle. | Mindestens eine reale Engine verifiziert. |
 | G11 | Oarfish Assist | Provider-Setup, Read-only Tools, Redaction und UI. | Reale read-only Diagnose. |
 | G12 | Ubuntu Qualification | Ubuntu Server LTS ARM64 Adapter und physische oder gleichwertige Qualifikation. | Definierte Kombination erhält Verified oder Compatible. |
@@ -1084,6 +1114,8 @@ Der Implementierungsagent muss vor jeder Arbeit:
 | Post-MVP | Weitere SBCs | Armbian, Rockchip und weitere Boardfamilien. | Je Board dokumentierter Supportstatus. |
 
 G6 beginnt erst, wenn G5.1 PASS ist. G7 beginnt erst, wenn G6 einschließlich G6.10 abgenommen ist.
+
+Die Umsetzungsreihenfolge nach G8 ist G10, dann G9, dann G11; die Kennungen bleiben unverändert. Neben den Gates gibt es Entwurfsstopps ohne Gate-Kennung: D-D10 (LAN-Zugriff und HTTPS, nach G6.10, vor dem MVP-Release; die Richtung ist entschieden, der Entwurf steht aus), H1 (Verlauf und Einstellungsspeicher) und F1 (Files, lesend, nach G7). Ihre Ergebnisse stehen in `docs/ROADMAP.md` und `docs/DECISIONS.md`.
 
 ### 14.3 Prompt-Struktur für den Implementierungsagenten
 
@@ -1133,15 +1165,18 @@ Der MVP gilt als abgenommen, wenn:
 9. Hardware- und OS-Erkennung getrennt implementiert sind.
 10. Ubuntu Server LTS ARM64 ohne grundlegenden Core-Umbau integrierbar ist und durch Fixtures oder Adaptertests vorbereitet wurde.
 11. Board, OS, Kernel, Sensoren und Supportstatus korrekt angezeigt werden.
-12. Dashboard, Dienste und Journal auf realer Hardware funktionieren.
-13. Tailscale als optionales Plugin eingerichtet, gesteuert und deaktiviert werden kann.
+12. Dashboard sowie Dienste (Anzeigen, Neustart), Reboot und Shutdown auf realer Hardware funktionieren.
+13. Tailscale als optionales Plugin eingerichtet (einschließlich Installation), gesteuert und deaktiviert werden kann.
 14. Containerplugin mit mindestens einer realen Engine funktioniert.
 15. Oarfish Assist optional, read-only und ohne Shellzugriff einen realen Zustand erklären kann.
 16. Core ohne Tailscale, Containerengine und AI-Provider vollständig startet.
 17. GUI-Kernpfade kein Terminal, YAML oder Dateiedit benötigen.
 18. Ressourcen-, Schreiblast- und Startzeitmessungen die MUSS-Grenzen einhalten.
-19. Security Review für Auth, Broker, Plugins, Updatepfad, Container und AI dokumentiert ist.
+19. Security Review für Auth, Broker, Plugins, Updatepfad, Container, AI, TLS-Zugriff und Files dokumentiert ist.
 20. Es keinen bekannten kritischen oder hohen unbehandelten Security-Fund im MVP-Pfad gibt.
+21. Die Netzwerkansicht Standardroute und DNS zeigt.
+22. Oarfish im lokalen Netz über HTTPS erreichbar ist.
+23. Files feste Wurzeln lesend zeigt.
 
 ## 17. Verbleibende Entscheidungen und Defaultwerte
 
@@ -1213,3 +1248,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.3.5 | 2. November 2026 | Abschnitt 8.1: Update Manager als unprivilegiert gekennzeichnet (Erkennung, Download in den Cache, Vorabprüfung); Abschnitt 8.2: neue Zeile `/var/lib/oarfish-update/` für den root-eigenen Zustand des Update Helpers, "Updatezustand" aus der Zeile `/var/lib/oarfish/` entfernt (D-C58); Abschnitt 8.6: Aufgaben des Update Helpers um eigenen Zustand, Lesen des Dienstzustands und Austausch der eigenen Komponenten ergänzt (D-C54); Abschnitt 9.6: Prerelease-Regel (D-C59); Abschnitt 10.1 Punkt 6: Broker oder Update Helper; Abschnitt 13.1: `/healthz` darf die Version nennen (D-C57); ORB-REL-002: Abnahmespalte nennt die Prüfungen des MVP; Abschnitt 14.2: Zeile G6 um die Teilschritte G6.0 bis G6.10 ergänzt, neue Zeile G6.10, G7 beginnt erst nach G6.10 (D-C63); Kopfzeile: Dokumentversion und Stand aktualisiert (D-C62, ADR 0010). |
 | 0.3.6 | 3. November 2026 | Abschnitt 8.2: Komponentenbaum des Update Helpers ergänzt (`/opt/oarfish/components/<id>/`, Links `active` und `known-good`, `/usr/libexec/oarfish-update-helper` als Link auf `components/active`, Unit-Links in `/etc/systemd/system`, `/run/oarfish-update/` für den Socket des Helpers) und Hinweis, dass das Journal flüchtig sein kann (Konflikt C10 aus ADR 0010, nach den Beobachtungen aus G6.1); Kopfzeile: Dokumentversion und Stand aktualisiert (D-C64, ADR 0010). |
 | 0.3.7 | 3. November 2026 | Kopfzeile, Abschnitte 0.2 (B-09), 0.3, 0.4, 2.1, 2.4, 9.1 und 14: Name des Entwicklungswerkzeugs durch "Implementierungsagent" ersetzt, Titel von Abschnitt 14 und Eintrag in der Inhaltsübersicht angepasst; Abschnitt 14.1: Der Implementierungsagent liest dieses Pflichtenheft und den aktuellen Gate-Prompt, der Verweis auf die lokale Regeldatei entfällt; Abschnitt 14.3: Verweis auf den ersten Gate-Prompt ersetzt durch den Satz, dass Gate-Prompts außerhalb des Repositorys geführt werden; Abschnitt 18.2: Zeilen für die lokale Regeldatei des Agenten und für das Verzeichnis der Gate-Prompts entfernt; Kopfzeile: Dokumentversion aktualisiert (D-C65). |
+| 0.4.0 | 6. November 2026 | Anforderungen des Entscheidungspakets R1 (D-C69 bis D-C76, ADR 0008, Ergänzung nach R1): Abschnitt 4.1 und 4.3 (LAN-Zugriff über HTTPS, Files lesend, optionaler Verlauf; Schreiben in Files, WLAN ändern, OS-Updates ausführen und Datenträgerverwaltung nicht im MVP); ORB-GEN-006 (Deutsch und Englisch vollständig, Sprache folgt dem Browser); ORB-DASH-006 und neu ORB-DASH-008 (optionaler Verlauf, Hintergrundmessung nur auf Einschalten); ORB-LOG-001 von MUSS auf SOLL, ORB-LOG-002 für jede Anzeige von Logs und Systemdateien; ORB-OSU-001 unter Bedingung, ORB-OSU-002 nach dem MVP; ORB-STO-007 und ORB-NFR-009 (Verlauf mit fester Obergrenze, Schreibhäufigkeit nach Medientyp); ORB-NET-001 (Standardroute und DNS) und ORB-NET-003 (WLAN nur anzeigen); ORB-ONB-003 und ORB-SEC-010 (Bindung außerhalb von Loopback nur durch Wahl beim Installieren), neu ORB-SEC-011 (nur HTTPS bei nicht-lokaler Bindung); ORB-UPD-001 (Update-Hinweis, in Übereinstimmung mit ADR 0010, A11.1); neuer Abschnitt 6.13 mit ORB-FIL-001 bis ORB-FIL-005; Abschnitt 7.2 (neue Navigation, erster Eintrag "Dashboard" statt "Home", auch in 1.5, 4.1, UC-02, ORB-DASH-001 und ORB-DASH-007); Abschnitt 8.2 (Einstellungen, Verlaufsschnappschuss, TLS-Zertifikat); Abschnitt 12.3 (AT-028 bis AT-030); Abschnitt 13.2 (Sicherung als dokumentierter Kopierweg); Abschnitt 14.2 (Reserve in G7, Installation in G9, Umsetzungsreihenfolge G10, G9, G11, Entwurfsstopps D-D10, H1 und F1); Abschnitt 16 (Punkte 12, 13 und 19 angepasst, neue Punkte 21 bis 23); Kopfzeile: Dokumentversion, Status (Gates G0 bis G5.1) und Stand. Die Wurzeln von Files, Intervalle und Schreibzahlen des Verlaufs, die WLAN- und DNS-Quelle sowie die Anzeige von Betriebssystem-Updates sind offen. Nichts davon ist auf einem Gerät verifiziert. |
