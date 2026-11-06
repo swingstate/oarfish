@@ -12,7 +12,7 @@
 </script>
 
 <!-- The live region of a form: an error is announced at once (alert), a
-     confirmation or a state politely (status). Only forms have one; Home keeps
+     confirmation or a state politely (status). Only forms have one; Dashboard keeps
      the alert list as its only live region. -->
 <div class="message" data-tone={tone} role={tone === 'critical' ? 'alert' : 'status'} data-testid={testid}>
   <Icon name={toneIcon[tone]} />

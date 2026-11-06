@@ -86,13 +86,15 @@ button {
   transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
-button:hover {
+button:hover:not(:disabled) {
   background: var(--color-surface-muted);
 }
 
+/* A disabled control is never shown by colour alone: it is a native disabled element (not focusable,
+   announced as unavailable) and the pointer says so. */
 button:disabled {
   color: var(--color-text-disabled);
-  cursor: default;
+  cursor: not-allowed;
 }
 
 /* The one main action of a form (sign in, create the account, change the password). */

@@ -170,17 +170,17 @@
   ];
 </script>
 
-<PageHeader title={t.homeTitle}>
+<PageHeader title={t.dashboardTitle}>
   {#snippet aside()}<ConnectionIndicator state={conn} />{/snippet}
 </PageHeader>
 
 {#if snapshot === null}
   {#if loadFailed && (conn === 'reconnecting' || conn === 'stale')}
-    <EmptyState icon="warning" tone="warning" title={t.homeLoadError} description={t.homeLoadErrorHint} data-state="unreachable">
-      <button type="button" onclick={load}>{t.homeRetry}</button>
+    <EmptyState icon="warning" tone="warning" title={t.dashboardLoadError} description={t.dashboardLoadErrorHint} data-state="unreachable">
+      <button type="button" onclick={load}>{t.dashboardRetry}</button>
     </EmptyState>
   {:else}
-    <EmptyState icon="clock" title={conn === 'connecting' ? t.homeLoading : t.connConnecting} titleTestid="home-loading" />
+    <EmptyState icon="clock" title={conn === 'connecting' ? t.dashboardLoading : t.connConnecting} titleTestid="dashboard-loading" />
   {/if}
 {:else}
   {@const s = snapshot}
@@ -192,7 +192,7 @@
       </Notice>
     {/if}
 
-    <div class="stack home" data-stale={stale} data-testid="home">
+    <div class="stack dashboard" data-stale={stale} data-testid="dashboard">
       <SummaryStrip items={summary(s, device)} label={t.summaryHeading} {stale} />
 
       <Card id="alerts" title={t.alertsHeading} wide {stale}>

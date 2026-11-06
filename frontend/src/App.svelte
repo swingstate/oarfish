@@ -75,7 +75,10 @@
     };
   });
 
-  const items: NavItem[] = routes.filter((r) => r.nav !== false).map((r) => ({ id: r.id, href: r.path, label: t[r.labelKey], icon: r.icon }));
+  // A derived list: the labels follow the chosen language.
+  const items = $derived<NavItem[]>(
+    routes.filter((r) => r.nav !== false).map((r) => ({ id: r.id, href: r.path, label: t[r.labelKey], icon: r.icon, group: r.group })),
+  );
   const accountRoute = routes.find((r) => r.id === 'account')!;
 
   const title = $derived(
@@ -100,8 +103,8 @@
     {:else if phase === 'login'}
       <Login notice={loginNotice} onAuthenticated={authenticated} />
     {:else if phase === 'unreachable'}
-      <EmptyState icon="warning" tone="warning" title={t.sessionError} description={t.homeLoadErrorHint} role="alert">
-        <button type="button" onclick={() => void check()}>{t.homeRetry}</button>
+      <EmptyState icon="warning" tone="warning" title={t.sessionError} description={t.dashboardLoadErrorHint} role="alert">
+        <button type="button" onclick={() => void check()}>{t.dashboardRetry}</button>
       </EmptyState>
     {:else}
       <EmptyState icon="clock" title={t.sessionLoading} />

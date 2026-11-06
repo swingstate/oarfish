@@ -4,10 +4,10 @@ import { icons } from './lib/icons.fake';
 import { routeFromHash, routes, type Route } from './routes';
 
 describe('navigation list', () => {
-  it('lists Home first and then Gerät in the navigation, and the account page outside it', () => {
+  it('lists Dashboard first and then Gerät in the navigation, and the account page outside it', () => {
     const nav = routes.filter((r) => r.nav !== false);
-    expect(nav.map((r) => r.id)).toEqual(['home', 'device']);
-    expect(nav.map((r) => de[r.labelKey])).toEqual(['Home', 'Gerät']);
+    expect(nav.map((r) => r.id)).toEqual(['dashboard', 'device']);
+    expect(nav.map((r) => de[r.labelKey])).toEqual(['Dashboard', 'Gerät']);
     expect(routes.filter((r) => r.nav === false).map((r) => r.id)).toEqual(['account']);
     expect(routeFromHash('#/account').id).toBe('account');
   });
@@ -25,10 +25,10 @@ describe('navigation list', () => {
 
   it('resolves an address to its page, and anything else to the first page', () => {
     expect(routeFromHash('#/device').id).toBe('device');
-    expect(routeFromHash('#/').id).toBe('home');
-    expect(routeFromHash('').id).toBe('home');
-    expect(routeFromHash('#main').id).toBe('home');
-    expect(routeFromHash('#/nowhere').id).toBe('home');
+    expect(routeFromHash('#/').id).toBe('dashboard');
+    expect(routeFromHash('').id).toBe('dashboard');
+    expect(routeFromHash('#main').id).toBe('dashboard');
+    expect(routeFromHash('#/nowhere').id).toBe('dashboard');
   });
 
   it('finds a page added to the list without any other change', () => {

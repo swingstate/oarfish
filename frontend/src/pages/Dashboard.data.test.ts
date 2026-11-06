@@ -3,8 +3,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
-import Home from './Home.svelte';
-import { installFakes, metricsWith, openHome, snapshotAt, textOf } from '../lib/harness.fake';
+import Dashboard from './Dashboard.svelte';
+import { installFakes, metricsWith, openDashboard, snapshotAt, textOf } from '../lib/harness.fake';
 import { iconPaths, kindIcon } from '../lib/icons';
 import { t } from '../lib/i18n';
 import { piMetrics } from '../lib/metrics.fixtures';
@@ -16,7 +16,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const open = (body = piMetrics) => openHome(() => render(Home), body);
+const open = (body = piMetrics) => openDashboard(() => render(Dashboard), body);
 
 // Names that exist nowhere in the code base.
 const kinds = ['wifi', 'ethernet', 'other', 'quantum-link'];
@@ -32,7 +32,7 @@ const nic = (i: number): NetworkInterface => ({
   ipv6: [`2001:db8::${i + 1}`],
 });
 
-describe('Home is data-driven (D-C43)', () => {
+describe('Dashboard is data-driven (D-C43)', () => {
   it('renders the largest allowed lists cleanly: 8 interfaces, 8 mounts, 16 sensors', async () => {
     const m = metricsWith((x) => {
       x.network = Array.from({ length: 8 }, (_, i) => nic(i));

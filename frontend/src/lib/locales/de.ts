@@ -12,7 +12,7 @@
 //           limitations, capabilities). Keys with a dot are looked up by
 //           value that comes from the API.
 //
-// The two groups are merged into `de`, so `t.homeTitle` and
+// The two groups are merged into `de`, so `t.dashboardTitle` and
 // `msg('alert.network_no_link.cause')` work the same for both.
 
 // ======================================================================
@@ -23,9 +23,15 @@ export const deUi = {
   brandName: 'Oarfish',
   skipLink: 'Zum Inhalt springen',
   navLabel: 'Hauptnavigation',
-  navHome: 'Home',
+  navDashboard: 'Dashboard',
   navDevice: 'Gerät',
-  homeTitle: 'Home',
+  navGroupWorkload: 'Workload',
+  navGroupSystem: 'System',
+  langLabel: 'Sprache',
+  langGerman: 'Deutsch',
+  langEnglish: 'English',
+  versionLine: 'Version {version}',
+  dashboardTitle: 'Dashboard',
   deviceTitle: 'Gerät',
 
   // ---- Connection: indicator at the top right ----
@@ -35,11 +41,11 @@ export const deUi = {
   connIndicatorStale: 'Keine neuen Werte',
   connIndicatorPaused: 'Pausiert',
 
-  // ---- States of the Home page ----
-  homeLoading: 'Werte werden geladen …',
-  homeLoadError: 'Die Werte konnten nicht geladen werden.',
-  homeLoadErrorHint: 'Prüfen Sie, ob Oarfish auf dem Gerät läuft, und versuchen Sie es noch einmal.',
-  homeRetry: 'Erneut versuchen',
+  // ---- States of the Dashboard page ----
+  dashboardLoading: 'Werte werden geladen …',
+  dashboardLoadError: 'Die Werte konnten nicht geladen werden.',
+  dashboardLoadErrorHint: 'Prüfen Sie, ob Oarfish auf dem Gerät läuft, und versuchen Sie es noch einmal.',
+  dashboardRetry: 'Erneut versuchen',
   connConnecting: 'Verbindung wird aufgebaut …',
   connLost: 'Die Verbindung ist unterbrochen. Die Werte sind veraltet. Oarfish verbindet sich automatisch neu.',
   connStale: 'Seit einigen Sekunden kommen keine neuen Werte an. Die Werte sind vielleicht veraltet.',

@@ -4,8 +4,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
-import Home from './Home.svelte';
-import { installFakes, openHome, snapshotAt, textOf } from '../lib/harness.fake';
+import Dashboard from './Dashboard.svelte';
+import { installFakes, openDashboard, snapshotAt, textOf } from '../lib/harness.fake';
 import { criticalTemperatureAlert } from '../lib/metrics.fixtures';
 
 beforeEach(installFakes);
@@ -14,9 +14,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('Home updates', () => {
+describe('Dashboard updates', () => {
   it('updates a sample in place: no element is added or removed, and the cards stay the same nodes', async () => {
-    const es = await openHome(() => render(Home));
+    const es = await openDashboard(() => render(Dashboard));
     const cards = Array.from(document.querySelectorAll('section.card'));
     const storage = screen.getByTestId('storage-/');
     const seen: MutationRecord[] = [];
@@ -39,7 +39,7 @@ describe('Home updates', () => {
   });
 
   it('leaves the sparklines alone when only the alerts change', async () => {
-    const es = await openHome(() => render(Home));
+    const es = await openDashboard(() => render(Dashboard));
     const paths = Array.from(document.querySelectorAll('svg[role="img"] path'));
     const before = paths.map((p) => p.getAttribute('d'));
     expect(before.length).toBeGreaterThan(0);
@@ -55,7 +55,7 @@ describe('Home updates', () => {
   });
 
   it('redraws a sparkline only when a new sample arrives', async () => {
-    const es = await openHome(() => render(Home));
+    const es = await openDashboard(() => render(Dashboard));
     const d = () => document.querySelector('svg[role="img"] path')!.getAttribute('d');
     const before = d();
     es.send('metrics', snapshotAt(2, (s) => (s.cpu.usage_percent = 90)));

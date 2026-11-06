@@ -11,9 +11,15 @@ export const enUi: { [K in keyof typeof deUi]: string } = {
   brandName: 'Oarfish',
   skipLink: 'Skip to content',
   navLabel: 'Main navigation',
-  navHome: 'Home',
+  navDashboard: 'Dashboard',
   navDevice: 'Device',
-  homeTitle: 'Home',
+  navGroupWorkload: 'Workload',
+  navGroupSystem: 'System',
+  langLabel: 'Language',
+  langGerman: 'Deutsch',
+  langEnglish: 'English',
+  versionLine: 'Version {version}',
+  dashboardTitle: 'Dashboard',
   deviceTitle: 'Device',
 
   // ---- Connection: indicator at the top right ----
@@ -23,11 +29,11 @@ export const enUi: { [K in keyof typeof deUi]: string } = {
   connIndicatorStale: 'No new values',
   connIndicatorPaused: 'Paused',
 
-  // ---- States of the Home page ----
-  homeLoading: 'Loading values …',
-  homeLoadError: 'The values could not be loaded.',
-  homeLoadErrorHint: 'Check that Oarfish is running on the device, then try again.',
-  homeRetry: 'Try again',
+  // ---- States of the Dashboard page ----
+  dashboardLoading: 'Loading values …',
+  dashboardLoadError: 'The values could not be loaded.',
+  dashboardLoadErrorHint: 'Check that Oarfish is running on the device, then try again.',
+  dashboardRetry: 'Try again',
   connConnecting: 'Connecting …',
   connLost: 'The connection is lost. The values are out of date. Oarfish reconnects by itself.',
   connStale: 'No new values have arrived for a few seconds. The values may be out of date.',

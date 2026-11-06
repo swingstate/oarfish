@@ -1,9 +1,9 @@
-// The designed states of Home (docs/UI.md, "States"). Each state has a test.
+// The designed states of Dashboard (docs/UI.md, "States"). Each state has a test.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/svelte';
-import Home from './Home.svelte';
+import Dashboard from './Dashboard.svelte';
 import { FakeEventSource } from '../lib/eventsource.fake';
-import { installFakes, metricsWith, openHome, snapshotAt, stubMetrics, textOf } from '../lib/harness.fake';
+import { installFakes, metricsWith, openDashboard, snapshotAt, stubMetrics, textOf } from '../lib/harness.fake';
 import { t } from '../lib/i18n';
 import { iconPaths } from '../lib/icons';
 import {
@@ -20,19 +20,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const open = (body = piMetrics) => openHome(() => render(Home), body);
+const open = (body = piMetrics) => openDashboard(() => render(Dashboard), body);
 const indicator = () => screen.getByTestId('connection-indicator');
 const alertsCard = () => document.querySelector('section[aria-labelledby="alerts-heading"]') as HTMLElement;
 
-describe('Home states', () => {
+describe('Dashboard states', () => {
   it('state loading: shows the page header, a loading text and the connecting indicator before any value', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
-    render(Home);
-    expect(screen.getByRole('heading', { level: 1, name: t.homeTitle })).toBeTruthy();
-    expect(textOf('home-loading')).toBe(t.homeLoading);
+    render(Dashboard);
+    expect(screen.getByRole('heading', { level: 1, name: t.dashboardTitle })).toBeTruthy();
+    expect(textOf('dashboard-loading')).toBe(t.dashboardLoading);
     expect(indicator().getAttribute('data-state')).toBe('connecting');
     expect(indicator().textContent).toContain(t.connIndicatorConnecting);
-    expect(screen.queryByTestId('home')).toBeNull();
+    expect(screen.queryByTestId('dashboard')).toBeNull();
     expect(screen.queryByText(t.staleBadge)).toBeNull();
   });
 
@@ -49,7 +49,7 @@ describe('Home states', () => {
     es.dropAndRetry();
     await waitFor(() => expect(screen.getByTestId('connection-notice')).toBeTruthy());
     expect(textOf('connection-notice')).toContain(t.connLost);
-    expect(screen.getByTestId('home').getAttribute('data-stale')).toBe('true');
+    expect(screen.getByTestId('dashboard').getAttribute('data-stale')).toBe('true');
     const cards = document.querySelectorAll('section.card');
     expect(cards.length).toBeGreaterThanOrEqual(6);
     for (const card of Array.from(cards)) {
@@ -69,19 +69,19 @@ describe('Home states', () => {
 
   it('state reconnecting without data: shows the connecting text instead of an empty page', async () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
-    render(Home);
+    render(Dashboard);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     FakeEventSource.last.dropAndRetry();
     await waitFor(() => expect(indicator().getAttribute('data-state')).toBe('reconnecting'));
-    expect(textOf('home-loading')).toBe(t.connConnecting);
+    expect(textOf('dashboard-loading')).toBe(t.connConnecting);
   });
 
   it('state open but silent: the indicator and the notice say that no new values arrive', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       stubMetrics(piMetrics);
-      render(Home);
-      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      render(Dashboard);
+      await vi.waitFor(() => expect(screen.queryByTestId('dashboard')).not.toBeNull());
       FakeEventSource.last.open();
       FakeEventSource.last.send('metrics', snapshotAt(2));
       await vi.advanceTimersByTimeAsync(7000);
@@ -103,12 +103,12 @@ describe('Home states', () => {
 
   it('state load error: says so with a retry button and a hint', async () => {
     stubMetrics(null);
-    render(Home);
+    render(Dashboard);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     FakeEventSource.last.fail();
-    expect(await screen.findByText(t.homeLoadError)).toBeTruthy();
-    expect(screen.getByText(t.homeLoadErrorHint)).toBeTruthy();
-    expect(screen.getByRole('button', { name: t.homeRetry })).toBeTruthy();
+    expect(await screen.findByText(t.dashboardLoadError)).toBeTruthy();
+    expect(screen.getByText(t.dashboardLoadErrorHint)).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.dashboardRetry })).toBeTruthy();
   });
 
   it('state no alerts: a calm line inside the live region', async () => {
@@ -165,7 +165,7 @@ describe('Home states', () => {
       x.history = { ...x.history, cpu_percent: [], memory_used_percent: [], temperature_celsius: [] };
     });
     await open(m);
-    const page = screen.getByTestId('home').textContent ?? '';
+    const page = screen.getByTestId('dashboard').textContent ?? '';
     expect(page).not.toMatch(/\b(null|undefined|NaN)\b/);
     expect(textOf('hostname')).toBe(t.unknownValue);
     expect(textOf('uptime')).toBe(t.unknownValue);
@@ -236,7 +236,7 @@ describe('Home states', () => {
 
 // A statement about the present is made only while the stream is live. Old values never say "all fine"
 // or promise a measurement that cannot come.
-describe('Home wording of stale and lost states', () => {
+describe('Dashboard wording of stale and lost states', () => {
   const liveRegions = () => document.querySelectorAll('[aria-live], [role="status"], [role="alert"], [role="log"]');
   const withBytes = (rx: number, tx: number) => (s: ReturnType<typeof snapshotAt>) => {
     s.network[0]!.rx_bytes = 123456789 + rx;
@@ -266,8 +266,8 @@ describe('Home wording of stale and lost states', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       stubMetrics(piMetrics);
-      render(Home);
-      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      render(Dashboard);
+      await vi.waitFor(() => expect(screen.queryByTestId('dashboard')).not.toBeNull());
       FakeEventSource.last.open();
       FakeEventSource.last.send('metrics', snapshotAt(2));
       await vi.advanceTimersByTimeAsync(0);
@@ -298,7 +298,7 @@ describe('Home wording of stale and lost states', () => {
     await waitFor(() => expect(screen.getByTestId('connection-notice')).toBeTruthy());
     expect(textOf('rx-wlan0')).toBe('2,0 KiB/s');
     expect(screen.getByTestId('network-wlan0').closest('section')!.getAttribute('data-stale')).toBe('true');
-    expect(screen.getByTestId('home').textContent).not.toContain(t.netRateWaiting);
+    expect(screen.getByTestId('dashboard').textContent).not.toContain(t.netRateWaiting);
   });
 
   it('network rates: a lost connection before a rate exists shows "Nicht verfügbar", never a promise', async () => {
@@ -308,7 +308,7 @@ describe('Home wording of stale and lost states', () => {
     await waitFor(() => expect(screen.getByTestId('connection-notice')).toBeTruthy());
     expect(textOf('rx-wlan0')).toBe(t.unavailableValue);
     expect(textOf('tx-wlan0')).toBe(t.unavailableValue);
-    expect(screen.getByTestId('home').textContent).not.toContain(t.netRateWaiting);
+    expect(screen.getByTestId('dashboard').textContent).not.toContain(t.netRateWaiting);
 
     es.open(); // live again, still no second reading: waiting is true again
     await waitFor(() => expect(textOf('rx-wlan0')).toBe(t.netRateWaiting));
@@ -318,12 +318,12 @@ describe('Home wording of stale and lost states', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       stubMetrics(piMetrics);
-      render(Home);
-      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      render(Dashboard);
+      await vi.waitFor(() => expect(screen.queryByTestId('dashboard')).not.toBeNull());
       FakeEventSource.last.open();
       await vi.advanceTimersByTimeAsync(7000);
       expect(textOf('rx-wlan0')).toBe(t.unavailableValue);
-      expect(screen.getByTestId('home').textContent).not.toContain(t.netRateWaiting);
+      expect(screen.getByTestId('dashboard').textContent).not.toContain(t.netRateWaiting);
     } finally {
       vi.useRealTimers();
     }
@@ -331,7 +331,7 @@ describe('Home wording of stale and lost states', () => {
 });
 
 // Closing the known gaps of the G5 review (docs/UI.md, "Where stale values could read as a current claim").
-describe('Home stale marking: alerts card, return from a hidden tab, no all-clear icon', () => {
+describe('Dashboard stale marking: alerts card, return from a hidden tab, no all-clear icon', () => {
   const setHidden = (hidden: boolean) => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: hidden });
     document.dispatchEvent(new Event('visibilitychange'));
@@ -367,8 +367,8 @@ describe('Home stale marking: alerts card, return from a hidden tab, no all-clea
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       stubMetrics(piMetrics);
-      render(Home);
-      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      render(Dashboard);
+      await vi.waitFor(() => expect(screen.queryByTestId('dashboard')).not.toBeNull());
       FakeEventSource.last.open();
       FakeEventSource.last.send('metrics', snapshotAt(2));
       await vi.advanceTimersByTimeAsync(0);
@@ -412,7 +412,7 @@ describe('Home stale marking: alerts card, return from a hidden tab, no all-clea
     expect(staleCards()).toHaveLength(document.querySelectorAll('section.card').length);
     expect(badgeIn(alertsCard())).not.toBeNull();
     expect(stripStale()).toBe('true');
-    expect(screen.getByTestId('home').getAttribute('data-stale')).toBe('true');
+    expect(screen.getByTestId('dashboard').getAttribute('data-stale')).toBe('true');
     expect(screen.getByText(t.alertsNoneStale)).toBeTruthy();
     expect(noneIcon()).toEqual(iconPaths.clock);
     expect(textOf('rx-wlan0')).not.toBe(t.netRateWaiting);
@@ -450,8 +450,8 @@ describe('Home stale marking: alerts card, return from a hidden tab, no all-clea
   it('gap 2: a tab that was opened hidden is marked when it is shown, even though its first reading was fresh', async () => {
     setHidden(true);
     stubMetrics(piMetrics);
-    render(Home);
-    await screen.findByTestId('home'); // the one-shot request answered while hidden
+    render(Dashboard);
+    await screen.findByTestId('dashboard'); // the one-shot request answered while hidden
     expect(indicator().getAttribute('data-state')).toBe('paused');
     expect(FakeEventSource.instances).toHaveLength(0); // no stream while hidden
     setHidden(false);
@@ -464,8 +464,8 @@ describe('Home stale marking: alerts card, return from a hidden tab, no all-clea
 
   it('first load: the fresh one-shot reading is not marked while the stream is still connecting', async () => {
     stubMetrics(piMetrics);
-    render(Home);
-    await screen.findByTestId('home');
+    render(Dashboard);
+    await screen.findByTestId('dashboard');
     expect(indicator().getAttribute('data-state')).toBe('connecting');
     expect(staleCards()).toHaveLength(0);
     expect(screen.queryByText(t.staleBadge)).toBeNull();
@@ -476,8 +476,8 @@ describe('Home stale marking: alerts card, return from a hidden tab, no all-clea
     try {
       const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(piMetrics)));
       vi.stubGlobal('fetch', fetchMock);
-      render(Home);
-      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      render(Dashboard);
+      await vi.waitFor(() => expect(screen.queryByTestId('dashboard')).not.toBeNull());
       FakeEventSource.last.open();
       FakeEventSource.last.send('metrics', snapshotAt(2));
       await vi.advanceTimersByTimeAsync(0);

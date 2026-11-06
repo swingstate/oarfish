@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { contrast, over, parseHex } from '../lib/contrast';
+import { contrast, luminance, over, parseHex } from '../lib/contrast';
 import { pairs, stalePairs } from './contrast-pairs';
 
 const here = import.meta.dirname;
@@ -101,6 +101,25 @@ describe('design tokens (ORB-NFR-011, WCAG 2.2 AA)', () => {
       const text = file.endsWith('index.html') ? html : read(file);
       expect(text, file).not.toMatch(/@import|@font-face|url\(|https?:\/\/|<link|\.woff/);
     }
+  });
+
+  for (const [themeName, theme] of Object.entries(themes)) {
+    it(`${themeName}: disabled text is clearly weaker than secondary text, unlike the border, and still readable`, () => {
+      const disabled = colour(theme, 'text-disabled');
+      for (const surface of ['page', 'surface', 'surface-muted']) {
+        const bg = colour(theme, surface);
+        const weaker = contrast(colour(theme, 'text-secondary'), bg) - contrast(disabled, bg);
+        expect(weaker, `disabled vs secondary on ${surface}`).toBeGreaterThanOrEqual(1);
+        expect(contrast(disabled, bg), `disabled on ${surface}`).toBeGreaterThanOrEqual(3);
+        // The border is a different colour, not a near copy of the disabled text.
+        expect(contrast(disabled, colour(theme, 'border')), `disabled vs border`).toBeGreaterThanOrEqual(1.5);
+      }
+    });
+  }
+
+  it('dark surface-muted is deeper than before U1', () => {
+    // The value before U1 was #202731; the owner baseline U0 sets it to the page colour. Every text pair on it is checked above.
+    expect(luminance(colour(dark, 'surface-muted'))).toBeLessThan(luminance(parseHex('#202731')));
   });
 
   it('keeps the interactive target size at 24 CSS pixels or more', () => {

@@ -1,8 +1,8 @@
 # User interface foundation
 
-Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and the pages built on them, in a light and a dark theme: Home and Gerät (UI foundation task, D-C42, D-C43), and since Gate G5.1 the access pages Einrichten (setup), Anmelden (login) and Konto (account), described in [`AUTH.md`](AUTH.md) and in [Access states](#access-states-gate-g51) below. The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). Home itself is described in [`DASHBOARD.md`](DASHBOARD.md#home-page).
+Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and the pages built on them, in a light and a dark theme: Dashboard and Gerät (UI foundation task, D-C42, D-C43; the first page was called Home until the shell of task U1, D-C71), and since Gate G5.1 the access pages Einrichten (setup), Anmelden (login) and Konto (account), described in [`AUTH.md`](AUTH.md) and in [Access states](#access-states-gate-g51) below. The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). The Dashboard itself is described in [`DASHBOARD.md`](DASHBOARD.md#dashboard-page).
 
-**Status: implemented and tested** with jsdom unit tests and with headless Chrome on one developer Mac (layout checks at five widths, reference screenshots). **Checked once on a Raspberry Pi Zero 2 W with `v0.1.0-alpha.5`** in Safari, Chrome and Firefox ([hardware result](INSTALL.md#ui-foundation-v010-alpha5)). **Not verified:** a screen reader, keyboard use in Safari, forced-colours mode in a real browser, the lost-connection display on the device. See [Verification status](#verification-status) and [Known gaps](#known-gaps).
+**Status: implemented and tested** with jsdom unit tests and with headless Chrome on one developer Mac (layout checks at five widths, reference screenshots). **Checked once on a Raspberry Pi Zero 2 W with `v0.1.0-alpha.5`** in Safari, Chrome and Firefox ([hardware result](INSTALL.md#ui-foundation-v010-alpha5)). The shell of task U1 (navigation groups, language choice, version line, tokens) was checked in Chrome on one Mac only. **Not verified:** a screen reader, keyboard use in Safari, forced-colours mode in a real browser, the lost-connection display on the device, and the U1 shell on the device and in Safari and Firefox. See [Verification status](#verification-status) and [Known gaps](#known-gaps).
 
 The tokens in this file are named and explicit on purpose. They are meant to be carried into a design tool and back. The source of truth is [`frontend/src/styles/tokens.css`](../frontend/src/styles/tokens.css); `tokens.test.ts` fails when a token this file lists is missing there, and `docs.test.ts` fails when this file lacks a token, a component or a text that the code has.
 
@@ -11,6 +11,7 @@ The tokens in this file are named and explicit on purpose. They are meant to be 
 1. [Code layout](#code-layout)
 2. [Design tokens](#design-tokens)
 3. [Components](#components)
+   - [Shell, navigation and language](#shell-navigation-and-language-task-u1)
 4. [Layout rules and breakpoints](#layout-rules-and-breakpoints)
 5. [States](#states)
 6. [State and label texts](#state-and-label-texts)
@@ -35,16 +36,20 @@ frontend/src/
   styles/base.css          element defaults, focus ring, utilities, forced colours, reduced motion
   styles/contrast-pairs.ts every text and graphic colour pair with its WCAG minimum
   components/              the reusable components (below)
-  pages/Home.svelte        Home, built on the components
+  pages/Dashboard.svelte        Dashboard, built on the components
   pages/Device.svelte      Gerät, built on the components
   pages/Setup.svelte       Einrichten: first start with the setup token (G5.1)
   pages/Login.svelte       Anmelden (G5.1)
   pages/Account.svelte     Konto: change the password (G5.1), reached from the user menu
   lib/session.ts           the session client; the CSRF token lives in its module variable only
   lib/authErrors.ts        error codes of the access endpoints to sentences
-  lib/ui.ts                tones, and how API values map to them
+  lib/ui.ts                tones, navigation entry and group types, and how API values map to them
+  lib/lang.svelte.ts       the chosen language, its browser store, html lang (D-C77)
+  lib/version.ts           the version from /healthz for the sidebar footer
+  test-setup.ts            tests start as a first visit by a German browser with an empty store
   lib/icons.ts             the own icon set (inline SVG paths)
   lib/contrast.ts          WCAG contrast maths in plain TypeScript
+  lib/i18n.ts              t, msg and fmt: texts in the chosen language
   lib/locales/de.ts, en.ts the texts, in two named groups
 ```
 
@@ -56,8 +61,8 @@ All values are CSS custom properties on `:root` in `tokens.css`. The light set i
 
 Colour roles:
 
-- **Surfaces.** `page` is the grey background, `surface` is a card, `surface-muted` is a track or a hover.
-- **Text.** `text`, `text-secondary` and `text-disabled`. All three pass 4.5:1 on every surface.
+- **Surfaces.** `page` is the grey background, `surface` is a card, `surface-muted` is a track or a hover; in the dark theme it has the colour of `page` (owner baseline U0), so a track or a hover reads as a recess in a card.
+- **Text.** `text`, `text-secondary` and `text-disabled`. All three pass 4.5:1 on every surface. Disabled text is exempt from WCAG, but is held to the same minimum anyway, is derived from `text-secondary` toward the surface (about 1.5:1 weaker in the light theme), differs from `border`, and is never the only cue: a disabled control is a native `disabled` element and the pointer is `not-allowed`. `tokens.test.ts` checks these rules.
 - **Borders.** `border` separates parts and is decorative. `border-strong` outlines a part that must be seen (meter, button, indicator) and passes 3:1.
 - **Accent.** One colour, `accent`, for links, the current navigation entry, sparklines and normal meter fills. It is not a status.
 - **Semantic roles.** `success`, `information`, `warning`, `critical`, each with `-bg`, `-fg` and `-border`. Warning and critical are reserved for real alerts and real problems (an alert, a lost connection, an unsupported device). `neutral` is not a status: it is for "no link", "unknown" and "not available".
@@ -69,34 +74,35 @@ Breakpoint (media queries cannot read custom properties): the shell changes from
 
 | Token | Light | Dark |
 |---|---|---|
-| `--color-page` | `#f3f4f6` | `#0f1318` |
-| `--color-surface` | `#ffffff` | `#171c23` |
-| `--color-surface-muted` | `#eceef2` | `#202731` |
-| `--color-text` | `#161a20` | `#e8ebf0` |
-| `--color-text-secondary` | `#454d5a` | `#aeb7c4` |
-| `--color-text-disabled` | `#5f6775` | `#8a94a3` |
-| `--color-border` | `#dde1e7` | `#2a313b` |
-| `--color-border-strong` | `#6f798a` | `#6f7a89` |
-| `--color-accent` | `#0b6b7d` | `#52b6cb` |
-| `--color-accent-fg` | `#ffffff` | `#04232b` |
-| `--color-accent-subtle-bg` | `#dff0f4` | `#12343c` |
-| `--color-accent-subtle-fg` | `#08505f` | `#93d6e5` |
-| `--color-focus-ring` | `#1a56db` | `#7db2ff` |
-| `--color-success-bg` | `#e6f4ea` | `#12301f` |
-| `--color-success-fg` | `#14532d` | `#92dfad` |
-| `--color-success-border` | `#2f7d4f` | `#3fa86a` |
-| `--color-information-bg` | `#e8effd` | `#14264d` |
-| `--color-information-fg` | `#1e3a8a` | `#a9c6ff` |
-| `--color-information-border` | `#2c64d1` | `#5b8fe8` |
-| `--color-warning-bg` | `#fff3d6` | `#3a2a08` |
-| `--color-warning-fg` | `#6b3a00` | `#ffd58a` |
-| `--color-warning-border` | `#b05a00` | `#d9922b` |
-| `--color-critical-bg` | `#fdeceb` | `#3d1713` |
-| `--color-critical-fg` | `#8a1c13` | `#ffb3aa` |
-| `--color-critical-border` | `#c42b1c` | `#ef6a5b` |
-| `--color-neutral-bg` | `#eceff3` | `#222a35` |
-| `--color-neutral-fg` | `#3a424e` | `#c4ccd8` |
-| `--color-neutral-border` | `#6f798a` | `#6f7a89` |
+| `--color-page` | `#f4f7fa` | `#0f1720` |
+| `--color-surface` | `#ffffff` | `#1b3347` |
+| `--color-surface-muted` | `#ecf1f5` | `#0f1720` |
+| `--color-text` | `#1b3347` | `#ecf1f5` |
+| `--color-text-secondary` | `#485e70` | `#adb9c4` |
+| `--color-text-disabled` | `#5b6e80` | `#8d9caa` |
+| `--color-border` | `#dfe5eb` | `#31485b` |
+| `--color-border-strong` | `#617485` | `#8797a6` |
+| `--color-accent` | `#006869` | `#68cacb` |
+| `--color-accent-fg` | `#ffffff` | `#0f1720` |
+| `--color-accent-subtle-bg` | `#eafbfa` | `#013839` |
+| `--color-accent-subtle-fg` | `#045050` | `#baf1f0` |
+| `--color-focus-ring` | `#0e8a8c` | `#98e4e4` |
+| `--color-logo-ink` | `#1b3347` | `#dfe5eb` |
+| `--color-success-bg` | `#ebfbf3` | `#003a28` |
+| `--color-success-fg` | `#0c6b4d` | `#7ecaa9` |
+| `--color-success-border` | `#1f7a5a` | `#52a986` |
+| `--color-information-bg` | `#f1f7ff` | `#0b305a` |
+| `--color-information-fg` | `#1f5b9f` | `#84bbfe` |
+| `--color-information-border` | `#2f6db5` | `#5998e3` |
+| `--color-warning-bg` | `#fff5ea` | `#452901` |
+| `--color-warning-fg` | `#7e4f02` | `#e5ab66` |
+| `--color-warning-border` | `#9c640d` | `#c48737` |
+| `--color-critical-bg` | `#fef4f3` | `#581412` |
+| `--color-critical-fg` | `#9e2d28` | `#ff968a` |
+| `--color-critical-border` | `#c8443c` | `#e7685d` |
+| `--color-neutral-bg` | `#ecf1f5` | `#31485b` |
+| `--color-neutral-fg` | `#485e70` | `#cdd5dc` |
+| `--color-neutral-border` | `#617485` | `#8797a6` |
 
 **Spacing**
 
@@ -120,7 +126,7 @@ Breakpoint (media queries cannot read custom properties): the shell changes from
 | `--radius-lg` | `8px` | same |
 | `--radius-full` | `999px` | same |
 
-**Font**
+**Font** (system fonts only: no web font and no download, D-C71. MiB and the German number format stay as the UI already shows them, in both languages.)
 
 | Token | Light | Dark |
 |---|---|---|
@@ -196,15 +202,17 @@ All components are Svelte 5 with TypeScript and no dependency. They hold no UI t
 
 | Component | Purpose | Props | States and behaviour |
 |---|---|---|---|
-| `AppShell` | Skip link, banner with brand and navigation, main area. Below 60rem the sidebar is a top bar. | `items` (navigation entries), `current` (id), `account` (the user menu), `children` | Current entry has `aria-current="page"`, a tint and a bar, so it is not shown by colour alone. The skip link moves focus to `main` and never changes the address. |
+| `AppShell` | Skip link, banner with brand, navigation in groups, the user menu and a footer (language switch, version line), main area. Below 60rem the sidebar is a top bar. | `items` (navigation entries, each with an optional `group`), `current` (id), `account` (the user menu), `children` | Current entry has `aria-current="page"`, a tint and a bar, so it is not shown by colour alone. The skip link moves focus to `main` and never changes the address. A group with no entry is not shown. |
 | `AuthShell` | The frame before sign-in (checking, setup, login): brand bar and one narrow column in `main`. No navigation, no device data. | `children` | One `main` landmark; the page inside has the `h1`. |
-| `BrandMark` | The Oarfish mark, decorative. | none | `aria-hidden`; the brand name next to it is the text. |
+| `BrandMark` | The Oarfish mark in the sidebar header, decorative. It draws the paths of the owner's mark, `frontend/src/assets/oarfish-mark-mono.svg`, in a single colour: `currentColor`, set to `--color-logo-ink`. A test compares the paths with the file. The favicon is not changed. | none | `aria-hidden`; the brand name next to it is the text. |
+| `LanguageSwitch` | Two buttons, Deutsch and English, in the sidebar footer. | none | A `group` named "Sprache" or "Language"; the chosen button has `aria-pressed="true"` and a bar, so it is not shown by colour alone. Each button names its language in that language (`lang` attribute). Native buttons: Tab, Enter and Space. |
+| `VersionLine` | The Oarfish version in the sidebar footer, from `/healthz`. | none | Shows nothing while the request runs and nothing when it fails or answers something that is not a version: no error banner. Not a live region. |
 | `UserMenu` | The signed-in user in the shell: a native `details` whose `summary` is the user name; inside, the link to Konto and the Abmelden button. | `username`, `accountHref`, `current`, `onLogout`, `busy` | The summary's accessible name is "Benutzermenü: <name>". Opened with Enter or Space. Not a live region. |
 | `FormField` | Label, optional help, input and the field's own error, tied together with `for`, `aria-describedby` and `aria-invalid`. | `id`, `label`, `value` (bindable), `type` (`text`, `password`), `autocomplete`, `help`, `error`, `disabled`, `input` (bindable element) | Always `autocapitalize="off"` and `spellcheck="false"`. An error adds a 2 px critical border and the error text below the field, never colour alone. |
 | `FormMessage` | The message area of a form. | `tone`, `testid` | `role="alert"` for `critical` (announced at once), `role="status"` otherwise. A new error is a new node, so the same sentence is announced again. |
 | `PageHeader` | The one `h1` of a page and an optional small aside. | `title`, `aside` | Wraps on a narrow screen. |
-| `Card` | A labelled section with a heading (`<id>-heading`), an icon and a body. | `id`, `title`, `icon`, `stale`, `wide` | `stale`: the body is dimmed to `--opacity-stale` (contrast is tested at that opacity, including the tinted alerts) and the header shows the Veraltet badge. Every card of Home, the alerts card included, uses it. |
-| `SummaryStrip` | The row at the top of Home: host name, board, operating system, uptime, support status. A group, not a section. | `items`, `label`, `stale` | The host name is cut to one line with the full text as `title`; other values wrap. A missing value is a neutral placeholder. |
+| `Card` | A labelled section with a heading (`<id>-heading`), an icon and a body. | `id`, `title`, `icon`, `stale`, `wide` | `stale`: the body is dimmed to `--opacity-stale` (contrast is tested at that opacity, including the tinted alerts) and the header shows the Veraltet badge. Every card of Dashboard, the alerts card included, uses it. |
+| `SummaryStrip` | The row at the top of the Dashboard: host name, board, operating system, uptime, support status. A group, not a section. | `items`, `label`, `stale` | The host name is cut to one line with the full text as `title`; other values wrap. A missing value is a neutral placeholder. |
 | `Badge` | A short status word. | `tone` (`neutral`, `success`, `information`, `warning`, `critical`), `icon` | The text is the meaning; the icon and colour only support it. |
 | `Notice` | A sentence or two that explains a state, with an icon. Not a live region. | `tone` | Used for the lost-connection explanation and the support explanation. |
 | `AlertList` | The alerts, grouped by level with a count per level. The only live region (`aria-live="polite"`). | `alerts`, `stale` | No alerts: one calm line. With `stale` the line says what was true at the last reading, in secondary text with a neutral clock icon instead of the green check. |
@@ -212,15 +220,25 @@ All components are Svelte 5 with TypeScript and no dependency. They hold no UI t
 | `Meter` | A usage bar. A native `progress` element with an accessible name. | `value`, `label`, `level` (`ok`, `relevant`, `critical`) | `ok` is the accent; the other two use warning and critical, like the storage alerts. The fill does not animate. |
 | `Sparkline` | A small inline-SVG line of the last minutes. | `values`, `min`, `max`, `label` | An image with a text alternative. Fewer than two values: the text "Noch kein Verlauf". It is redrawn only when new data arrives. |
 | `KeyValueList` | Label and value pairs as a definition list. | `items` (`label`, `value`, `note`, `mono`, `placeholder`, `title`, `testid`) | Never collapses (see [Layout rules](#layout-rules-and-breakpoints)). `null` shows a neutral placeholder. |
-| `ConnectionIndicator` | A small pill at the top right of Home. | `state` | `live`, `connecting`, `reconnecting`, `stale`, `paused`, each with its own text. Not a live region. |
+| `ConnectionIndicator` | A small pill at the top right of Dashboard. | `state` | `live`, `connecting`, `reconnecting`, `stale`, `paused`, each with its own text. Not a live region. |
 | `EmptyState` | A state without data: loading, error, or "nothing found". | `icon`, `tone`, `title`, `description`, `compact`, `role` | Full size on a page, `compact` inside a card. Only an error state gets `role="alert"`. |
 | `Icon` | One of the own icons, decorative (`aria-hidden`). | `name` | Sizes with the text (`1.25em`), colour is `currentColor`. |
 
 Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `wifi`, `ethernet`, `info`, `warning`, `critical`, `success`, `clock`, `user`, `lock`. They are 24 by 24 outline paths drawn for this project, so there is no icon library and no third-party licence. The icon for an interface follows the API field `kind` (`wifi`, `ethernet`, else the generic `network`).
 
+### Shell, navigation and language (task U1)
+
+**Navigation (specification 7.2, D-C71).** The first entry is "Dashboard" (it was "Home"; the address `#/` did not change). Entries without a group come first, then the group "Workload" (Apps, Storage, Files), then "System" (Network, Activity, Update, Erweiterungen, Settings). An entry exists only when its function exists (specification 7.1). Today there are two entries and no group: Dashboard (`#/`, `pages/Dashboard.svelte`) and Gerät (`#/device`, `pages/Device.svelte`). The account page `#/account` is reached from the user menu and is not an entry. A page that comes later sets `group: 'workload'` or `group: 'system'` in `routes.ts`; the group name appears with its first entry.
+
+**Language (ORB-GEN-006, D-C77).** German and English have the same keys; a test proves it. The start language follows the first language of `navigator.languages` that is German or English; anything else is English. The Deutsch and English buttons in the sidebar footer change the language at once, without a reload, and set `html lang`. The choice is kept in `localStorage` under the key `oarfish.lang`; only the code `de` or `en` is stored, and any other stored value is ignored. A store that cannot be read or written (private window, blocked site data) does not break the app: it starts from the browser language and does not remember. Components read `t`, `msg` and `fmt` from `lib/i18n.ts` where they show them, so a change reaches the whole page. Numbers keep the German format and units stay binary (MiB) in both languages. The language is not yet a setting: the settings page and a server-side store come later (H1).
+
+**Version line.** The sidebar footer shows "Version <version>" from the `version` member of `/healthz` (a public route). The value is shown only if it consists of letters, digits and `. _ + -` (at most 64 characters). The shell calls no update route: the update notice stays unused until a user-visible off switch exists (ADR 0010, A11.1, D-C68), and a test fails if the frontend names `/api/v1/update`.
+
+**Sidebar footer.** Below 60rem it sits at the right of the top bar, the language switch above the version line, so that at 390 CSS pixels the bar has two rows (brand and entries, then user menu and footer) instead of three.
+
 ## Layout rules and breakpoints
 
-- **Shell.** At 60rem and wider: a 14rem sidebar (brand, navigation) and the content area, which starts next to the sidebar and is at most 80rem wide (`--content-max`). Below 60rem: a top bar with the brand and the navigation entries in a row that wraps, and the content below. The top bar scrolls away; nothing is `sticky` in the narrow layout, so a focused element is never hidden behind it (WCAG 2.4.11). The wide sidebar does not overlap content.
+- **Shell.** At 60rem and wider: a 14rem sidebar (brand, navigation in groups, user menu, and the footer with language switch and version line at its bottom) and the content area, which starts next to the sidebar and is at most 80rem wide (`--content-max`). Below 60rem: a top bar with the brand and the navigation entries in a row that wraps, and the content below. The top bar scrolls away; nothing is `sticky` in the narrow layout, so a focused element is never hidden behind it (WCAG 2.4.11). The wide sidebar does not overlap content.
 - **Wide windows.** The content sits next to the sidebar and is not centred. Navigation and page belong together, so a fixed 24 px gap keeps the eye path short at every width, and the unused space collects at the right window edge where nothing is missed. The maximum width keeps the cards and the text lines readable. Checked in headless Chrome at 360, 1280, 1920 and 2560 CSS pixels in light and dark (gap between sidebar and content 24 px from 1280 px up, before: 208 px at 1920 and 528 px at 2560; no horizontal scroll). Screenshots: [`design/known-gaps/`](design/known-gaps/). `components.test.ts` "AppShell layout rule" pins the rule in the source.
 - **Cards.** An intrinsic grid: as many columns as fit, each at least 20rem (or the whole width when that is less). A wide card spans the row. No other breakpoint.
 - **Label and value.** `KeyValueList` is a wrapping row, not a grid with fixed columns. Label and value sit side by side when they fit; when they do not, the value moves below the label. Neither is ever squeezed into a thin column. Long words break (`overflow-wrap: anywhere`) rather than overflow.
@@ -229,15 +247,15 @@ Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `w
 - **Units** are binary (`KiB`, `MiB`, `GiB`), never `MB` or `GB`. Numbers use the monospace face with tabular figures (`.num`).
 - **Text size** is in `rem`, so the page follows the browser's text size. Nothing has a fixed height.
 
-Checked at 320, 390, 768, 1280 and 1920 CSS pixels with a headless Chrome script (not part of the repository), for Home with a normal device, a device with the largest lists (8 interfaces, 8 mounts, 16 sensors, very long names, an unknown interface kind), a device with unknown values, Generic Mode, a lost connection and the Gerät page; and again at 320, 390 and 1280 with WCAG 1.4.12 text spacing (line height 1.5, letter spacing 0.12em, word spacing 0.16em, paragraph spacing 2em) and with the text size at 200 percent. Result: no horizontal scroll, no element outside the window, no clipped text, no label or value collapsed into a column narrower than 4rem, no interactive element smaller than 24 by 24 CSS pixels (links inside running text excepted). 320 CSS pixels is 400 percent zoom on a 1280 pixel window (WCAG 1.4.10).
+Checked at 320, 390, 768, 1280 and 1920 CSS pixels with a headless Chrome script (not part of the repository), for Dashboard with a normal device, a device with the largest lists (8 interfaces, 8 mounts, 16 sensors, very long names, an unknown interface kind), a device with unknown values, Generic Mode, a lost connection and the Gerät page; and again at 320, 390 and 1280 with WCAG 1.4.12 text spacing (line height 1.5, letter spacing 0.12em, word spacing 0.16em, paragraph spacing 2em) and with the text size at 200 percent. Result: no horizontal scroll, no element outside the window, no clipped text, no label or value collapsed into a column narrower than 4rem, no interactive element smaller than 24 by 24 CSS pixels (links inside running text excepted). 320 CSS pixels is 400 percent zoom on a 1280 pixel window (WCAG 1.4.10).
 
 ## States
 
-Each state is designed and has a test (`pages/Home.states.test.ts`, `pages/Home.test.ts`, `pages/Device.test.ts`).
+Each state is designed and has a test (`pages/Dashboard.states.test.ts`, `pages/Dashboard.test.ts`, `pages/Device.test.ts`).
 
 | State | What the user sees | Test |
 |---|---|---|
-| Loading (first paint) | Page header, an `EmptyState` with "Werte werden geladen …", the indicator "Verbindet …". | `Home.states.test.ts` "state loading" |
+| Loading (first paint) | Page header, an `EmptyState` with "Werte werden geladen …", the indicator "Verbindet …". | `Dashboard.states.test.ts` "state loading" |
 | Live | Indicator "Live", values in place, no notice, no Veraltet. | "state live" |
 | Connection lost | The last values stay, dimmed; every card (the alerts card too) and the strip say "Veraltet"; a notice says what happened and when the last update was. | "state connection lost", "gap 1" tests |
 | Reconnecting | Indicator "Verbindet neu …". Without any data yet the page says "Verbindung wird aufgebaut …". Network rates show the last value (dimmed) or "Nicht verfügbar", never "wird ermittelt …". | "state reconnecting", "state reconnecting without data" |
@@ -245,7 +263,7 @@ Each state is designed and has a test (`pages/Home.states.test.ts`, `pages/Home.
 | Paused | Indicator "Pausiert" (the tab was hidden; no stream is open). | "state paused" |
 | Tab shown again | The old values are marked "Veraltet" (every card, the alerts card, the strip) from the first frame on, with the indicator "Verbindet …" and no lost-connection notice, until the first new value arrives. The alert list then says only what was true at the last reading. | "gap 2" tests |
 | Load error | `EmptyState` with the error, a hint and a retry button. | "state load error" |
-| No alerts | One calm line inside the live region. While live it says "Keine Hinweise. Alles in Ordnung." with the green check icon. While the values are stale, the connection is lost or reconnecting, or the stream has not delivered a value since the tab was shown, it says only "Beim letzten Abruf gab es keine Hinweise." with a neutral clock icon in secondary text. | "state no alerts", "empty alert list", "gap 3" in `Home.states.test.ts` |
+| No alerts | One calm line inside the live region. While live it says "Keine Hinweise. Alles in Ordnung." with the green check icon. While the values are stale, the connection is lost or reconnecting, or the stream has not delivered a value since the tab was shown, it says only "Beim letzten Abruf gab es keine Hinweise." with a neutral clock icon in secondary text. | "state no alerts", "empty alert list", "gap 3" in `Dashboard.states.test.ts` |
 | One alert per level | Three groups with counts; each alert with icon, short title, cause, impact and next step. | "state one alert per level" |
 | No sensors, no storage, no interfaces | One plain line in the card. | "state no sensors, no storage, no interfaces" |
 | Unknown values | A neutral placeholder ("Unbekannt", "Nicht verfügbar"), never an empty field, `null` or `NaN`. | "state unknown values" |
@@ -290,26 +308,32 @@ The alert rules themselves (including the rule "no interface has a link") are un
 
 ## State and label texts
 
-All texts the interface says about itself are in one group, `deUi` in [`frontend/src/lib/locales/de.ts`](../frontend/src/lib/locales/de.ts), with the same keys as `enUi` in `en.ts`. Lift this group in one piece. The sentences the API selects by key (alerts, support explanations, limitations, capabilities, and the short alert titles) are in the second group, `deApi`; they are not listed here. The German is the default language.
+All texts the interface says about itself are in one group, `deUi` in [`frontend/src/lib/locales/de.ts`](../frontend/src/lib/locales/de.ts), with the same keys as `enUi` in `en.ts`. Lift this group in one piece. The sentences the API selects by key (alerts, support explanations, limitations, capabilities, and the short alert titles) are in the second group, `deApi`; they are not listed here. The start language follows the browser (see [Shell, navigation and language](#shell-navigation-and-language-task-u1)); German is the language of the source texts.
 
 | Key | Deutsch | English |
 |---|---|---|
 | `brandName` | Oarfish | Oarfish |
 | `skipLink` | Zum Inhalt springen | Skip to content |
 | `navLabel` | Hauptnavigation | Main navigation |
-| `navHome` | Home | Home |
+| `navDashboard` | Dashboard | Dashboard |
 | `navDevice` | Gerät | Device |
-| `homeTitle` | Home | Home |
+| `navGroupWorkload` | Workload | Workload |
+| `navGroupSystem` | System | System |
+| `langLabel` | Sprache | Language |
+| `langGerman` | Deutsch | Deutsch |
+| `langEnglish` | English | English |
+| `versionLine` | Version {version} | Version {version} |
+| `dashboardTitle` | Dashboard | Dashboard |
 | `deviceTitle` | Gerät | Device |
 | `connIndicatorLive` | Live | Live |
 | `connIndicatorConnecting` | Verbindet … | Connecting … |
 | `connIndicatorReconnecting` | Verbindet neu … | Reconnecting … |
 | `connIndicatorStale` | Keine neuen Werte | No new values |
 | `connIndicatorPaused` | Pausiert | Paused |
-| `homeLoading` | Werte werden geladen … | Loading values … |
-| `homeLoadError` | Die Werte konnten nicht geladen werden. | The values could not be loaded. |
-| `homeLoadErrorHint` | Prüfen Sie, ob Oarfish auf dem Gerät läuft, und versuchen Sie es noch einmal. | Check that Oarfish is running on the device, then try again. |
-| `homeRetry` | Erneut versuchen | Try again |
+| `dashboardLoading` | Werte werden geladen … | Loading values … |
+| `dashboardLoadError` | Die Werte konnten nicht geladen werden. | The values could not be loaded. |
+| `dashboardLoadErrorHint` | Prüfen Sie, ob Oarfish auf dem Gerät läuft, und versuchen Sie es noch einmal. | Check that Oarfish is running on the device, then try again. |
+| `dashboardRetry` | Erneut versuchen | Try again |
 | `connConnecting` | Verbindung wird aufgebaut … | Connecting … |
 | `connLost` | Die Verbindung ist unterbrochen. Die Werte sind veraltet. Oarfish verbindet sich automatisch neu. | The connection is lost. The values are out of date. Oarfish reconnects by itself. |
 | `connStale` | Seit einigen Sekunden kommen keine neuen Werte an. Die Werte sind vielleicht veraltet. | No new values have arrived for a few seconds. The values may be out of date. |
@@ -498,13 +522,13 @@ For the state and label texts (`deUi`, German and English). `i18n.test.ts` check
 
 Target: WCAG 2.2 AA (ORB-NFR-011). What is tested and what is not is in [Verification status](#verification-status).
 
-- **Contrast.** Text 4.5:1, UI components and graphics 3:1, in both themes. `tokens.test.ts` computes the ratio of every pair in `styles/contrast-pairs.ts` (56 pairs, including small labels, badges, the disabled look, the focus ring, meter fills on their track, and every semantic role) and fails below the minimum. It also checks the dimmed stale values at their real opacity, including the tinted alert items on a card (body text 8.9 to 10.2, title and icon 5.8 to 7.7 at 0.85, both themes). The table is below.
+- **Contrast.** Text 4.5:1, UI components and graphics 3:1, in both themes. `tokens.test.ts` computes the ratio of every pair in `styles/contrast-pairs.ts` (57 pairs, including small labels, badges, the disabled look, the focus ring, meter fills on their track, and every semantic role) and fails below the minimum. It also checks the dimmed stale values at their real opacity, including the tinted alert items on a card (body text 7.6 to 9.5, title and icon 4.55 to 5.3 at 0.85, both themes). The table is below.
 - **Colour is never the only signal.** Alert level: icon shape, group heading, colour. Link state: badge text. Stale: the word Veraltet. Current page: `aria-current`, tint and bar. Meter: the value is written next to it.
 - **Focus.** One visible ring (`--focus-ring-*`) with 3:1 against every background. No sticky element covers a focused element.
 - **Target size.** Buttons, navigation entries, `summary` and links are at least 24 by 24 CSS pixels (`--target-min`).
 - **Landmarks and headings.** `header` (banner, with the navigation), `nav` with a name, `main`. One `h1` per page; `h2` for cards, `h3` for alert groups, `h4` for alert titles; no level is skipped. A skip link is the first focusable element.
 - **Native elements.** Only `a`, `button`, `summary` and, on the access pages, labelled `input` elements are interactive. No `tabindex` above 0, no `role="button"`. Forms submit with Enter.
-- **Live region.** On Home only the alert list has `aria-live`, exactly as before. The connection indicator, the notices and the metric values are not announced. The Gerät page keeps its loading and error roles. The forms of Einrichten, Anmelden and Konto each have one message area (`FormMessage`): errors as `role="alert"`, the expired and signed-out notes and the success note as `role="status"`.
+- **Live region.** On Dashboard only the alert list has `aria-live`, exactly as before. The connection indicator, the notices and the metric values are not announced. The Gerät page keeps its loading and error roles. The forms of Einrichten, Anmelden and Konto each have one message area (`FormMessage`): errors as `role="alert"`, the expired and signed-out notes and the success note as `role="status"`.
 - **Forms.** Every field has a visible label and, where it helps, a help text tied with `aria-describedby`. An error names the rule, marks the field with `aria-invalid` and a thicker border, and moves the focus to the field. Password fields are cleared after every submit. On a page change the focus goes to the first field.
 - **Images and icons.** Icons are `aria-hidden`. A sparkline is an image with a text alternative that includes the latest value. A meter has an accessible name and its value.
 - **Motion.** Nothing animates when a value updates (no transition on a bar, no animation at all). Hover and open effects use `--duration-*`, which `prefers-reduced-motion` sets to zero.
@@ -515,69 +539,70 @@ Contrast of every pair (ratios computed from the token values; all are at or abo
 
 | Foreground on background | Min | Light | Dark | Use |
 |---|---|---|---|---|
-| `text` on `page` | 4.5 | 15.87 | 15.60 | body text |
-| `text-secondary` on `page` | 4.5 | 7.75 | 9.20 | labels, small print, placeholders |
-| `text-disabled` on `page` | 4.5 | 5.18 | 6.08 | disabled button text |
-| `accent` on `page` | 4.5 | 5.59 | 7.91 | links |
-| `text` on `surface` | 4.5 | 17.46 | 14.32 | body text |
-| `text-secondary` on `surface` | 4.5 | 8.53 | 8.45 | labels, small print, placeholders |
-| `text-disabled` on `surface` | 4.5 | 5.70 | 5.58 | disabled button text |
-| `accent` on `surface` | 4.5 | 6.15 | 7.26 | links |
-| `text` on `surface-muted` | 4.5 | 15.03 | 12.59 | body text |
-| `text-secondary` on `surface-muted` | 4.5 | 7.34 | 7.43 | labels, small print, placeholders |
-| `text-disabled` on `surface-muted` | 4.5 | 4.91 | 4.90 | disabled button text |
-| `accent` on `surface-muted` | 4.5 | 5.30 | 6.38 | links |
-| `accent-fg` on `accent` | 4.5 | 6.15 | 6.96 | skip link |
-| `accent-subtle-fg` on `accent-subtle-bg` | 4.5 | 7.71 | 8.21 | current navigation entry |
-| `success-fg` on `success-bg` | 4.5 | 8.02 | 9.11 | success badge, notice, alert |
-| `success-fg` on `surface` | 4.5 | 9.11 | 10.91 | success text on a card |
-| `text` on `success-bg` | 4.5 | 15.38 | 11.97 | success alert body text |
-| `text-secondary` on `success-bg` | 4.5 | 7.51 | 7.06 | success notice secondary line |
-| `information-fg` on `information-bg` | 4.5 | 8.98 | 8.63 | information badge, notice, alert |
-| `information-fg` on `surface` | 4.5 | 10.36 | 9.95 | information text on a card |
-| `text` on `information-bg` | 4.5 | 15.13 | 12.43 | information alert body text |
-| `text-secondary` on `information-bg` | 4.5 | 7.39 | 7.33 | information notice secondary line |
-| `warning-fg` on `warning-bg` | 4.5 | 8.54 | 9.99 | warning badge, notice, alert |
-| `warning-fg` on `surface` | 4.5 | 9.42 | 12.34 | warning text on a card |
-| `text` on `warning-bg` | 4.5 | 15.83 | 11.60 | warning alert body text |
-| `text-secondary` on `warning-bg` | 4.5 | 7.73 | 6.85 | warning notice secondary line |
-| `critical-fg` on `critical-bg` | 4.5 | 8.14 | 9.23 | critical badge, notice, alert |
-| `critical-fg` on `surface` | 4.5 | 9.31 | 10.01 | critical text on a card |
-| `text` on `critical-bg` | 4.5 | 15.28 | 13.21 | critical alert body text |
-| `text-secondary` on `critical-bg` | 4.5 | 7.46 | 7.79 | critical notice secondary line |
-| `neutral-fg` on `neutral-bg` | 4.5 | 8.80 | 8.95 | neutral badge, notice, alert |
-| `neutral-fg` on `surface` | 4.5 | 10.15 | 10.58 | neutral text on a card |
-| `text` on `neutral-bg` | 4.5 | 15.14 | 12.11 | neutral alert body text |
-| `text-secondary` on `neutral-bg` | 4.5 | 7.39 | 7.15 | neutral notice secondary line |
-| `border-strong` on `page` | 3 | 3.99 | 4.28 | outline of meters, buttons, indicator |
-| `border-strong` on `surface` | 3 | 4.40 | 3.93 | outline of meters, buttons, indicator |
-| `border-strong` on `surface-muted` | 3 | 3.78 | 3.45 | outline of meters, buttons, indicator |
-| `accent` on `surface` | 3 | 6.15 | 7.26 | sparkline, normal meter fill |
-| `accent` on `surface-muted` | 3 | 5.30 | 6.38 | normal meter fill on its track |
-| `warning-border` on `surface-muted` | 3 | 4.20 | 5.80 | warning meter fill on its track |
-| `critical-border` on `surface-muted` | 3 | 4.87 | 4.93 | critical meter fill on its track |
-| `focus-ring` on `page` | 3 | 5.62 | 8.60 | focus ring |
-| `focus-ring` on `surface` | 3 | 6.18 | 7.89 | focus ring |
-| `focus-ring` on `surface-muted` | 3 | 5.32 | 6.94 | focus ring |
-| `focus-ring` on `accent-subtle-bg` | 3 | 5.27 | 6.12 | focus ring |
-| `accent` on `accent-subtle-bg` | 3 | 5.25 | 5.63 | current entry bar |
-| `success-border` on `surface` | 3 | 5.04 | 5.72 | success border and dot |
-| `success-border` on `success-bg` | 3 | 4.44 | 4.78 | success border against its own fill |
-| `information-border` on `surface` | 3 | 5.45 | 5.33 | information border and dot |
-| `information-border` on `information-bg` | 3 | 4.73 | 4.62 | information border against its own fill |
-| `warning-border` on `surface` | 3 | 4.87 | 6.60 | warning border and dot |
-| `warning-border` on `warning-bg` | 3 | 4.42 | 5.35 | warning border against its own fill |
-| `critical-border` on `surface` | 3 | 5.66 | 5.61 | critical border and dot |
-| `critical-border` on `critical-bg` | 3 | 4.95 | 5.17 | critical border against its own fill |
-| `neutral-border` on `surface` | 3 | 4.40 | 3.93 | neutral border and dot |
-| `neutral-border` on `neutral-bg` | 3 | 3.81 | 3.32 | neutral border against its own fill |
+| `text` on `page` | 4.5 | 12.12 | 15.87 | body text |
+| `text-secondary` on `page` | 4.5 | 6.28 | 9.03 | labels, small print, placeholders, navigation group names, version line |
+| `text-disabled` on `page` | 4.5 | 4.90 | 6.42 | disabled button text |
+| `accent` on `page` | 4.5 | 6.13 | 9.37 | links |
+| `text` on `surface` | 4.5 | 13.03 | 11.46 | body text |
+| `text-secondary` on `surface` | 4.5 | 6.75 | 6.53 | labels, small print, placeholders, navigation group names, version line |
+| `text-disabled` on `surface` | 4.5 | 5.27 | 4.64 | disabled button text |
+| `accent` on `surface` | 4.5 | 6.60 | 6.76 | links |
+| `text` on `surface-muted` | 4.5 | 11.46 | 15.87 | body text |
+| `text-secondary` on `surface-muted` | 4.5 | 5.94 | 9.03 | labels, small print, placeholders, navigation group names, version line |
+| `text-disabled` on `surface-muted` | 4.5 | 4.63 | 6.42 | disabled button text |
+| `accent` on `surface-muted` | 4.5 | 5.80 | 9.37 | links |
+| `accent-fg` on `accent` | 4.5 | 6.60 | 9.37 | skip link |
+| `accent-subtle-fg` on `accent-subtle-bg` | 4.5 | 8.67 | 10.41 | current navigation entry, chosen language |
+| `success-fg` on `success-bg` | 4.5 | 6.08 | 6.67 | success badge, notice, alert |
+| `success-fg` on `surface` | 4.5 | 6.51 | 6.77 | success text on a card |
+| `text` on `success-bg` | 4.5 | 12.18 | 11.29 | success alert body text |
+| `text-secondary` on `success-bg` | 4.5 | 6.31 | 6.43 | success notice secondary line |
+| `information-fg` on `information-bg` | 4.5 | 6.38 | 6.64 | information badge, notice, alert |
+| `information-fg` on `surface` | 4.5 | 6.87 | 6.53 | information text on a card |
+| `text` on `information-bg` | 4.5 | 12.10 | 11.65 | information alert body text |
+| `text-secondary` on `information-bg` | 4.5 | 6.27 | 6.63 | information notice secondary line |
+| `warning-fg` on `warning-bg` | 4.5 | 6.49 | 6.59 | warning badge, notice, alert |
+| `warning-fg` on `surface` | 4.5 | 6.99 | 6.42 | warning text on a card |
+| `text` on `warning-bg` | 4.5 | 12.10 | 11.76 | warning alert body text |
+| `text-secondary` on `warning-bg` | 4.5 | 6.27 | 6.69 | warning notice secondary line |
+| `critical-fg` on `critical-bg` | 4.5 | 6.80 | 6.55 | critical badge, notice, alert |
+| `critical-fg` on `surface` | 4.5 | 7.34 | 6.20 | critical text on a card |
+| `text` on `critical-bg` | 4.5 | 12.07 | 12.12 | critical alert body text |
+| `text-secondary` on `critical-bg` | 4.5 | 6.25 | 6.90 | critical notice secondary line |
+| `neutral-fg` on `neutral-bg` | 4.5 | 5.94 | 6.41 | neutral badge, notice, alert |
+| `neutral-fg` on `surface` | 4.5 | 6.75 | 8.78 | neutral text on a card |
+| `text` on `neutral-bg` | 4.5 | 11.46 | 8.36 | neutral alert body text |
+| `text-secondary` on `neutral-bg` | 4.5 | 5.94 | 4.76 | neutral notice secondary line |
+| `border-strong` on `page` | 3 | 4.50 | 6.02 | outline of meters, buttons, indicator |
+| `border-strong` on `surface` | 3 | 4.83 | 4.35 | outline of meters, buttons, indicator |
+| `border-strong` on `surface-muted` | 3 | 4.25 | 6.02 | outline of meters, buttons, indicator |
+| `accent` on `surface` | 3 | 6.60 | 6.76 | sparkline, normal meter fill |
+| `accent` on `surface-muted` | 3 | 5.80 | 9.37 | normal meter fill on its track |
+| `warning-border` on `surface-muted` | 3 | 4.35 | 5.90 | warning meter fill on its track |
+| `critical-border` on `surface-muted` | 3 | 4.25 | 5.62 | critical meter fill on its track |
+| `focus-ring` on `page` | 3 | 3.88 | 12.51 | focus ring |
+| `focus-ring` on `surface` | 3 | 4.17 | 9.03 | focus ring |
+| `focus-ring` on `surface-muted` | 3 | 3.67 | 12.51 | focus ring |
+| `focus-ring` on `accent-subtle-bg` | 3 | 3.91 | 8.95 | focus ring |
+| `accent` on `accent-subtle-bg` | 3 | 6.18 | 6.70 | current entry bar |
+| `logo-ink` on `surface` | 3 | 13.03 | 10.27 | logo mark in the sidebar header |
+| `success-border` on `surface` | 3 | 5.26 | 4.58 | success border and dot |
+| `success-border` on `success-bg` | 3 | 4.92 | 4.51 | success border against its own fill |
+| `information-border` on `surface` | 3 | 5.28 | 4.36 | information border and dot |
+| `information-border` on `information-bg` | 3 | 4.90 | 4.43 | information border against its own fill |
+| `warning-border` on `surface` | 3 | 4.95 | 4.26 | warning border and dot |
+| `warning-border` on `warning-bg` | 3 | 4.60 | 4.37 | warning border against its own fill |
+| `critical-border` on `surface` | 3 | 4.83 | 4.06 | critical border and dot |
+| `critical-border` on `critical-bg` | 3 | 4.47 | 4.29 | critical border against its own fill |
+| `neutral-border` on `surface` | 3 | 4.83 | 4.35 | neutral border and dot |
+| `neutral-border` on `neutral-bg` | 3 | 4.25 | 3.17 | neutral border against its own fill |
 
 
 ## Data-driven rendering
 
 D-C43: the UI renders what the API sends.
 
-- No interface, port, hardware address or board name is in the UI code. `Home.data.test.ts` scans every production `.svelte`, `.ts` and `.css` file outside the locale files.
+- No interface, port, hardware address or board name is in the UI code. `Dashboard.data.test.ts` scans every production `.svelte`, `.ts` and `.css` file outside the locale files.
 - Icons and labels follow the API field `kind` (`wifi`, `ethernet`, `other`). A kind this version does not know gets the neutral generic icon and the label "Sonstige".
 - A value the translations do not know (a link state, a sensor source) gets the neutral wording. The existing rule stays for texts chosen by a key (support explanation, limitation): an unknown key is shown as the key itself, so a gap is visible.
 - Lists render up to the API caps: 8 interfaces, 8 mounts, 16 sensors. Long names are cut with the full text in `title`.
@@ -587,7 +612,7 @@ D-C43: the UI renders what the API sends.
 
 1. Create `frontend/src/pages/<Name>.svelte`. Start with `<PageHeader title={t.…} />` and put the content in `Card`s inside a `<div class="card-grid">`.
 2. Add its title to `deUi` and `enUi` (for example `navSystem`, `systemTitle`).
-3. Add one entry to `routes` in `frontend/src/routes.ts`: `id`, `path` (`#/system`), `labelKey`, `icon`, `component`. That adds the navigation entry, the route and the tab title. Nothing else changes.
+3. Add one entry to `routes` in `frontend/src/routes.ts`: `id`, `path` (`#/system`), `labelKey`, `icon`, `group` (`'workload'` or `'system'`, from specification 7.2; none for the entries at the top), `component`. That adds the navigation entry, the route and the tab title. Nothing else changes.
 4. Add a test next to the page. The navigation test (`routes.test.ts`) already checks that every entry has unique id and path, a text in both languages and a known icon.
 5. List the page in `docs/UI.md` (this file) and, if it is part of a gate, in that gate's document.
 
@@ -604,34 +629,38 @@ Do not add an entry for a function that does not exist yet (specification 7.1, "
 
 ## Reference screenshots
 
-[`docs/design/`](design/) holds screenshots made with headless Chrome from synthetic data only (host name `oarfish-test`, documentation address ranges). They show the current look; they are not a specification. Light and dark: `home-alerts` (one alert per level), `home-calm` (no alerts), `home-lost` (connection lost, alerts card marked since the known-gaps task), `device`, and `home-narrow` (390 CSS pixels). [`design/known-gaps/`](design/known-gaps/) holds before and after images of the known-gaps task: the alerts card when the connection is lost (`alerts-lost-card`, `calm-lost-card`), a tab shown again (`resume`) and the shell at 360, 1280, 1920 and 2560 px (`layout-<width>`; before images only for 1920 and 2560, the two widths that changed).
+[`docs/design/`](design/) holds screenshots made with headless Chrome from synthetic data only (host name `oarfish-test`, documentation address ranges), taken with the colour baseline U0 and the shell of task U1. Light and dark: `dashboard-alerts` (one alert per level), `dashboard-calm` (no alerts), `dashboard-lost` (no new values, alerts card marked), `device`, and `dashboard-narrow` (390 CSS pixels). The `shell-*` images show the shell: wide light in English, wide dark in German, narrow light and dark in English. They are not a specification. [`design/known-gaps/`](design/known-gaps/) holds before and after images of the known-gaps task, taken with the colours of that time: the alerts card when the connection is lost (`alerts-lost-card`, `calm-lost-card`), a tab shown again (`resume`) and the shell at 360, 1280, 1920 and 2560 px (`layout-<width>`; before images only for 1920 and 2560, the two widths that changed).
 
-![Home with alerts, light](design/home-alerts-light.png)
+![The Dashboard, wide, light, English (U1)](design/shell-wide-light-en.png)
+
+![The Dashboard with alerts, light](design/dashboard-alerts-light.png)
 
 ## Size and performance
 
 Initial frontend, `gzip -9` per file (the budget in ORB-NFR-006 is 750,000 bytes):
 
-| | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task |
-|---|---|---|---|---|
-| `index.html` | 263 | 265 | 266 | 263 |
-| CSS | 1,806 | 4,522 | 5,003 | 5,013 |
-| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 |
-| **Total** | **29,191** | **41,045** | **48,464** | **48,559** |
+| | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task | After task U1 |
+|---|---|---|---|---|---|
+| `index.html` | 263 | 265 | 266 | 263 | 261 |
+| CSS | 1,806 | 4,522 | 5,003 | 5,013 | 5,144 |
+| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,632 |
+| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **50,037** |
 
-The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way).
+The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way). Task U1 (with the colour baseline and the mark) adds 1,478 bytes (language choice, the English texts in the bundle, the grouped navigation, the footer); measured with `gzip -9 -n` per file on a developer Mac, no dependency added.
 
-Updating a sample changes text and attributes in place: no element is added or removed and the cards stay the same nodes (`Home.update.test.ts`). The sparkline path is derived from its values and changes only when a sample arrives. No CSS animation exists.
+Updating a sample changes text and attributes in place: no element is added or removed and the cards stay the same nodes (`Dashboard.update.test.ts`). The sparkline path is derived from its values and changes only when a sample arrives. No CSS animation exists.
 
 ## Verification status
 
-**Verified by tests (jsdom):** token completeness and both-theme contrast of 56 pairs plus the dimmed stale values; every state above; data-driven rendering with synthetic names and an unknown kind; the navigation list; landmarks, headings, the skip link, native elements, the single live region; the text rules; in-place updates; no external request and no web font in the sources; and this file's drift guard.
+**Verified by tests (jsdom):** token completeness and both-theme contrast of 57 pairs plus the dimmed stale values; every state above; data-driven rendering with synthetic names and an unknown kind; the navigation list; landmarks, headings, the skip link, native elements, the single live region; the text rules; in-place updates; no external request and no web font in the sources; and this file's drift guard.
+
+**Verified for task U1 (2026-11-06, again after the colour baseline U0 and the mark), in headless Chrome on one Mac, by a script that is not in the repository, against a mock server with synthetic data:** English browser first visit (English texts, `html lang="en"`, version line from `/healthz`); a real click on "Deutsch" switched the texts, `html lang` and the stored value (`de`, one key) without a reload, and the choice held after a reload; Dashboard and Gerät in light and dark at 1280 and 390 CSS pixels (screenshots `design/shell-*`); at 390 px the top bar has two rows (112 px high, before three, 135 px); the Tab order skip link, brand, Dashboard, Gerät, user menu, Deutsch, English, then the page, with a visible 2 px focus ring on each stop. **Not checked for U1:** the Raspberry Pi, Safari, Firefox, a screen reader, forced colours, a private window in a real browser (the unavailable store is tested in jsdom only).
 
 **Verified in headless Chrome on one Mac, by a script that is not in the repository:** the layout checks and the screenshots described above (and, for the known-gaps task, a mock server with synthetic data: the alerts card and the tab shown again with a stream that is still opening, and the shell at 360, 1280, 1920 and 2560 px in both themes); that the page loads and is styled under the server's `Content-Security-Policy` (`default-src 'self'`, no inline style attribute exists); and the Tab order (skip link, brand, navigation, links, `summary` elements) with a visible 2 px focus ring on each stop, in both themes.
 
 **Verified on one device, once:** user-run on 2026-10-28 on a Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120), Raspberry Pi OS (Debian 13 trixie, arm64), kernel `6.18.50+rpt-rpi-v8`, release `v0.1.0-alpha.5`, commit `c86d15929ce0431b43a19dffe1c447844cac5451`, in-place upgrade from `v0.1.0-alpha.4`. Method and details: [`INSTALL.md`](INSTALL.md#ui-foundation-v010-alpha5). As reported by the owner:
 
-- **Layout in three browsers.** Home and Gerät were viewed in Safari (light and dark theme), Chrome and Firefox through an SSH tunnel. The layout looked as intended, nothing was cut off and no value list broke into single characters. The connection indicator read "Live".
+- **Layout in three browsers.** Dashboard and Gerät were viewed in Safari (light and dark theme), Chrome and Firefox through an SSH tunnel. The layout looked as intended, nothing was cut off and no value list broke into single characters. The connection indicator read "Live".
 - **Alert tuning (D-C44, swap from 25 percent).** On the idle device the alert list was empty: 1.5 MiB of 415 MiB parked in swap raised no alert, and there was no alert for the Compatible tier. The support status was shown as a badge in the header.
 - **Neutral interface state.** The tunnel interface with operstate `unknown` was shown in neutral grey, not red.
 - **Keyboard-only use** worked in Chrome or Firefox (the owner did not name which): skip link, tab order, opening and closing the technical details, navigation to Gerät and the "Erneut laden" button. The focus indicator was visible.

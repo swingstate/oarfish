@@ -68,4 +68,13 @@
       border-top: 0;
     }
   }
+
+  /* In the top bar (below 60rem) the menu sits in the row, not under a rule. */
+  @media (max-width: 59.999rem) {
+    .user-menu {
+      margin-top: 0;
+      padding: 0;
+      border-top: 0;
+    }
+  }
 </style>

@@ -3,7 +3,7 @@
 
   interface Props {
     title: string;
-    /** Something small at the right: the connection indicator on Home. */
+    /** Something small at the right: the connection indicator on Dashboard. */
     aside?: Snippet;
   }
   let { title, aside }: Props = $props();

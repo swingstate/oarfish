@@ -27,21 +27,21 @@ async function stubApi() {
 }
 
 describe('App', () => {
-  it('opens on Home and replaces the old status view', async () => {
+  it('opens on Dashboard and replaces the old status view', async () => {
     await stubApi();
     render(App);
-    expect(await screen.findByRole('heading', { level: 1, name: t.homeTitle })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: t.dashboardTitle })).toBeTruthy();
     expect(await screen.findByTestId('hostname')).toBeTruthy();
     expect(screen.queryByText('Oarfish-Dienst')).toBeNull();
   });
 
-  it('has a navigation with Home and the device page', async () => {
+  it('has a navigation with Dashboard and the device page', async () => {
     await stubApi();
     render(App);
 
     const nav = await screen.findByRole('navigation', { name: t.navLabel });
     expect(nav).toBeTruthy();
-    expect(screen.getByRole('link', { name: t.navHome }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: t.navDashboard }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: t.navDevice }).getAttribute('aria-current')).toBeNull();
     expect(FakeEventSource.instances.length).toBeLessThanOrEqual(1);
 
@@ -50,11 +50,11 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { level: 1, name: t.deviceTitle })).toBeTruthy();
     expect(await screen.findByText('Raspberry Pi Zero 2 W Rev 1.0')).toBeTruthy();
     expect(screen.getByRole('link', { name: t.navDevice }).getAttribute('aria-current')).toBe('page');
-    // Leaving Home closes its stream: nobody watches, nothing is sampled.
+    // Leaving Dashboard closes its stream: nobody watches, nothing is sampled.
     expect(FakeEventSource.instances.every((es) => es.closed)).toBe(true);
 
-    await fireEvent.click(screen.getByRole('link', { name: t.navHome }));
-    expect(await screen.findByRole('heading', { level: 1, name: t.homeTitle })).toBeTruthy();
+    await fireEvent.click(screen.getByRole('link', { name: t.navDashboard }));
+    expect(await screen.findByRole('heading', { level: 1, name: t.dashboardTitle })).toBeTruthy();
     expect(FakeEventSource.last.closed).toBe(false);
   });
 
@@ -79,7 +79,7 @@ describe('App shell', () => {
     expect(screen.getAllByRole('navigation')).toHaveLength(1);
     expect(screen.getAllByRole('main')).toHaveLength(1);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(document.title).toBe(`${t.navHome} · ${t.brandName}`);
+    expect(document.title).toBe(`${t.navDashboard} · ${t.brandName}`);
     // Headings never skip a level: every h3 sits under an h2, every h4 under an h3.
     const levels = Array.from(document.querySelectorAll('h1, h2, h3, h4')).map((h) => Number(h.tagName[1]));
     levels.reduce((previous, level) => {
@@ -88,7 +88,7 @@ describe('App shell', () => {
     }, 0);
   });
 
-  it('keeps exactly one live region in the whole app, the alert list, on Home', async () => {
+  it('keeps exactly one live region in the whole app, the alert list, on Dashboard', async () => {
     await stubApi();
     render(App);
     await screen.findByTestId('hostname');

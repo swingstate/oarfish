@@ -14,8 +14,9 @@ describe('translations', () => {
     }
   });
 
-  it('uses German by default', () => {
-    expect(t).toBe(de);
+  it('answers in German for a German browser', () => {
+    expect(t.navDashboard).toBe(de.navDashboard);
+    expect(t.navDevice).toBe('Gerät');
   });
 
   it('looks up dynamic keys and shows an unknown key as itself', () => {
@@ -92,7 +93,7 @@ describe('UI texts follow the text rules', () => {
   });
 
   it('de: loading, error and empty states are full, plain sentences or phrases', () => {
-    for (const key of ['homeLoading', 'homeLoadError', 'homeLoadErrorHint', 'connLost', 'connStale', 'alertsNone', 'tempNone', 'storageNone', 'netNone', 'deviceError'] as const) {
+    for (const key of ['dashboardLoading', 'dashboardLoadError', 'dashboardLoadErrorHint', 'connLost', 'connStale', 'alertsNone', 'tempNone', 'storageNone', 'netNone', 'deviceError'] as const) {
       expect(deUi[key].length, key).toBeGreaterThan(10);
       expect(deUi[key], key).toMatch(/[.…]$/);
     }

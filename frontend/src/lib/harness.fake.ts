@@ -1,4 +1,4 @@
-// Shared setup for tests that render the Home page against a fake server.
+// Shared setup for tests that render the Dashboard page against a fake server.
 import { screen } from '@testing-library/svelte';
 import { vi } from 'vitest';
 import { FakeEventSource } from './eventsource.fake';
@@ -19,11 +19,11 @@ export function stubMetrics(body: MetricsResponse | null): void {
   );
 }
 
-/** Renders a component that shows Home, lets the one-shot request answer, and opens the stream. */
-export async function openHome(render: () => unknown, body: MetricsResponse = piMetrics): Promise<FakeEventSource> {
+/** Renders a component that shows Dashboard, lets the one-shot request answer, and opens the stream. */
+export async function openDashboard(render: () => unknown, body: MetricsResponse = piMetrics): Promise<FakeEventSource> {
   stubMetrics(body);
   render();
-  await screen.findByTestId('home');
+  await screen.findByTestId('dashboard');
   FakeEventSource.last.open();
   return FakeEventSource.last;
 }
