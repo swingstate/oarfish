@@ -99,14 +99,15 @@ It runs CI, builds the bundle, checks reproducibility, size budgets and the ARM6
 ## Release procedure
 
 1. Merge the change to `main`; wait for CI.
-2. Tag a commit that is on `main` and push the tag:
+2. **Before tagging the first release that reports the process ID in `/healthz` and serves `/readyz`** (ADR 0010, A11.2, D-C68): confirm or adjust the constant `strictHealthFrom` in `backend/cmd/oarfish-update-helper/health.go` so that it equals the version of that release (it is set to `0.1.0-alpha.7` at the time of writing). A wrong value either skips the stricter health check for that release or makes the helper refuse a healthy one.
+3. Tag a commit that is on `main` and push the tag:
    ```bash
    git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1
    ```
    The workflow rejects tags that are not `vMAJOR.MINOR.PATCH[-prerelease]` and tags whose commit is not on `main`.
-3. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` references the secret and it only starts for a tag push; only `publish` has `contents: write`.
-4. Verify the published assets (below).
-5. **Release notes of the G5.1 release (and any release a device may reach from `v0.1.0-alpha.5` or earlier)** must say: "After this update the device has no administrator account and starts in setup mode. The GUI shows the setup page; read the setup token on the device with `sudo cat /var/lib/oarfish/setup-token`. The dashboard and the device page show data only after setup and login. Every `/api/v1` route except the session status, login and setup now needs a session; `/healthz` stays public." (ADR 0009, Consequences; D-C46)
+4. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` references the secret and it only starts for a tag push; only `publish` has `contents: write`.
+5. Verify the published assets (below).
+6. **Release notes of the G5.1 release (and any release a device may reach from `v0.1.0-alpha.5` or earlier)** must say: "After this update the device has no administrator account and starts in setup mode. The GUI shows the setup page; read the setup token on the device with `sudo cat /var/lib/oarfish/setup-token`. The dashboard and the device page show data only after setup and login. Every `/api/v1` route except the session status, login and setup now needs a session; `/healthz` stays public." (ADR 0009, Consequences; D-C46)
 
 Publishing happens only from a tag push; there is no manual publish path. If a release fails halfway, delete the draft/partial release and the tag, fix the cause and tag again. Never reuse a published version.
 
