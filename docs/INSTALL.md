@@ -116,7 +116,7 @@ The service starts by itself after the installation and after every reboot (the 
 ```bash
 systemctl status oarfish          # should say "active (running)"
 journalctl -u oarfish -e          # the log
-curl http://127.0.0.1:8484/healthz   # {"status":"ok"}
+curl http://127.0.0.1:8484/healthz   # {"status":"ok","version":"...","pid":...}
 ```
 
 Oarfish listens on `127.0.0.1:8484` only. That means: only programs on the device itself can reach it. This is on purpose: the login of Gate G5.1 protects the GUI, but LAN access and HTTPS are not designed yet (D-D10), so it must not be reachable from the network, and the installer never opens it.

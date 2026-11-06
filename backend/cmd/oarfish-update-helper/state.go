@@ -34,13 +34,14 @@ const (
 	phaseVerifying      = "verifying"
 	phaseCommitted      = "committed"
 	phaseRollingBack    = "rolling_back"
+	phaseRolledBack     = "rolled_back" // a phase name only a state file can hold; same text as the outcome
 	phaseRollbackFailed = "rollback_failed"
 )
 
 var knownPhases = map[string]bool{
 	phaseIdle: true, phaseStaging: true, phaseStaged: true,
 	phaseSwitching: true, phaseVerifying: true, phaseCommitted: true, phaseRollingBack: true,
-	"rolled_back": true, phaseRollbackFailed: true,
+	phaseRolledBack: true, phaseRollbackFailed: true,
 	"c_switching": true, "c_switched": true, "c_verified": true, "c_committed": true, "c_rolling_back": true,
 }
 

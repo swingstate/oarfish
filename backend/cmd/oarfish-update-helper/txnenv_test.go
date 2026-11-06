@@ -177,7 +177,10 @@ func (f *fakeSystemd) health(addr, path string) (int, []byte, error) {
 	case bNoVersion:
 		return 200, []byte(`{"status":"ok"}`), nil
 	}
-	return 200, []byte(fmt.Sprintf(`{"status":"ok","version":%q}`, f.running)), nil
+	if path == readyPath {
+		return 200, []byte(`{"status":"ok"}`), nil
+	}
+	return 200, []byte(fmt.Sprintf(`{"status":"ok","version":%q,"pid":%d}`, f.running, f.pid)), nil
 }
 
 func (f *fakeSystemd) Calls() [][]string {

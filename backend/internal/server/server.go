@@ -3,14 +3,15 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"io/fs"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/swingstate/oarfish/backend/internal/audit"
 	"github.com/swingstate/oarfish/backend/internal/auth"
+	"github.com/swingstate/oarfish/backend/internal/version"
 )
 
 // Option configures NewHandler.
@@ -25,6 +26,7 @@ type config struct {
 	auth         *auth.Manager
 	audit        *audit.Log
 	allowedHosts []string
+	updater      UpdateService
 }
 
 // WithDevice enables GET /api/v1/device, backed by src.
@@ -46,6 +48,7 @@ func NewHandler(assets fs.FS, opts ...Option) http.Handler {
 	cfg.streamsDone = streamsCtx.Done()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
+	mux.HandleFunc("GET /readyz", readyHandler(cfg, assets))
 	mux.Handle("GET /", staticHandler(assets))
 	api := apiHandler(cfg)
 	return &handler{closeStreams: closeStreams, Handler: withCorrelation(securityHeaders(hostGuard(cfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -102,10 +105,41 @@ func NewWithTimeouts(addr string, handler http.Handler, t Timeouts) *http.Server
 	return srv
 }
 
+// healthz is the public health answer (ADR 0010 A11.2, D-C57, D-C68). The
+// version is public (specification 10.3); the process ID lets the update
+// helper compare it with the MainPID of systemd, so that another process on
+// the loopback port cannot pass the check. The installer only looks for
+// "status":"ok", so the order of the members matters and status stays first.
+type healthz struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	PID     int    `json:"pid"`
+}
+
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, healthz{Status: "ok", Version: version.Version, PID: os.Getpid()})
+}
+
+// readyHandler answers /readyz (specification 13.1, ADR 0010 A11.2): the
+// configuration (the access store and the audit log were opened), the profiles
+// (the detection result exists and names a profile, which needs the embedded
+// profile registry) and
+// the required local resources (the embedded frontend has its index.html) are
+// ready. The checks look at memory only and do no disk access. Not ready is
+// 503 with a body that does not contain "status":"ok".
+func readyHandler(cfg config, assets fs.FS) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		ready := cfg.auth != nil && cfg.audit != nil && cfg.device != nil && cfg.device.Result().Profile.ID != ""
+		if ready {
+			_, err := fs.Stat(assets, "index.html")
+			ready = err == nil
+		}
+		if !ready {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
 }
 
 // staticHandler serves the embedded frontend. A build without frontend assets

@@ -221,7 +221,10 @@ func TestEveryAPIRouteNeedsASession(t *testing.T) {
 		t.Errorf("session status without a session = %d %s", rec.Code, rec.Body)
 	}
 	hz := f.do(req{method: http.MethodGet, path: "/healthz"})
-	if hz.Code != http.StatusOK || strings.TrimSpace(hz.Body.String()) != `{"status":"ok"}` {
+	// A11.2: status, the public version and the process ID, and nothing else.
+	var hzBody map[string]any
+	if hz.Code != http.StatusOK || json.Unmarshal(hz.Body.Bytes(), &hzBody) != nil || len(hzBody) != 3 ||
+		hzBody["status"] != "ok" || hzBody["version"] == nil || hzBody["pid"] == nil {
 		t.Errorf("/healthz = %d %s", hz.Code, hz.Body)
 	}
 	// Only the four account endpoints take a state-changing method.

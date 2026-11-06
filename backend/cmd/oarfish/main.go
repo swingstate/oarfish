@@ -23,6 +23,8 @@ import (
 	"github.com/swingstate/oarfish/backend/internal/platform/profiles"
 	"github.com/swingstate/oarfish/backend/internal/platform/source"
 	"github.com/swingstate/oarfish/backend/internal/server"
+	"github.com/swingstate/oarfish/backend/internal/trustkey"
+	"github.com/swingstate/oarfish/backend/internal/updater"
 	"github.com/swingstate/oarfish/backend/internal/version"
 	"github.com/swingstate/oarfish/backend/internal/web"
 )
@@ -35,6 +37,7 @@ const defaultListen = "127.0.0.1:8484"
 func main() {
 	listen := flag.String("listen", defaultListen, "loopback IP address and port to listen on (127.0.0.0/8 or [::1])")
 	stateDir := flag.String("state-dir", "", "directory for the account, setup token and audit file (default: $STATE_DIRECTORY, set by systemd)")
+	cacheDir := flag.String("cache-dir", "", "directory for downloaded updates (default: $CACHE_DIRECTORY, set by systemd; empty disables downloads)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -50,7 +53,7 @@ func main() {
 		os.Exit(1)
 	}
 	dir := resolveStateDir(*stateDir, os.Getenv("STATE_DIRECTORY"))
-	if err := run(addr, dir, log); err != nil {
+	if err := run(addr, dir, resolveStateDir(*cacheDir, os.Getenv("CACHE_DIRECTORY")), log); err != nil {
 		log.Error("oarfish stopped", "error", err)
 		os.Exit(1)
 	}
@@ -67,7 +70,7 @@ func resolveStateDir(flagValue, env string) string {
 	return first
 }
 
-func run(addr, stateDir string, log *slog.Logger) error {
+func run(addr, stateDir, cacheDir string, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -88,6 +91,20 @@ func run(addr, stateDir string, log *slog.Logger) error {
 		// The path only; the token itself never goes to the log (AT-023).
 		log.Info("no administrator account yet; the GUI asks for the setup token", "token_file", am.SetupTokenPath())
 	}
+
+	// The update (ADR 0010, G6.7). It has no timer and no goroutine of its own:
+	// a check or a job runs only after a request asked for it. The cache is
+	// recoverable, so what an interrupted download left is removed now.
+	releaseKey, err := trustkey.Release()
+	if err != nil {
+		return fmt.Errorf("release key: %w", err)
+	}
+	upd := updater.New(updater.Config{
+		Version: version.Version, CacheDir: cacheDir, Helper: updater.NewHelper(updater.SocketPath),
+		Audit: auditLog.Record, Log: log, Key: releaseKey,
+	})
+	defer upd.Close()
+	upd.CleanCache()
 
 	// Detection runs once, now. It only reads files and cannot fail; the
 	// profiles are embedded, so an error here is a defect in the build.
@@ -110,7 +127,7 @@ func run(addr, stateDir string, log *slog.Logger) error {
 	})
 
 	srv := server.New(addr, server.NewHandler(web.Assets(),
-		server.WithDevice(dev), server.WithMetrics(sampler), server.WithAuth(am), server.WithAudit(auditLog)))
+		server.WithDevice(dev), server.WithMetrics(sampler), server.WithAuth(am), server.WithAudit(auditLog), server.WithUpdater(upd)))
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
