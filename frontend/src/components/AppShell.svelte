@@ -235,10 +235,9 @@
       padding: 0;
     }
 
+    /* Language switch above the version: the footer is narrow enough to share a line with the user menu. */
     .foot {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
+      gap: var(--space-1);
       margin-top: 0;
       margin-inline-start: auto;
       padding: 0;

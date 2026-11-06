@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Oarfish">
+  <title>Oarfish</title>
+  <path d="M12 38V29M20 38V25M28 38V20M36 38V15M44 38V10M52 35V19" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+  <path fill="currentColor" fill-rule="evenodd" d="M9 35H55A5 5 0 0 1 55 45H9A5 5 0 0 1 9 35ZM50.8 40a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0-4.4 0Z"/>
+  <path d="M46 45C46 52 40 54 28 54" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+</svg>
