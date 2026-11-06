@@ -21,49 +21,52 @@
   color-scheme: light dark;
 
   /* ---- Colour: surfaces ---- */
-  --color-page: #f3f4f6;
+  --color-page: #f4f7fa;
   --color-surface: #ffffff;
-  --color-surface-muted: #eceef2;
+  --color-surface-muted: #ecf1f5;
 
   /* ---- Colour: text ---- */
-  --color-text: #161a20;
-  --color-text-secondary: #454d5a;
-  --color-text-disabled: #5f6775;
+  --color-text: #1b3347;
+  --color-text-secondary: #485e70;
+  --color-text-disabled: #5b6e80;
 
   /* ---- Colour: borders. "border" separates, "border-strong" outlines UI parts (3:1). ---- */
-  --color-border: #dde1e7;
-  --color-border-strong: #6f798a;
+  --color-border: #dfe5eb;
+  --color-border-strong: #617485;
 
   /* ---- Colour: the one accent ---- */
-  --color-accent: #0b6b7d;
+  --color-accent: #006869;
   --color-accent-fg: #ffffff;
-  --color-accent-subtle-bg: #dff0f4;
-  --color-accent-subtle-fg: #08505f;
+  --color-accent-subtle-bg: #eafbfa;
+  --color-accent-subtle-fg: #045050;
 
   /* ---- Colour: focus ---- */
-  --color-focus-ring: #1a56db;
+  --color-focus-ring: #0e8a8c;
+
+  /* ---- Colour: the logo mark in the sidebar header ---- */
+  --color-logo-ink: #1b3347;
 
   /* ---- Colour: semantic roles. Warning and critical are for real alerts only. ---- */
-  --color-success-bg: #e6f4ea;
-  --color-success-fg: #14532d;
-  --color-success-border: #2f7d4f;
+  --color-success-bg: #ebfbf3;
+  --color-success-fg: #0c6b4d;
+  --color-success-border: #1f7a5a;
 
-  --color-information-bg: #e8effd;
-  --color-information-fg: #1e3a8a;
-  --color-information-border: #2c64d1;
+  --color-information-bg: #f1f7ff;
+  --color-information-fg: #1f5b9f;
+  --color-information-border: #2f6db5;
 
-  --color-warning-bg: #fff3d6;
-  --color-warning-fg: #6b3a00;
-  --color-warning-border: #b05a00;
+  --color-warning-bg: #fff5ea;
+  --color-warning-fg: #7e4f02;
+  --color-warning-border: #9c640d;
 
-  --color-critical-bg: #fdeceb;
-  --color-critical-fg: #8a1c13;
-  --color-critical-border: #c42b1c;
+  --color-critical-bg: #fef4f3;
+  --color-critical-fg: #9e2d28;
+  --color-critical-border: #c8443c;
 
   /* Neutral is not a status. It is for "no link", "unknown" and "not available". */
-  --color-neutral-bg: #eceff3;
-  --color-neutral-fg: #3a424e;
-  --color-neutral-border: #6f798a;
+  --color-neutral-bg: #ecf1f5;
+  --color-neutral-fg: #485e70;
+  --color-neutral-border: #617485;
 
   /* ---- Spacing scale (4 px steps at the default text size) ---- */
   --space-1: 0.25rem;
@@ -124,43 +127,45 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-page: #0f1318;
-    --color-surface: #171c23;
-    --color-surface-muted: #1a212a;
+    --color-page: #0f1720;
+    --color-surface: #1b3347;
+    --color-surface-muted: #0f1720;
 
-    --color-text: #e8ebf0;
-    --color-text-secondary: #aeb7c4;
-    --color-text-disabled: #8a94a3;
+    --color-text: #ecf1f5;
+    --color-text-secondary: #adb9c4;
+    --color-text-disabled: #8d9caa;
 
-    --color-border: #2a313b;
-    --color-border-strong: #6f7a89;
+    --color-border: #31485b;
+    --color-border-strong: #8797a6;
 
-    --color-accent: #52b6cb;
-    --color-accent-fg: #04232b;
-    --color-accent-subtle-bg: #12343c;
-    --color-accent-subtle-fg: #93d6e5;
+    --color-accent: #68cacb;
+    --color-accent-fg: #0f1720;
+    --color-accent-subtle-bg: #013839;
+    --color-accent-subtle-fg: #baf1f0;
 
-    --color-focus-ring: #7db2ff;
+    --color-focus-ring: #98e4e4;
 
-    --color-success-bg: #12301f;
-    --color-success-fg: #92dfad;
-    --color-success-border: #3fa86a;
+    --color-logo-ink: #dfe5eb;
 
-    --color-information-bg: #14264d;
-    --color-information-fg: #a9c6ff;
-    --color-information-border: #5b8fe8;
+    --color-success-bg: #003a28;
+    --color-success-fg: #7ecaa9;
+    --color-success-border: #52a986;
 
-    --color-warning-bg: #3a2a08;
-    --color-warning-fg: #ffd58a;
-    --color-warning-border: #d9922b;
+    --color-information-bg: #0b305a;
+    --color-information-fg: #84bbfe;
+    --color-information-border: #5998e3;
 
-    --color-critical-bg: #3d1713;
-    --color-critical-fg: #ffb3aa;
-    --color-critical-border: #ef6a5b;
+    --color-warning-bg: #452901;
+    --color-warning-fg: #e5ab66;
+    --color-warning-border: #c48737;
 
-    --color-neutral-bg: #222a35;
-    --color-neutral-fg: #c4ccd8;
-    --color-neutral-border: #6f7a89;
+    --color-critical-bg: #581412;
+    --color-critical-fg: #ff968a;
+    --color-critical-border: #e7685d;
+
+    --color-neutral-bg: #31485b;
+    --color-neutral-fg: #cdd5dc;
+    --color-neutral-border: #8797a6;
 
     --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.4);
     --shadow-raised: 0 4px 12px 0 rgb(0 0 0 / 0.5);

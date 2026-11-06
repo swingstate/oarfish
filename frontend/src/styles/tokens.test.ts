@@ -117,8 +117,8 @@ describe('design tokens (ORB-NFR-011, WCAG 2.2 AA)', () => {
     });
   }
 
-  it('dark surface-muted is deeper than before', () => {
-    // The value before U1 was #202731; every text pair on it is checked above.
+  it('dark surface-muted is deeper than before U1', () => {
+    // The value before U1 was #202731; the owner baseline U0 sets it to the page colour. Every text pair on it is checked above.
     expect(luminance(colour(dark, 'surface-muted'))).toBeLessThan(luminance(parseHex('#202731')));
   });
 

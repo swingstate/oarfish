@@ -42,6 +42,7 @@ export const pairs: Pair[] = [
     (s): Pair => ({ fg: 'focus-ring', bg: s, min: 3, use: 'focus ring' }),
   ),
   { fg: 'accent', bg: 'accent-subtle-bg', min: 3, use: 'current entry bar' },
+  { fg: 'logo-ink', bg: 'surface', min: 3, use: 'logo mark in the sidebar header' },
   ...roles.flatMap((r): Pair[] => [
     { fg: `${r}-border`, bg: 'surface', min: 3, use: `${r} border and dot` },
     { fg: `${r}-border`, bg: `${r}-bg`, min: 3, use: `${r} border against its own fill` },

@@ -61,7 +61,7 @@ All values are CSS custom properties on `:root` in `tokens.css`. The light set i
 
 Colour roles:
 
-- **Surfaces.** `page` is the grey background, `surface` is a card, `surface-muted` is a track or a hover; in the dark theme it is darker than before U1 (`#1a212a`, before `#202731`).
+- **Surfaces.** `page` is the grey background, `surface` is a card, `surface-muted` is a track or a hover; in the dark theme it has the colour of `page` (owner baseline U0), so a track or a hover reads as a recess in a card.
 - **Text.** `text`, `text-secondary` and `text-disabled`. All three pass 4.5:1 on every surface. Disabled text is exempt from WCAG, but is held to the same minimum anyway, is derived from `text-secondary` toward the surface (about 1.5:1 weaker in the light theme), differs from `border`, and is never the only cue: a disabled control is a native `disabled` element and the pointer is `not-allowed`. `tokens.test.ts` checks these rules.
 - **Borders.** `border` separates parts and is decorative. `border-strong` outlines a part that must be seen (meter, button, indicator) and passes 3:1.
 - **Accent.** One colour, `accent`, for links, the current navigation entry, sparklines and normal meter fills. It is not a status.
@@ -74,34 +74,35 @@ Breakpoint (media queries cannot read custom properties): the shell changes from
 
 | Token | Light | Dark |
 |---|---|---|
-| `--color-page` | `#f3f4f6` | `#0f1318` |
-| `--color-surface` | `#ffffff` | `#171c23` |
-| `--color-surface-muted` | `#eceef2` | `#202731` |
-| `--color-text` | `#161a20` | `#e8ebf0` |
-| `--color-text-secondary` | `#454d5a` | `#aeb7c4` |
-| `--color-text-disabled` | `#5f6775` | `#8a94a3` |
-| `--color-border` | `#dde1e7` | `#2a313b` |
-| `--color-border-strong` | `#6f798a` | `#6f7a89` |
-| `--color-accent` | `#0b6b7d` | `#52b6cb` |
-| `--color-accent-fg` | `#ffffff` | `#04232b` |
-| `--color-accent-subtle-bg` | `#dff0f4` | `#12343c` |
-| `--color-accent-subtle-fg` | `#08505f` | `#93d6e5` |
-| `--color-focus-ring` | `#1a56db` | `#7db2ff` |
-| `--color-success-bg` | `#e6f4ea` | `#12301f` |
-| `--color-success-fg` | `#14532d` | `#92dfad` |
-| `--color-success-border` | `#2f7d4f` | `#3fa86a` |
-| `--color-information-bg` | `#e8effd` | `#14264d` |
-| `--color-information-fg` | `#1e3a8a` | `#a9c6ff` |
-| `--color-information-border` | `#2c64d1` | `#5b8fe8` |
-| `--color-warning-bg` | `#fff3d6` | `#3a2a08` |
-| `--color-warning-fg` | `#6b3a00` | `#ffd58a` |
-| `--color-warning-border` | `#b05a00` | `#d9922b` |
-| `--color-critical-bg` | `#fdeceb` | `#3d1713` |
-| `--color-critical-fg` | `#8a1c13` | `#ffb3aa` |
-| `--color-critical-border` | `#c42b1c` | `#ef6a5b` |
-| `--color-neutral-bg` | `#eceff3` | `#222a35` |
-| `--color-neutral-fg` | `#3a424e` | `#c4ccd8` |
-| `--color-neutral-border` | `#6f798a` | `#6f7a89` |
+| `--color-page` | `#f4f7fa` | `#0f1720` |
+| `--color-surface` | `#ffffff` | `#1b3347` |
+| `--color-surface-muted` | `#ecf1f5` | `#0f1720` |
+| `--color-text` | `#1b3347` | `#ecf1f5` |
+| `--color-text-secondary` | `#485e70` | `#adb9c4` |
+| `--color-text-disabled` | `#5b6e80` | `#8d9caa` |
+| `--color-border` | `#dfe5eb` | `#31485b` |
+| `--color-border-strong` | `#617485` | `#8797a6` |
+| `--color-accent` | `#006869` | `#68cacb` |
+| `--color-accent-fg` | `#ffffff` | `#0f1720` |
+| `--color-accent-subtle-bg` | `#eafbfa` | `#013839` |
+| `--color-accent-subtle-fg` | `#045050` | `#baf1f0` |
+| `--color-focus-ring` | `#0e8a8c` | `#98e4e4` |
+| `--color-logo-ink` | `#1b3347` | `#dfe5eb` |
+| `--color-success-bg` | `#ebfbf3` | `#003a28` |
+| `--color-success-fg` | `#0c6b4d` | `#7ecaa9` |
+| `--color-success-border` | `#1f7a5a` | `#52a986` |
+| `--color-information-bg` | `#f1f7ff` | `#0b305a` |
+| `--color-information-fg` | `#1f5b9f` | `#84bbfe` |
+| `--color-information-border` | `#2f6db5` | `#5998e3` |
+| `--color-warning-bg` | `#fff5ea` | `#452901` |
+| `--color-warning-fg` | `#7e4f02` | `#e5ab66` |
+| `--color-warning-border` | `#9c640d` | `#c48737` |
+| `--color-critical-bg` | `#fef4f3` | `#581412` |
+| `--color-critical-fg` | `#9e2d28` | `#ff968a` |
+| `--color-critical-border` | `#c8443c` | `#e7685d` |
+| `--color-neutral-bg` | `#ecf1f5` | `#31485b` |
+| `--color-neutral-fg` | `#485e70` | `#cdd5dc` |
+| `--color-neutral-border` | `#617485` | `#8797a6` |
 
 **Spacing**
 
@@ -203,7 +204,7 @@ All components are Svelte 5 with TypeScript and no dependency. They hold no UI t
 |---|---|---|---|
 | `AppShell` | Skip link, banner with brand, navigation in groups, the user menu and a footer (language switch, version line), main area. Below 60rem the sidebar is a top bar. | `items` (navigation entries, each with an optional `group`), `current` (id), `account` (the user menu), `children` | Current entry has `aria-current="page"`, a tint and a bar, so it is not shown by colour alone. The skip link moves focus to `main` and never changes the address. A group with no entry is not shown. |
 | `AuthShell` | The frame before sign-in (checking, setup, login): brand bar and one narrow column in `main`. No navigation, no device data. | `children` | One `main` landmark; the page inside has the `h1`. |
-| `BrandMark` | The Oarfish mark in the sidebar header, decorative. It is the mark drawn for the foundation task in the accent colour, not the delivered logo (D-C71); the logo file is not in the repository. | none | `aria-hidden`; the brand name next to it is the text. |
+| `BrandMark` | The Oarfish mark in the sidebar header, decorative. It draws the paths of the owner's mark, `frontend/src/assets/oarfish-mark-mono.svg`, in a single colour: `currentColor`, set to `--color-logo-ink`. A test compares the paths with the file. The favicon is not changed. | none | `aria-hidden`; the brand name next to it is the text. |
 | `LanguageSwitch` | Two buttons, Deutsch and English, in the sidebar footer. | none | A `group` named "Sprache" or "Language"; the chosen button has `aria-pressed="true"` and a bar, so it is not shown by colour alone. Each button names its language in that language (`lang` attribute). Native buttons: Tab, Enter and Space. |
 | `VersionLine` | The Oarfish version in the sidebar footer, from `/healthz`. | none | Shows nothing while the request runs and nothing when it fails or answers something that is not a version: no error banner. Not a live region. |
 | `UserMenu` | The signed-in user in the shell: a native `details` whose `summary` is the user name; inside, the link to Konto and the Abmelden button. | `username`, `accountHref`, `current`, `onLogout`, `busy` | The summary's accessible name is "Benutzermenü: <name>". Opened with Enter or Space. Not a live region. |
@@ -233,7 +234,7 @@ Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `w
 
 **Version line.** The sidebar footer shows "Version <version>" from the `version` member of `/healthz` (a public route). The value is shown only if it consists of letters, digits and `. _ + -` (at most 64 characters). The shell calls no update route: the update notice stays unused until a user-visible off switch exists (ADR 0010, A11.1, D-C68), and a test fails if the frontend names `/api/v1/update`.
 
-**Sidebar footer.** Below 60rem it sits at the right of the top bar and wraps with it.
+**Sidebar footer.** Below 60rem it sits at the right of the top bar, the language switch above the version line, so that at 390 CSS pixels the bar has two rows (brand and entries, then user menu and footer) instead of three.
 
 ## Layout rules and breakpoints
 
@@ -521,7 +522,7 @@ For the state and label texts (`deUi`, German and English). `i18n.test.ts` check
 
 Target: WCAG 2.2 AA (ORB-NFR-011). What is tested and what is not is in [Verification status](#verification-status).
 
-- **Contrast.** Text 4.5:1, UI components and graphics 3:1, in both themes. `tokens.test.ts` computes the ratio of every pair in `styles/contrast-pairs.ts` (56 pairs, including small labels, badges, the disabled look, the focus ring, meter fills on their track, and every semantic role) and fails below the minimum. It also checks the dimmed stale values at their real opacity, including the tinted alert items on a card (body text 8.9 to 10.2, title and icon 5.8 to 7.7 at 0.85, both themes). The table is below.
+- **Contrast.** Text 4.5:1, UI components and graphics 3:1, in both themes. `tokens.test.ts` computes the ratio of every pair in `styles/contrast-pairs.ts` (57 pairs, including small labels, badges, the disabled look, the focus ring, meter fills on their track, and every semantic role) and fails below the minimum. It also checks the dimmed stale values at their real opacity, including the tinted alert items on a card (body text 7.6 to 9.5, title and icon 4.55 to 5.3 at 0.85, both themes). The table is below.
 - **Colour is never the only signal.** Alert level: icon shape, group heading, colour. Link state: badge text. Stale: the word Veraltet. Current page: `aria-current`, tint and bar. Meter: the value is written next to it.
 - **Focus.** One visible ring (`--focus-ring-*`) with 3:1 against every background. No sticky element covers a focused element.
 - **Target size.** Buttons, navigation entries, `summary` and links are at least 24 by 24 CSS pixels (`--target-min`).
@@ -538,62 +539,63 @@ Contrast of every pair (ratios computed from the token values; all are at or abo
 
 | Foreground on background | Min | Light | Dark | Use |
 |---|---|---|---|---|
-| `text` on `page` | 4.5 | 15.87 | 15.60 | body text |
-| `text-secondary` on `page` | 4.5 | 7.75 | 9.20 | labels, small print, placeholders, navigation group names, version line |
-| `text-disabled` on `page` | 4.5 | 5.18 | 6.08 | disabled button text |
-| `accent` on `page` | 4.5 | 5.59 | 7.91 | links |
-| `text` on `surface` | 4.5 | 17.46 | 14.32 | body text |
-| `text-secondary` on `surface` | 4.5 | 8.53 | 8.45 | labels, small print, placeholders, navigation group names, version line |
-| `text-disabled` on `surface` | 4.5 | 5.70 | 5.58 | disabled button text |
-| `accent` on `surface` | 4.5 | 6.15 | 7.26 | links |
-| `text` on `surface-muted` | 4.5 | 15.03 | 13.57 | body text |
-| `text-secondary` on `surface-muted` | 4.5 | 7.34 | 8.01 | labels, small print, placeholders, navigation group names, version line |
-| `text-disabled` on `surface-muted` | 4.5 | 4.91 | 5.29 | disabled button text |
-| `accent` on `surface-muted` | 4.5 | 5.30 | 6.88 | links |
-| `accent-fg` on `accent` | 4.5 | 6.15 | 6.96 | skip link |
-| `accent-subtle-fg` on `accent-subtle-bg` | 4.5 | 7.71 | 8.21 | current navigation entry, chosen language |
-| `success-fg` on `success-bg` | 4.5 | 8.02 | 9.11 | success badge, notice, alert |
-| `success-fg` on `surface` | 4.5 | 9.11 | 10.91 | success text on a card |
-| `text` on `success-bg` | 4.5 | 15.38 | 11.97 | success alert body text |
-| `text-secondary` on `success-bg` | 4.5 | 7.51 | 7.06 | success notice secondary line |
-| `information-fg` on `information-bg` | 4.5 | 8.98 | 8.63 | information badge, notice, alert |
-| `information-fg` on `surface` | 4.5 | 10.36 | 9.95 | information text on a card |
-| `text` on `information-bg` | 4.5 | 15.13 | 12.43 | information alert body text |
-| `text-secondary` on `information-bg` | 4.5 | 7.39 | 7.33 | information notice secondary line |
-| `warning-fg` on `warning-bg` | 4.5 | 8.54 | 9.99 | warning badge, notice, alert |
-| `warning-fg` on `surface` | 4.5 | 9.42 | 12.34 | warning text on a card |
-| `text` on `warning-bg` | 4.5 | 15.83 | 11.60 | warning alert body text |
-| `text-secondary` on `warning-bg` | 4.5 | 7.73 | 6.85 | warning notice secondary line |
-| `critical-fg` on `critical-bg` | 4.5 | 8.14 | 9.23 | critical badge, notice, alert |
-| `critical-fg` on `surface` | 4.5 | 9.31 | 10.01 | critical text on a card |
-| `text` on `critical-bg` | 4.5 | 15.28 | 13.21 | critical alert body text |
-| `text-secondary` on `critical-bg` | 4.5 | 7.46 | 7.79 | critical notice secondary line |
-| `neutral-fg` on `neutral-bg` | 4.5 | 8.80 | 8.95 | neutral badge, notice, alert |
-| `neutral-fg` on `surface` | 4.5 | 10.15 | 10.58 | neutral text on a card |
-| `text` on `neutral-bg` | 4.5 | 15.14 | 12.11 | neutral alert body text |
-| `text-secondary` on `neutral-bg` | 4.5 | 7.39 | 7.15 | neutral notice secondary line |
-| `border-strong` on `page` | 3 | 3.99 | 4.28 | outline of meters, buttons, indicator |
-| `border-strong` on `surface` | 3 | 4.40 | 3.93 | outline of meters, buttons, indicator |
-| `border-strong` on `surface-muted` | 3 | 3.78 | 3.72 | outline of meters, buttons, indicator |
-| `accent` on `surface` | 3 | 6.15 | 7.26 | sparkline, normal meter fill |
-| `accent` on `surface-muted` | 3 | 5.30 | 6.88 | normal meter fill on its track |
-| `warning-border` on `surface-muted` | 3 | 4.20 | 6.25 | warning meter fill on its track |
-| `critical-border` on `surface-muted` | 3 | 4.87 | 5.32 | critical meter fill on its track |
-| `focus-ring` on `page` | 3 | 5.62 | 8.60 | focus ring |
-| `focus-ring` on `surface` | 3 | 6.18 | 7.89 | focus ring |
-| `focus-ring` on `surface-muted` | 3 | 5.32 | 7.48 | focus ring |
-| `focus-ring` on `accent-subtle-bg` | 3 | 5.27 | 6.12 | focus ring |
-| `accent` on `accent-subtle-bg` | 3 | 5.25 | 5.63 | current entry bar |
-| `success-border` on `surface` | 3 | 5.04 | 5.72 | success border and dot |
-| `success-border` on `success-bg` | 3 | 4.44 | 4.78 | success border against its own fill |
-| `information-border` on `surface` | 3 | 5.45 | 5.33 | information border and dot |
-| `information-border` on `information-bg` | 3 | 4.73 | 4.62 | information border against its own fill |
-| `warning-border` on `surface` | 3 | 4.87 | 6.60 | warning border and dot |
-| `warning-border` on `warning-bg` | 3 | 4.42 | 5.35 | warning border against its own fill |
-| `critical-border` on `surface` | 3 | 5.66 | 5.61 | critical border and dot |
-| `critical-border` on `critical-bg` | 3 | 4.95 | 5.17 | critical border against its own fill |
-| `neutral-border` on `surface` | 3 | 4.40 | 3.93 | neutral border and dot |
-| `neutral-border` on `neutral-bg` | 3 | 3.81 | 3.32 | neutral border against its own fill |
+| `text` on `page` | 4.5 | 12.12 | 15.87 | body text |
+| `text-secondary` on `page` | 4.5 | 6.28 | 9.03 | labels, small print, placeholders, navigation group names, version line |
+| `text-disabled` on `page` | 4.5 | 4.90 | 6.42 | disabled button text |
+| `accent` on `page` | 4.5 | 6.13 | 9.37 | links |
+| `text` on `surface` | 4.5 | 13.03 | 11.46 | body text |
+| `text-secondary` on `surface` | 4.5 | 6.75 | 6.53 | labels, small print, placeholders, navigation group names, version line |
+| `text-disabled` on `surface` | 4.5 | 5.27 | 4.64 | disabled button text |
+| `accent` on `surface` | 4.5 | 6.60 | 6.76 | links |
+| `text` on `surface-muted` | 4.5 | 11.46 | 15.87 | body text |
+| `text-secondary` on `surface-muted` | 4.5 | 5.94 | 9.03 | labels, small print, placeholders, navigation group names, version line |
+| `text-disabled` on `surface-muted` | 4.5 | 4.63 | 6.42 | disabled button text |
+| `accent` on `surface-muted` | 4.5 | 5.80 | 9.37 | links |
+| `accent-fg` on `accent` | 4.5 | 6.60 | 9.37 | skip link |
+| `accent-subtle-fg` on `accent-subtle-bg` | 4.5 | 8.67 | 10.41 | current navigation entry, chosen language |
+| `success-fg` on `success-bg` | 4.5 | 6.08 | 6.67 | success badge, notice, alert |
+| `success-fg` on `surface` | 4.5 | 6.51 | 6.77 | success text on a card |
+| `text` on `success-bg` | 4.5 | 12.18 | 11.29 | success alert body text |
+| `text-secondary` on `success-bg` | 4.5 | 6.31 | 6.43 | success notice secondary line |
+| `information-fg` on `information-bg` | 4.5 | 6.38 | 6.64 | information badge, notice, alert |
+| `information-fg` on `surface` | 4.5 | 6.87 | 6.53 | information text on a card |
+| `text` on `information-bg` | 4.5 | 12.10 | 11.65 | information alert body text |
+| `text-secondary` on `information-bg` | 4.5 | 6.27 | 6.63 | information notice secondary line |
+| `warning-fg` on `warning-bg` | 4.5 | 6.49 | 6.59 | warning badge, notice, alert |
+| `warning-fg` on `surface` | 4.5 | 6.99 | 6.42 | warning text on a card |
+| `text` on `warning-bg` | 4.5 | 12.10 | 11.76 | warning alert body text |
+| `text-secondary` on `warning-bg` | 4.5 | 6.27 | 6.69 | warning notice secondary line |
+| `critical-fg` on `critical-bg` | 4.5 | 6.80 | 6.55 | critical badge, notice, alert |
+| `critical-fg` on `surface` | 4.5 | 7.34 | 6.20 | critical text on a card |
+| `text` on `critical-bg` | 4.5 | 12.07 | 12.12 | critical alert body text |
+| `text-secondary` on `critical-bg` | 4.5 | 6.25 | 6.90 | critical notice secondary line |
+| `neutral-fg` on `neutral-bg` | 4.5 | 5.94 | 6.41 | neutral badge, notice, alert |
+| `neutral-fg` on `surface` | 4.5 | 6.75 | 8.78 | neutral text on a card |
+| `text` on `neutral-bg` | 4.5 | 11.46 | 8.36 | neutral alert body text |
+| `text-secondary` on `neutral-bg` | 4.5 | 5.94 | 4.76 | neutral notice secondary line |
+| `border-strong` on `page` | 3 | 4.50 | 6.02 | outline of meters, buttons, indicator |
+| `border-strong` on `surface` | 3 | 4.83 | 4.35 | outline of meters, buttons, indicator |
+| `border-strong` on `surface-muted` | 3 | 4.25 | 6.02 | outline of meters, buttons, indicator |
+| `accent` on `surface` | 3 | 6.60 | 6.76 | sparkline, normal meter fill |
+| `accent` on `surface-muted` | 3 | 5.80 | 9.37 | normal meter fill on its track |
+| `warning-border` on `surface-muted` | 3 | 4.35 | 5.90 | warning meter fill on its track |
+| `critical-border` on `surface-muted` | 3 | 4.25 | 5.62 | critical meter fill on its track |
+| `focus-ring` on `page` | 3 | 3.88 | 12.51 | focus ring |
+| `focus-ring` on `surface` | 3 | 4.17 | 9.03 | focus ring |
+| `focus-ring` on `surface-muted` | 3 | 3.67 | 12.51 | focus ring |
+| `focus-ring` on `accent-subtle-bg` | 3 | 3.91 | 8.95 | focus ring |
+| `accent` on `accent-subtle-bg` | 3 | 6.18 | 6.70 | current entry bar |
+| `logo-ink` on `surface` | 3 | 13.03 | 10.27 | logo mark in the sidebar header |
+| `success-border` on `surface` | 3 | 5.26 | 4.58 | success border and dot |
+| `success-border` on `success-bg` | 3 | 4.92 | 4.51 | success border against its own fill |
+| `information-border` on `surface` | 3 | 5.28 | 4.36 | information border and dot |
+| `information-border` on `information-bg` | 3 | 4.90 | 4.43 | information border against its own fill |
+| `warning-border` on `surface` | 3 | 4.95 | 4.26 | warning border and dot |
+| `warning-border` on `warning-bg` | 3 | 4.60 | 4.37 | warning border against its own fill |
+| `critical-border` on `surface` | 3 | 4.83 | 4.06 | critical border and dot |
+| `critical-border` on `critical-bg` | 3 | 4.47 | 4.29 | critical border against its own fill |
+| `neutral-border` on `surface` | 3 | 4.83 | 4.35 | neutral border and dot |
+| `neutral-border` on `neutral-bg` | 3 | 4.25 | 3.17 | neutral border against its own fill |
 
 
 ## Data-driven rendering
@@ -627,11 +629,11 @@ Do not add an entry for a function that does not exist yet (specification 7.1, "
 
 ## Reference screenshots
 
-[`docs/design/`](design/) holds screenshots made with headless Chrome from synthetic data only (host name `oarfish-test`, documentation address ranges). The `shell-*` images show the shell of task U1 (grouped navigation, language switch, version line, the deeper dark `surface-muted`): wide light in English, wide dark in German, narrow light and dark in English. The images named `home-*` and `device-*` were taken before U1: they show the earlier shell, in which the first entry is still called Home, and are kept as they are until the states are photographed again. They are not a specification. Light and dark: `home-alerts` (one alert per level), `home-calm` (no alerts), `home-lost` (connection lost, alerts card marked since the known-gaps task), `device`, and `home-narrow` (390 CSS pixels). [`design/known-gaps/`](design/known-gaps/) holds before and after images of the known-gaps task: the alerts card when the connection is lost (`alerts-lost-card`, `calm-lost-card`), a tab shown again (`resume`) and the shell at 360, 1280, 1920 and 2560 px (`layout-<width>`; before images only for 1920 and 2560, the two widths that changed).
+[`docs/design/`](design/) holds screenshots made with headless Chrome from synthetic data only (host name `oarfish-test`, documentation address ranges), taken with the colour baseline U0 and the shell of task U1. Light and dark: `dashboard-alerts` (one alert per level), `dashboard-calm` (no alerts), `dashboard-lost` (no new values, alerts card marked), `device`, and `dashboard-narrow` (390 CSS pixels). The `shell-*` images show the shell: wide light in English, wide dark in German, narrow light and dark in English. They are not a specification. [`design/known-gaps/`](design/known-gaps/) holds before and after images of the known-gaps task, taken with the colours of that time: the alerts card when the connection is lost (`alerts-lost-card`, `calm-lost-card`), a tab shown again (`resume`) and the shell at 360, 1280, 1920 and 2560 px (`layout-<width>`; before images only for 1920 and 2560, the two widths that changed).
 
 ![The Dashboard, wide, light, English (U1)](design/shell-wide-light-en.png)
 
-![The Dashboard with alerts, light, before U1](design/home-alerts-light.png)
+![The Dashboard with alerts, light](design/dashboard-alerts-light.png)
 
 ## Size and performance
 
@@ -639,20 +641,20 @@ Initial frontend, `gzip -9` per file (the budget in ORB-NFR-006 is 750,000 bytes
 
 | | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task | After task U1 |
 |---|---|---|---|---|---|
-| `index.html` | 263 | 265 | 266 | 263 | 267 |
-| CSS | 1,806 | 4,522 | 5,003 | 5,013 | 5,170 |
-| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,524 |
-| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **49,961** |
+| `index.html` | 263 | 265 | 266 | 263 | 261 |
+| CSS | 1,806 | 4,522 | 5,003 | 5,013 | 5,144 |
+| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,632 |
+| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **50,037** |
 
-The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way). Task U1 adds 1,402 bytes (language choice, the English texts in the bundle, the grouped navigation, the footer); measured with `gzip -9 -n` per file on a developer Mac, no dependency added.
+The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way). Task U1 (with the colour baseline and the mark) adds 1,478 bytes (language choice, the English texts in the bundle, the grouped navigation, the footer); measured with `gzip -9 -n` per file on a developer Mac, no dependency added.
 
 Updating a sample changes text and attributes in place: no element is added or removed and the cards stay the same nodes (`Dashboard.update.test.ts`). The sparkline path is derived from its values and changes only when a sample arrives. No CSS animation exists.
 
 ## Verification status
 
-**Verified by tests (jsdom):** token completeness and both-theme contrast of 56 pairs plus the dimmed stale values; every state above; data-driven rendering with synthetic names and an unknown kind; the navigation list; landmarks, headings, the skip link, native elements, the single live region; the text rules; in-place updates; no external request and no web font in the sources; and this file's drift guard.
+**Verified by tests (jsdom):** token completeness and both-theme contrast of 57 pairs plus the dimmed stale values; every state above; data-driven rendering with synthetic names and an unknown kind; the navigation list; landmarks, headings, the skip link, native elements, the single live region; the text rules; in-place updates; no external request and no web font in the sources; and this file's drift guard.
 
-**Verified for task U1 (2026-11-06), in headless Chrome on one Mac, by a script that is not in the repository, against a mock server with synthetic data:** English browser first visit (English texts, `html lang="en"`, version line from `/healthz`); a real click on "Deutsch" switched the texts, `html lang` and the stored value (`de`, one key) without a reload, and the choice held after a reload; Dashboard and Gerät in light and dark at 1280 and 390 CSS pixels (screenshots `design/shell-*`); the Tab order skip link, brand, Dashboard, Gerät, user menu, Deutsch, English, then the page, with a visible 2 px focus ring on each stop. **Not checked for U1:** the Raspberry Pi, Safari, Firefox, a screen reader, forced colours, a private window in a real browser (the unavailable store is tested in jsdom only).
+**Verified for task U1 (2026-11-06, again after the colour baseline U0 and the mark), in headless Chrome on one Mac, by a script that is not in the repository, against a mock server with synthetic data:** English browser first visit (English texts, `html lang="en"`, version line from `/healthz`); a real click on "Deutsch" switched the texts, `html lang` and the stored value (`de`, one key) without a reload, and the choice held after a reload; Dashboard and Gerät in light and dark at 1280 and 390 CSS pixels (screenshots `design/shell-*`); at 390 px the top bar has two rows (112 px high, before three, 135 px); the Tab order skip link, brand, Dashboard, Gerät, user menu, Deutsch, English, then the page, with a visible 2 px focus ring on each stop. **Not checked for U1:** the Raspberry Pi, Safari, Firefox, a screen reader, forced colours, a private window in a real browser (the unavailable store is tested in jsdom only).
 
 **Verified in headless Chrome on one Mac, by a script that is not in the repository:** the layout checks and the screenshots described above (and, for the known-gaps task, a mock server with synthetic data: the alerts card and the tab shown again with a stream that is still opening, and the shell at 360, 1280, 1920 and 2560 px in both themes); that the page loads and is styled under the server's `Content-Security-Policy` (`default-src 'self'`, no inline style attribute exists); and the Tab order (skip link, brand, navigation, links, `summary` elements) with a visible 2 px focus ring on each stop, in both themes.
 
