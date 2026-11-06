@@ -18,7 +18,7 @@
 | G6.4 | Shared verification package (signature, checksums, manifest, SemVer, tar rules) with tamper, fuzz and replay tests. Stop point: green CI |
 | G6.5 | Helper core: protocol, peer check, `status`, `stage`, `discard`, staging, state file, free space, cache file-type tests. Stop point: review of the privileged code |
 | G6.6 | Helper activation: `activate`, `ack`, health check, rollback, boot recovery, retention, cooldown, expiry, fault hooks, crash tests. Stop point: review of the privileged code and its tests |
-| G6.7 | Service side: GitHub client, check, download, advisory verification, helper client, routes, audit amendment A6 in code, `/healthz` version and `/readyz`. Stop point: review |
+| G6.7 | Service side: GitHub client, check, download, advisory verification, helper client, routes (including the notice route, which the UI does not use yet, D-C68), audit amendment A6 in code, `/healthz` version and `pid`, `/readyz`. Stop point: review |
 | G6.8 | Update page (Svelte). Stop point: the owner reviews the UI |
 | G6.9 | Hardware evidence for the base update on the reference device, and documentation. Stop point: the owner reviews the evidence; G6 stays open |
 | G6.10 | Replacement of the helper and its units by a GUI update (ADR 0010, U15): unit lint, component transaction, known-good copy, key rule, second confirmation. Until it is accepted, a release that changes the helper or a unit needs an installer run. Stop point: the owner decides whether G6 passes |

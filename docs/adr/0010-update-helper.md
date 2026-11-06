@@ -8,6 +8,7 @@
 - Amended after the G6.1 device spike (applied 2026-11-03, `docs/DECISIONS.md` D-C64): amendments A1 to A8 and one residual-risk sentence in T1, listed in "Amendments after the G6.1 spike" below; the specification follows in version 0.3.6. The status above and the decisions D-C53 to D-C63 are unchanged.
 - Amended after the G6.3a stub (applied 2026-11-03, `docs/DECISIONS.md` D-C66): amendment A9, listed in "Amendment after G6.3a" below. It changes the recover unit text, one sentence about the socket, U11 item 4 and the T14 row; the specification is not changed.
 - Amended after G6.5 (applied 2026-11-05, `docs/DECISIONS.md` D-C67): amendment A10, listed in "Amendment after G6.5" below. It corrects the assumption V5 about `O_NOFOLLOW` through `os.Root` and records the limits of `os.Root`, the `previous_version` member of the state and the one mutation seam; the specification is not changed.
+- Amended after G6.6 (applied 2026-11-06, `docs/DECISIONS.md` D-C68): amendment A11, listed in "Amendment after G6.6" below. It adds the update notice route, the `pid` member of `/healthz` and `/readyz`, the call timeouts and the job model of the service, and records a known property of the state write; the specification is not changed.
 
 ## How to read this ADR
 
@@ -724,6 +725,70 @@ Step G6.5 (the helper core: `stage`, `discard`, `status`, the lock, the cache ac
 | U3 | Links are refused | `update/` and `update/<version>/` checked with `Lstat` | A10.2 |
 | U8 | The state members listed in U8 | `previous_version` added; strict decoder, unknown members ignored | A10.4 |
 | U2, closed write targets | Writes only to the listed targets | Every write goes through one interface, checked by a source scan | A10.5 |
+
+## Amendment after G6.6
+
+Step G6.6 (activation, acknowledgement, health check, rollback, boot recovery, retention, cooldown, fault hooks) was merged as pull request 30. The review of that pull request produced five findings, and the owner adjusted the update notice before the service side (G6.7) starts. The project owner accepted the rules below on 2026-11-06 in the prompt of G6.7. They are recorded as D-C68 in `docs/DECISIONS.md`. The decisions D-C53 to D-C67, the status of this ADR and the owner decisions Q1 to Q7 are not changed. The specification is not changed: section 13.1 says that `/healthz` may report the version and describes `/readyz` in one sentence, and neither statement is made false or extended by A11 (the points where a reader could see a tension are listed under "Open points" below, for the owner).
+
+**Evidence label.** This step is documentation only. No code, test, unit, installer or workflow was changed, and nothing in A11 is verified on a device. Statements about the helper's present behaviour are **Fact** and name the file they come from (`backend/cmd/oarfish-update-helper/`). Everything else is an **owner decision** (the wording of the prompt of G6.7, as the amendment lists them), a **proposal** (decided design, not implemented) or an **assumption**. Behaviour of the real GitHub service, of systemd and of the target kernel is not verified here.
+
+**A11. Update notice, `/healthz` and `/readyz`, call timeouts and the job model, a known property of the state write, and two small items (refines U2, U3, U6, U9, U12; amends ADR 0009 E9 for the `pid` member; owner decision D-C68).**
+
+*A11.1 Update notice (owner adjustment A4 of 2026-11-06; refines U3 and U9).*
+
+- **Owner decision: a new route `GET /api/v1/update/notice`.** It is behind a valid session (ADR 0009 E9, D-C46). It triggers a check against GitHub only when the in-memory result is older than 24 hours; otherwise it answers from memory.
+- **Owner decision: no timer and no goroutine that runs without a request, and nothing is written to disk.** The result lives in RAM only, so a restart of the service allows one new check.
+- **Owner decision: offline or any other network error is silent in the notice answer.** The notice shows no error. The typed error stays available on the update page (`GET /api/v1/update`).
+- **Owner decision: one shared in-memory result cache.** The notice and the update page check use the same cache. The U3 rules stay unchanged: the update page checks at most once per 60 minutes, "Check now" at most once per 60 s device-wide, and the rate-limit handling of U3 applies (no attempt before `Retry-After` or `X-RateLimit-Reset`, never a loop). The notice adds only the 24-hour limit for the page-view trigger.
+- **Owner decision: the switch.** There is no settings store yet. G6.7 provides the route only. **The UI (G6.8) must not call the notice route and must not show a notice until a user-visible off switch exists** (a settings store, a later step). This is a known open point and is stated here plainly. **Note for G6.8:** once the UI uses the route, the user must be able to see that a request ran (a check against GitHub is outgoing traffic, spec 10.5).
+- **Proposal (detail not fixed by the owner):** a failed attempt is kept in memory as the last attempt with its typed error. A notice request never starts an attempt less than 60 minutes after the last attempt of any outcome, and never while a rate-limit wait is running, so an offline device makes at most one attempt per hour from the notice, not one per page view. At most one check is in flight; a request that arrives meanwhile answers from memory. The notice answer carries the installed version and, when the cache holds a successful result, the available version and its channel (the data the page already shows); it has no error member. The exact shape is fixed in G6.7 and tested.
+- **Proposal:** a check that the notice starts is the one job of A11.3; when a job is running the notice answers from memory (it never answers `busy`).
+
+*A11.2 `/healthz` and `/readyz` (refines U6, D-C57 and ADR 0009 E9).*
+
+- **Owner decision: `/healthz` without a session answers `{"status":"ok","version":"<installed version>","pid":<number>}`**, where `pid` is the process ID of the answering service. Reason: the helper compares `pid` with the systemd `MainPID`, so that another process that listens on the loopback port cannot pass the health check (finding 1 of the G6.6 review). Justification for E9: the version is public (spec 10.3, D-C57); a process ID on the loopback interface is not device data in the sense of E9 (**assumption**: it is readable by any local user in `/proc` anyway; it is not a secret and gives no capability). The route stays public and exposes nothing else.
+- **Fact (installer):** the installer's check only globs for `"status":"ok"` (`install/install.sh`, `HEALTH_URL`; ADR 0010 U6). It keeps working with the new body. **The installer is not changed.** G6.7 adds a test that feeds the new body to the same glob.
+- **Owner decision: `/readyz` exists, needs no session and has the same minimal content style** (`{"status":"ok"}` when ready; when not ready, status 503 and a body without the member `"status":"ok"`, so the installer glob cannot match it by mistake, **proposal**). Its meaning follows spec 13.1: "Konfiguration, Profile und erforderliche lokale Ressourcen sind bereit".
+- **Proposal: what the three words map to.** Specification 13.1 gives categories, not a list, and the code has one counterpart for each: *Konfiguration*, the access store and the audit log were opened (the process does not listen otherwise, `backend/cmd/oarfish/main.go`); *Profile*, the embedded profile registry was loaded and the detection result exists; *erforderliche lokale Ressourcen*, the embedded frontend has its `index.html`. The checks are made in memory at request time and do no disk access. The implementation agent judged 13.1 implementable on this reading; the reading is a proposal, and the owner can reject it at the stop point of this step. If it is rejected, G6.7 stops at `/readyz` and asks.
+- **Proposal: the helper health check** (U6 criteria 3 and 4) additionally requires `pid == MainPID` from the same `systemctl show` reading, and a `200` from `/readyz` on the same loopback address.
+- **Conflict found while writing this amendment, open for the owner.** U6 applies "the same health criteria to the old version" after a rollback, and N-1 compatibility (U6) keeps the previous release as the rollback target. A previous release built before G6.7 does not report `pid` and has no `/readyz`. A helper that requires both unconditionally would therefore end every rollback to such a release in `rollback_failed`, and could not activate it either. **Proposal:** the helper requires `pid` and `/readyz` only for a version that is at least a version constant compiled into the helper (the first release that carries them); older versions are checked with criteria 1 to 4 of U6 as they are today. The constant is chosen when that release is cut (a release-process item for `docs/RELEASING.md`). The weaker check for an older rollback target is accepted because the impersonation the `pid` check closes needs another process on the loopback port at that moment, and the target is an older release the administrator already ran. The helper that requires `pid` is delivered by the installer until G6.10 (D-C54), together with the release that reports it. **Not decided here: G6.7 implements the proposal only if the owner accepts it at the stop point of this step; otherwise G6.7 stops and asks.**
+- **Proposal:** `docs/AUTH.md` states the E9 exception ("the public `/healthz`, which says only `{"status":"ok"}`"). It is updated in the code pull request of G6.7, together with the code, because it describes what the service does and must not say more than the code does (D-C57 already says this).
+- U6 keeps its sentence that a future TLS design (D-D10) must keep a loopback-reachable plain health route; it applies to `/readyz` as well.
+
+*A11.3 Call timeouts and the job model (refines U2 and U9; finding 2 of the G6.6 review).*
+
+- **Fact (`backend/cmd/oarfish-update-helper/txn.go`):** `activate` runs its pre-check (the installed version must be healthy, U6) synchronously while the helper holds its lock, for up to 10 s, before it answers "accepted". **Fact (U3):** `stage` has a request deadline of 180 s.
+- **Owner decision: client timeouts of the service when it calls the helper:** `status`, `discard` and `ack` 10 s; `activate` 30 s; `stage` 200 s (the 180 s deadline plus 20 s for the connect and the answer).
+- **Owner decision: HTTP handlers for `apply` and `check` never wait for the helper beyond a short bound.** `apply` starts a job in the service and returns at once; the page polls `GET /api/v1/update` every 2 s (U9). **Proposal:** the short bound for `check` is 3 s; a check that is not finished by then answers "running" and the page polls.
+- **Owner decision: at most one job at a time.** A second request answers `busy`. The job survives the end of the browser session (U9). A restart of the service before `stage` ends it harmlessly (nothing privileged happened); after `activate` the helper finishes alone.
+- **Proposal:** the job has the steps check, download, advisory verification, `stage`, optional pause for the second confirmation (components, G6.10), `activate`, and the state is shown through `GET /api/v1/update`. Steps are named by a closed set; no Go error text reaches the answer or the log.
+
+*A11.4 A known property of the state write (finding 4 of the G6.6 review).*
+
+- **Fact (`backend/cmd/oarfish-update-helper/txn.go`, `run`):** `activate` first switches `current` to the new release and then saves the phase `verifying`. If that save fails, the helper returns without a restart: the running service is still the old process, the link `current` already names the new release, and the state still says `switching`. The helper logs the phase `verifying` with the result `io_error`.
+- **Known property.** In that case `current` stays on the new version until the helper starts again and its recovery acts. **Recovery path (Fact, `recover.go`, `recoverSwitch`):** a transaction in the phase `switching` or `verifying` whose `current` names the new version is rolled back by the recovery that runs when the helper next starts, either as `serve` finds the unowned transaction (the helper exits after 30 s idle, so this is the next request), or as `oarfish-update-recover.service` at boot, before `oarfish.service` starts. Until then, a restart of `oarfish.service` by anyone would start the new binary without the health check of U6. The window is bounded by the helper's idle exit (30 s) and by the next boot, and it needs a failing write of the state file (a full or failing card) at that exact step. This is accepted as a property of the design (it is the "accepted cost" family of U7); it is not changed in G6.7, and it is a test-and-document item for G6.9. **Not verified on a device.**
+
+*A11.5 Cosmetic and CI items (findings 3 and 5 of the G6.6 review).* Part of the scope of G6.7: (a) a constant instead of the string literal `"rolled_back"` in the phase switch of `recoverPhase` (`recover.go`); the value is the same as `outcomeRolledBack`, no behaviour changes; (b) the fuzz targets `FuzzDecodeActivate` and `FuzzDecodeAck` are added to the fuzz step of the CI workflow. The workflow is edited for this and for nothing else.
+
+### Open points of A11
+
+1. **Notice switch (owner decision, open).** The notice route exists in G6.7 but must stay unused by the UI until a user-visible off switch exists. No settings store is planned yet in `docs/ROADMAP.md`.
+2. **`/readyz` reading (proposal).** The mapping of the three words of spec 13.1 to checks is a reading, see A11.2.
+3. **`pid` and spec 13.1 (for the owner).** Specification 13.1 says the answer "may name the Oarfish version". It does not forbid other members, and ADR 0009 E9 asks for "no device data", but a reader could take 13.1 as a complete list. I did not change the specification, because no normative statement of it is made false. If the owner prefers the specification to name the `pid` member, that is a specification change (a new version), made in a separate step.
+4. **Rollback to a release without `pid` (conflict, proposal).** See A11.2: a helper that requires `pid` and `/readyz` unconditionally cannot roll back to, or activate, a release built before G6.7. The proposal is a compiled-in minimum version for the stricter check.
+5. **Notice details (proposal).** The 60-minute floor after a failed attempt and the shape of the notice answer.
+
+### Changes made to the accepted text
+
+The accepted text of the sections is not rewritten; each row names the rule that now applies.
+
+| Section | Accepted wording | Now | Amendment |
+|---|---|---|---|
+| U3 | Check on the update page at most once per 60 minutes and on "Check now" | Unchanged, plus the route `GET /api/v1/update/notice` with the 24-hour limit and the shared cache | A11.1 |
+| U9 | Four routes | Five routes, the fifth is the notice route; the UI does not use it yet | A11.1 |
+| U6; D-C57; ADR 0009 E9 | `/healthz` reports `status` and `version`; `/readyz` should be implemented | `/healthz` reports `pid` as well; `/readyz` is implemented; the helper requires `pid == MainPID` and `/readyz` | A11.2 |
+| U2; U9 | No client timeouts, the transaction survives the session | Timeouts 10 s, 30 s, 200 s; one job at a time; handlers return at once | A11.3 |
+| U7 | Row for a failed save of the phase | Documented as a known property with its recovery path | A11.4 |
 
 ## Evidence and test plan for the later implementation
 
