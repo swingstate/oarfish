@@ -19,12 +19,12 @@ export const pairs: Pair[] = [
   // ---- Text, 4.5:1 ----
   ...surfaces.flatMap((s): Pair[] => [
     { fg: 'text', bg: s, min: 4.5, use: 'body text' },
-    { fg: 'text-secondary', bg: s, min: 4.5, use: 'labels, small print, placeholders' },
+    { fg: 'text-secondary', bg: s, min: 4.5, use: 'labels, small print, placeholders, navigation group names, version line' },
     { fg: 'text-disabled', bg: s, min: 4.5, use: 'disabled button text' },
     { fg: 'accent', bg: s, min: 4.5, use: 'links' },
   ]),
   { fg: 'accent-fg', bg: 'accent', min: 4.5, use: 'skip link' },
-  { fg: 'accent-subtle-fg', bg: 'accent-subtle-bg', min: 4.5, use: 'current navigation entry' },
+  { fg: 'accent-subtle-fg', bg: 'accent-subtle-bg', min: 4.5, use: 'current navigation entry, chosen language' },
   ...roles.flatMap((r): Pair[] => [
     { fg: `${r}-fg`, bg: `${r}-bg`, min: 4.5, use: `${r} badge, notice, alert` },
     { fg: `${r}-fg`, bg: 'surface', min: 4.5, use: `${r} text on a card` },
@@ -54,7 +54,7 @@ export const stalePairs: Pair[] = [
   { fg: 'text-secondary', bg: 'surface', min: 4.5, use: 'stale label' },
   { fg: 'accent', bg: 'surface', min: 3, use: 'stale sparkline' },
   { fg: 'border-strong', bg: 'surface', min: 3, use: 'stale meter outline' },
-  // The alerts card is dimmed like the others (Home, connection lost): tinted items on the card surface.
+  // The alerts card is dimmed like the others (Dashboard, connection lost): tinted items on the card surface.
   ...(['critical', 'warning', 'information'] as const).flatMap((r): Pair[] => [
     { fg: 'text', bg: `${r}-bg`, on: 'surface', min: 4.5, use: `stale ${r} alert body text` },
     { fg: `${r}-fg`, bg: `${r}-bg`, on: 'surface', min: 4.5, use: `stale ${r} alert title and icon` },

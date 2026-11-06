@@ -1,9 +1,11 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { t } from '../lib/i18n';
-  import type { NavItem } from '../lib/ui';
+  import type { NavGroup, NavItem } from '../lib/ui';
   import BrandMark from './BrandMark.svelte';
   import Icon from './Icon.svelte';
+  import LanguageSwitch from './LanguageSwitch.svelte';
+  import VersionLine from './VersionLine.svelte';
 
   interface Props {
     /** Navigation entries, in order. A new page adds one entry to the list, nothing here. */
@@ -17,6 +19,16 @@
   let { items, current, account, children }: Props = $props();
 
   let main: HTMLElement | undefined = $state();
+
+  // Specification 7.2: the entries without a group at the top, then Workload, then System.
+  // A group with no entry is not shown at all.
+  const sections = $derived(
+    [
+      { group: undefined, label: null, entries: items.filter((i) => !i.group) },
+      { group: 'workload' as NavGroup, label: t.navGroupWorkload, entries: items.filter((i) => i.group === 'workload') },
+      { group: 'system' as NavGroup, label: t.navGroupSystem, entries: items.filter((i) => i.group === 'system') },
+    ].filter((s) => s.entries.length > 0),
+  );
 
   // The skip link must not change the address: the address is the router.
   function skip(event: MouseEvent): void {
@@ -35,18 +47,25 @@
         <span>{t.brandName}</span>
       </a>
       <nav aria-label={t.navLabel}>
-        <ul>
-          {#each items as item (item.id)}
-            <li>
-              <a href={item.href} aria-current={item.id === current ? 'page' : undefined}>
-                <Icon name={item.icon} />
-                <span>{item.label}</span>
-              </a>
-            </li>
-          {/each}
-        </ul>
+        {#each sections as section (section.group ?? 'top')}
+          {#if section.label}<p class="group" id={`nav-group-${section.group}`}>{section.label}</p>{/if}
+          <ul aria-labelledby={section.label ? `nav-group-${section.group}` : undefined}>
+            {#each section.entries as item (item.id)}
+              <li>
+                <a href={item.href} aria-current={item.id === current ? 'page' : undefined}>
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                </a>
+              </li>
+            {/each}
+          </ul>
+        {/each}
       </nav>
       {#if account}{@render account()}{/if}
+      <div class="foot">
+        <LanguageSwitch />
+        <VersionLine />
+      </div>
     </div>
   </header>
 
@@ -89,7 +108,9 @@
   .side {
     position: sticky;
     inset-block-start: 0;
-    max-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
     overflow-y: auto;
     padding: var(--space-4) var(--space-3);
   }
@@ -111,6 +132,23 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-1);
+  }
+
+  .group {
+    margin: var(--space-4) 0 var(--space-1);
+    padding: 0 var(--space-3);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+  }
+
+  .foot {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: auto;
+    padding: var(--space-4) var(--space-3) 0;
   }
 
   nav a {
@@ -166,9 +204,9 @@
 
     .side {
       position: static;
-      max-height: none;
+      height: auto;
       overflow: visible;
-      display: flex;
+      flex-direction: row;
       flex-wrap: wrap;
       align-items: center;
       gap: var(--space-1) var(--space-4);
@@ -180,9 +218,30 @@
       padding: 0;
     }
 
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-1) var(--space-3);
+    }
+
     nav ul {
       display: flex;
       flex-wrap: wrap;
+    }
+
+    .group {
+      margin: 0;
+      padding: 0;
+    }
+
+    .foot {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 0;
+      margin-inline-start: auto;
+      padding: 0;
     }
 
     nav a[aria-current='page'] {

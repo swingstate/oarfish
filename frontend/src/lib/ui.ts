@@ -89,10 +89,14 @@ export interface SummaryItem {
   link?: { href: string; text: string };
 }
 
+/** The groups of the navigation (specification 7.2). An entry without a group sits at the top. */
+export type NavGroup = 'workload' | 'system';
+
 /** One entry of the navigation in the app shell. */
 export interface NavItem {
   id: string;
   href: string;
   label: string;
   icon: IconName;
+  group?: NavGroup;
 }

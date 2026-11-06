@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
-import Home from './Home.svelte';
+import Dashboard from './Dashboard.svelte';
 import { FakeEventSource } from '../lib/eventsource.fake';
 import { en, fmt, msg, t } from '../lib/i18n';
 import {
@@ -33,11 +33,11 @@ function stubMetrics(body: MetricsResponse | null, status = 200) {
   return fetchFn;
 }
 
-/** Renders Home on a device that answers the one-shot request, and opens the stream. */
+/** Renders Dashboard on a device that answers the one-shot request, and opens the stream. */
 async function renderLive(body: MetricsResponse = piMetrics) {
   stubMetrics(body);
-  render(Home);
-  await screen.findByTestId('home');
+  render(Dashboard);
+  await screen.findByTestId('dashboard');
   FakeEventSource.last.open();
   return FakeEventSource.last;
 }
@@ -51,13 +51,13 @@ const snap = (seconds: number, change: (s: Snapshot) => void = () => {}): Snapsh
 };
 const text = (testId: string) => screen.getByTestId(testId).textContent?.replace(/\s+/g, ' ').trim();
 
-describe('Home', () => {
+describe('Dashboard', () => {
   it('shows a loading state until the first values arrive', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
-    render(Home);
-    expect(screen.getByRole('heading', { level: 1, name: t.homeTitle })).toBeTruthy();
-    expect(screen.getByTestId('home-loading').textContent).toBe(t.homeLoading);
-    expect(screen.queryByTestId('home')).toBeNull();
+    render(Dashboard);
+    expect(screen.getByRole('heading', { level: 1, name: t.dashboardTitle })).toBeTruthy();
+    expect(screen.getByTestId('dashboard-loading').textContent).toBe(t.dashboardLoading);
+    expect(screen.queryByTestId('dashboard')).toBeNull();
   });
 
   // ORB-DASH-001, AT-008: values come from the device and change without a page reload.
@@ -135,13 +135,13 @@ describe('Home', () => {
   it('shows a lost connection, marks the values stale, and recovers when fresh data arrives', async () => {
     const es = await renderLive();
     expect(screen.queryByTestId('connection-notice')).toBeNull();
-    expect(screen.getByTestId('home').getAttribute('data-stale')).toBe('false');
+    expect(screen.getByTestId('dashboard').getAttribute('data-stale')).toBe('false');
 
     es.dropAndRetry();
     await waitFor(() => expect(screen.getByTestId('connection-notice')).toBeTruthy());
     expect(text('connection-notice')).toContain(t.connLost);
     expect(text('connection-notice')).toContain('Letzte Aktualisierung:');
-    expect(screen.getByTestId('home').getAttribute('data-stale')).toBe('true');
+    expect(screen.getByTestId('dashboard').getAttribute('data-stale')).toBe('true');
     expect(screen.getAllByText(t.staleBadge).length).toBeGreaterThanOrEqual(5); // every card says so
     // The old values stay visible, marked as old.
     expect(text('hostname')).toBe('oarfish-test');
@@ -149,7 +149,7 @@ describe('Home', () => {
     es.open();
     es.send('metrics', snap(2));
     await waitFor(() => expect(screen.queryByTestId('connection-notice')).toBeNull());
-    expect(screen.getByTestId('home').getAttribute('data-stale')).toBe('false');
+    expect(screen.getByTestId('dashboard').getAttribute('data-stale')).toBe('false');
     expect(screen.queryByText(t.staleBadge)).toBeNull();
   });
 
@@ -157,8 +157,8 @@ describe('Home', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       stubMetrics(piMetrics);
-      render(Home);
-      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      render(Dashboard);
+      await vi.waitFor(() => expect(screen.queryByTestId('dashboard')).not.toBeNull());
       const es = FakeEventSource.last;
       es.open();
       es.send('metrics', snap(2));
@@ -176,8 +176,8 @@ describe('Home', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       stubMetrics(piMetrics);
-      render(Home);
-      await vi.waitFor(() => expect(screen.queryByTestId('home')).not.toBeNull());
+      render(Dashboard);
+      await vi.waitFor(() => expect(screen.queryByTestId('dashboard')).not.toBeNull());
       FakeEventSource.last.fail(); // for example 503: too many windows
       await vi.advanceTimersByTimeAsync(3000);
       expect(FakeEventSource.instances).toHaveLength(2);
@@ -192,37 +192,37 @@ describe('Home', () => {
 
   it('shows an error with a retry button when nothing can be loaded, and recovers', async () => {
     stubMetrics(null);
-    render(Home);
+    render(Dashboard);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     FakeEventSource.last.fail();
-    expect(await screen.findByText(t.homeLoadError)).toBeTruthy();
+    expect(await screen.findByText(t.dashboardLoadError)).toBeTruthy();
 
     const fetchFn = stubMetrics(piMetrics);
-    await fireEvent.click(screen.getByRole('button', { name: t.homeRetry }));
-    expect(await screen.findByTestId('home')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: t.dashboardRetry }));
+    expect(await screen.findByTestId('dashboard')).toBeTruthy();
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
   it('shows what the stream delivers even if the one-shot request failed, with unknown device fields', async () => {
     stubMetrics(null);
-    render(Home);
+    render(Dashboard);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     FakeEventSource.last.open();
     FakeEventSource.last.send('metrics', snap(2));
-    expect(await screen.findByTestId('home')).toBeTruthy();
+    expect(await screen.findByTestId('dashboard')).toBeTruthy();
     expect(text('hostname')).toBe('oarfish-test');
     expect(screen.getAllByText(t.unknownValue).length).toBeGreaterThan(0); // board, OS, support
-    expect(screen.queryByText(t.homeLoadError)).toBeNull();
+    expect(screen.queryByText(t.dashboardLoadError)).toBeNull();
   });
 
   it('never lets an older reading replace a newer one', async () => {
     let resolve!: (r: Response) => void;
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((r) => (resolve = r))));
-    render(Home);
+    render(Dashboard);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     FakeEventSource.last.open();
     FakeEventSource.last.send('metrics', snap(10, (s) => (s.cpu.usage_percent = 77)));
-    await screen.findByTestId('home');
+    await screen.findByTestId('dashboard');
     expect(text('cpu-usage')).toBe('77 %');
 
     resolve(new Response(JSON.stringify(piMetrics))); // taken earlier: 12 %
@@ -270,7 +270,7 @@ describe('Home', () => {
   });
 });
 
-describe('Home alerts', () => {
+describe('Dashboard alerts', () => {
   // ORB-DASH-005
   it('shows alerts first, grouped by level, each with cause, impact and next step', async () => {
     const es = await renderLive();
@@ -292,7 +292,7 @@ describe('Home alerts', () => {
     expect(within(group('informational')).getByText(t['alert.support_generic.cause'])).toBeTruthy();
 
     // The alerts come before every other part of the page.
-    const sections = Array.from(document.querySelectorAll('.home section')).map((s) => s.getAttribute('aria-labelledby'));
+    const sections = Array.from(document.querySelectorAll('.dashboard section')).map((s) => s.getAttribute('aria-labelledby'));
     expect(sections[0]).toBe('alerts-heading');
   });
 
@@ -369,7 +369,7 @@ describe('Home alerts', () => {
   });
 });
 
-describe('Home on devices with less information', () => {
+describe('Dashboard on devices with less information', () => {
   // ORB-HW-007, ORB-NFR-015: Generic Mode is clearly marked and the core dashboard still works.
   it('shows Generic Mode, unknown values, and no board-specific claims', async () => {
     await renderLive(genericMetrics);

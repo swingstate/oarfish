@@ -58,7 +58,7 @@ describe('session gate', () => {
     render(App);
     expect(screen.getByText(t.sessionLoading)).toBeTruthy();
     expect(screen.queryByRole('navigation')).toBeNull();
-    expect(screen.queryByTestId('home')).toBeNull();
+    expect(screen.queryByTestId('dashboard')).toBeNull();
     expect(calls.map((c) => c.key)).toEqual(['GET /api/v1/session']); // no metrics, no device, no stream
     expect(FakeEventSource.instances).toHaveLength(0);
     answer(json(200, loginRequired));
@@ -70,7 +70,7 @@ describe('session gate', () => {
     render(App);
     expect(await screen.findByText(t.sessionError)).toBeTruthy();
     routes['GET /api/v1/session'] = () => json(200, setupRequired);
-    await fireEvent.click(screen.getByRole('button', { name: t.homeRetry }));
+    await fireEvent.click(screen.getByRole('button', { name: t.dashboardRetry }));
     expect(await screen.findByTestId('setup')).toBeTruthy();
   });
 });
@@ -152,7 +152,7 @@ describe('Setup page', () => {
 
     routes['POST /api/v1/setup'] = () => json(200, signedIn);
     await fill();
-    expect(await screen.findByTestId('home')).toBeTruthy();
+    expect(await screen.findByTestId('dashboard')).toBeTruthy();
   });
 });
 
@@ -210,7 +210,7 @@ describe('Login page', () => {
     await type(t.usernameLabel, 'admin-test');
     await type(t.passwordLabel, sentinelPassword);
     await fireEvent.submit(input(t.usernameLabel).form!);
-    expect(await screen.findByTestId('home')).toBeTruthy();
+    expect(await screen.findByTestId('dashboard')).toBeTruthy();
     for (const where of [JSON.stringify({ ...localStorage }), JSON.stringify({ ...sessionStorage }), document.cookie, location.href, document.title]) {
       expect(where).not.toContain(sentinelCsrf);
       expect(where).not.toContain(sentinelPassword);
@@ -232,7 +232,7 @@ describe('signed in', () => {
 
   it('has a user menu with the account page and Abmelden, and logs out', async () => {
     signedInApp({ 'DELETE /api/v1/session': () => json(200, loginRequired) });
-    await screen.findByTestId('home');
+    await screen.findByTestId('dashboard');
     const summary = screen.getByText('admin-test').closest('summary')!;
     expect(summary.getAttribute('aria-label')).toBe(`${t.userMenuLabel}: admin-test`);
     expect(screen.getByRole('link', { name: t.navAccount, hidden: true }).getAttribute('href')).toBe('#/account');
@@ -253,7 +253,7 @@ describe('signed in', () => {
 
   it('returns to the login page when the server ends the stream with the session event', async () => {
     signedInApp();
-    await screen.findByTestId('home');
+    await screen.findByTestId('dashboard');
     const es = FakeEventSource.last;
     es.open();
     es.send('session', { schema_version: 1, state: 'ended' });
@@ -267,7 +267,7 @@ describe('signed in', () => {
 
   it('asks for the session before reconnecting a refused stream, and stops when it is gone', async () => {
     signedInApp();
-    await screen.findByTestId('home');
+    await screen.findByTestId('dashboard');
     routes['GET /api/v1/session'] = () => json(200, loginRequired);
     FakeEventSource.last.fail(); // the browser got a 401 and gave up
     expect(await screen.findByTestId('login')).toBeTruthy();
