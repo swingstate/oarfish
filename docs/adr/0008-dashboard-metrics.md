@@ -62,3 +62,56 @@ Recorded after the owner's requirements decisions of 2026-11-05 and 2026-11-06 (
 - **Fact (repository, checked before this amendment):** the route parser skips routes that have a gateway, and the backend reads no DNS file. ORB-NET-001 is therefore not yet met.
 - **Owner decision:** D-C31 and D-C32 stay in force (no program, no netlink, files only) until a later amendment decides a source for the new values. No allow-list entry is added by this amendment.
 - **Open until the device spike S1:** the source of the SSID and the signal (if it can only be read through netlink, a further amendment must say so, read-only and with the address families of the unit) and the source of the DNS servers (a local resolver stub may hide the real servers; assumption, not checked).
+
+## Amendment after S1
+
+Recorded after the device spike S1, which the owner ran on 2026-11-06 (`docs/DECISIONS.md` D-C78; specification 0.4.1). Documentation only: no code, test, unit, installer, allow-list or workflow changed. The report file is private and not in the repository; the numbers below are taken from the owner's summary of it. Labels: **owner decision**, **fact (repository)**, **device observation**, **proposal**, **assumption**. Nothing here is Verified: every observation comes from one device and one run. Decisions 1 to 11 and the R1 amendment above are unchanged except where this section says so.
+
+**S1.1 What was observed.** Device: one Raspberry Pi Zero 2 W Rev 1.0, Debian 13 (trixie) arm64, kernel 6.18.50+rpt-rpi-v8, systemd 257, NetworkManager active, systemd-resolved and systemd-networkd inactive.
+
+| Topic | Device observation (class: device observation, one device, one run) |
+|---|---|
+| Signal strength | `/proc/net/wireless` has a line for the WLAN interface: link quality 61, level -49 dBm. A netlink probe at the same time gave -48 to -50 dBm. A plain file; netlink is not needed. |
+| SSID | Not found in any of 4 searched files. Available through nl80211 netlink only (GET_INTERFACE, SSID length 6). With the shipped hardening (`RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`) the netlink socket fails with errno 97. With `AF_NETLINK` added it works for the service user and for an unrelated unprivileged account with empty capability sets (read-only GET_INTERFACE and GET_STATION requests). |
+| Storage medium | Root on the first card (`mmcblk0p2`), ext4, mount options `rw,noatime`; `/sys/block/mmcblk0/device/type` says SD; rotational 0; size about 128 GB. The device serial, CID and CSD files exist and must never be read. |
+| Idle write baseline | One window of 300.8 s: 64 sectors = 32,768 bytes written to the card (about 392 KB per hour extrapolated; the counter is coarse). The Oarfish process wrote 0 bytes. The journal is volatile (RAM). One quiet window only. |
+| Undervoltage | `/sys/class/hwmon/hwmon1` is `rpi_volt` with `in0_lcrit_alarm` (0 at the time). No file with throttle flags. The vendor tool showed 0x0 (comparison only). |
+| CPU frequency and temperature | cpufreq files exist (cur 1,000,000, min 600,000, max 1,000,000 kHz, governor ondemand). One thermal zone, 46.16 degC. |
+| DNS | `/etc/resolv.conf` is a regular file with 2 nameserver lines (one IPv4 public, one IPv6 private). No resolver stub on this image. |
+| Routes and prefixes | `/proc/net/route` has a default row (WLAN interface, private gateway). `/proc/net/ipv6_route` has a default route (link-local gateway). IPv4 prefix /24 from the connected-route row. IPv6: 4 global addresses (3 unique-local), prefix /64. |
+| OS update display | `/var/lib/dpkg/status` 597 KB, 638 installed packages, a counting pass 9 ms. `/var/lib/apt/lists` 33 files, about 155 MB. No update-success stamp and no updates-available file. The device has no battery clock, so file ages are only indicative. |
+| Not covered | Reading the new files as the service user under the real unit hardening (only the netlink probe ran under hardening); more than one 300 s window; eMMC or NVMe; other Pi models; Ubuntu; a latched undervoltage state. |
+
+**Fact (repository):** the dashboard collector reads `route`, `if_inet6` and `fib_trie`, skips routes that have a gateway, and does not read `ipv6_route`.
+
+**S1.2 File sources identified (device observation; refines R1.2, ORB-NET-001, ORB-DASH-004).**
+
+- Signal strength: `/proc/net/wireless`.
+- Default route and prefixes: the default row of `/proc/net/route` (IPv4) and `/proc/net/ipv6_route` (IPv6); the prefix from the connected-route row and from `if_inet6`.
+- DNS servers: `/etc/resolv.conf`. **Assumption, not tested:** an image with a local resolver stub (for example systemd-resolved) lists the stub address there and hides the real servers; such images need a fallback design, which this amendment does not make.
+- Storage medium: the sysfs block device name of the root file system and its `device/type`. The identity files of the card are never read.
+- Undervoltage: the `rpi_volt` hwmon alarm file. **Assumption, not checked:** whether the alarm is live or latched. A frequency cap is not available as a flag.
+
+**S1.3 Allow-list (proposal, not done).**
+
+- **Proposal:** the tasks N0 and N1 add `/proc/net/wireless`, `/proc/net/ipv6_route` and `/etc/resolv.conf` to the read allow-list of ADR 0007 and ADR 0008, each with a bounded parser and a test. This amendment adds no entry.
+- **Open:** reading these files as the service user under the unit hardening is not verified. N0 and N1 must test it on the device.
+
+**S1.4 D-C31 and D-C32 stay in force (owner decision, D-C72).** No netlink and no program. Every source in S1.2 is a file.
+
+**S1.5 SSID (open).**
+
+- **Device observation:** the SSID needs nl80211 netlink, so it needs `AF_NETLINK` in the service unit.
+- **Open, owner has not decided:** a further amendment must lift D-C32 for one read-only nl80211 query (GET_INTERFACE only, no write request) and change the unit and the installer. Whether this happens now or together with the unit and installer change of D-D10 is not decided.
+- **Recommendation (not a decision):** do it together with D-D10, because both change the unit and the installer. Until then the Network page shows signal strength and no SSID, and ORB-NET-002 is met in part.
+
+**S1.6 Write baseline (input for H1 only).**
+
+- **Device observation:** about 392 KB per hour of idle writes on the SD card in one quiet window, none from the Oarfish process.
+- **Open:** the real cost of an atomic replace of a history file (data, journal, directory) is not measured and is part of H1. The baseline decides nothing about intervals or rhythm. On this device the medium is an SD card, which supports the direction of D-C73 (rare writes on microSD); it does not set a number.
+
+**S1.7 Operating system update display (refines D-C74).**
+
+- **Device observation:** counting installed packages is cheap (9 ms), but a count of available updates cannot be derived without parsing the package lists (about 155 MB) and re-implementing the package manager's candidate logic.
+- **Owner decision (D-C78):** the display is not part of the MVP. It may come after G7 as a typed broker action, or be dropped; that is open.
+
