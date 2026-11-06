@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net"
 	"os"
 	"os/exec"
@@ -68,7 +69,7 @@ func TestHealthUsesTheListenAddressFromExecStart(t *testing.T) {
 		t.Fatal("no health call")
 	}
 	for _, c := range v.sd.healthCalls {
-		if c != "127.0.0.1:9191/healthz" {
+		if c != "127.0.0.1:9191/healthz" && c != "127.0.0.1:9191/readyz" {
 			t.Fatalf("health call %q", c)
 		}
 	}
@@ -76,7 +77,7 @@ func TestHealthUsesTheListenAddressFromExecStart(t *testing.T) {
 	v2.sd.listen = "10.0.0.5:80" // not loopback: the default is used
 	wantOK(t, v2.activate("1.1.0"))
 	for _, c := range v2.sd.healthCalls {
-		if c != "127.0.0.1:8484/healthz" {
+		if c != "127.0.0.1:8484/healthz" && c != "127.0.0.1:8484/readyz" {
 			t.Fatalf("health call %q", c)
 		}
 	}
@@ -180,6 +181,9 @@ func TestStabilityWindowRestartsOnABadPoll(t *testing.T) {
 	polls := 0
 	inner := v.h.healthGet
 	v.h.healthGet = func(a, p string) (int, []byte, error) {
+		if p == readyPath {
+			return inner(a, p)
+		}
 		polls++
 		if polls == 8 {
 			return 503, nil, nil
@@ -319,4 +323,114 @@ func TestClosedRequestListMatchesTheADR(t *testing.T) {
 	if len(opKeys) != 5 {
 		t.Fatalf("%d ops in the decoder", len(opKeys))
 	}
+}
+
+// A11.2: from strictHealthFrom on, the answering process must be the one systemd
+// reports (pid == MainPID) and /readyz must answer 200. An older version is
+// checked as before, so a rollback to a release without pid stays possible.
+func TestHealthzOKRequiresPIDAndReadyzFromTheMinimumVersion(t *testing.T) {
+	const strict, old = "0.1.0-alpha.7", "0.1.0-alpha.6.1"
+	answer := func(health, ready string, readyCode int) func(string, string) (int, []byte, error) {
+		return func(_, path string) (int, []byte, error) {
+			if path == readyPath {
+				return readyCode, []byte(ready), nil
+			}
+			return 200, []byte(health), nil
+		}
+	}
+	for _, c := range []struct {
+		name    string
+		version string
+		health  string
+		ready   string
+		code    int
+		mainPID int64
+		want    bool
+	}{
+		{"strict, pid equals MainPID, ready", strict, `{"status":"ok","version":"0.1.0-alpha.7","pid":42}`, `{"status":"ok"}`, 200, 42, true},
+		{"strict, another process answers", strict, `{"status":"ok","version":"0.1.0-alpha.7","pid":43}`, `{"status":"ok"}`, 200, 42, false},
+		{"strict, no pid member", strict, `{"status":"ok","version":"0.1.0-alpha.7"}`, `{"status":"ok"}`, 200, 42, false},
+		{"strict, pid is not a number", strict, `{"status":"ok","version":"0.1.0-alpha.7","pid":"42"}`, `{"status":"ok"}`, 200, 42, false},
+		{"strict, MainPID unknown", strict, `{"status":"ok","version":"0.1.0-alpha.7","pid":0}`, `{"status":"ok"}`, 200, 0, false},
+		{"strict, readyz 503", strict, `{"status":"ok","version":"0.1.0-alpha.7","pid":42}`, `{"status":"not_ready"}`, 503, 42, false},
+		{"strict, readyz 200 without ok", strict, `{"status":"ok","version":"0.1.0-alpha.7","pid":42}`, `{}`, 200, 42, false},
+		{"newer than the minimum", "1.0.0", `{"status":"ok","version":"1.0.0","pid":42}`, `{"status":"ok"}`, 200, 42, true},
+		{"older version: no pid needed", old, `{"status":"ok","version":"0.1.0-alpha.6.1"}`, `{"status":"not_ready"}`, 503, 42, true},
+		{"older version: wrong pid is not looked at", old, `{"status":"ok","version":"0.1.0-alpha.6.1","pid":1}`, ``, 500, 42, true},
+		{"older version: still needs ok and version", old, `{"status":"ok","version":"0.0.1"}`, ``, 200, 42, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := &handler{healthGet: answer(c.health, c.ready, c.code)}
+			if got := h.healthzOK("127.0.0.1:1", c.version, c.mainPID); got != c.want {
+				t.Fatalf("healthzOK = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestStrictHealthBoundary(t *testing.T) {
+	for v, want := range map[string]bool{
+		"0.1.0-alpha.6": false, "0.1.0-alpha.6.1": false, "0.1.0-alpha.7": true, "0.1.0-alpha.8": true,
+		"0.1.0": true, "1.0.0": true, "0.0.9": false, "not a version": true,
+	} {
+		if got := strictHealth(v); got != want {
+			t.Errorf("strictHealth(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
+// A process that answers /healthz with the right version but is not the unit's
+// main process fails the activation (G6.6 review finding 1).
+func TestActivationRollsBackWhenAnotherProcessAnswers(t *testing.T) {
+	v := newActiveEnv(t)
+	inner := v.sd.health
+	v.h.healthGet = func(a, p string) (int, []byte, error) {
+		code, body, err := inner(a, p)
+		if p == healthPath && strings.Contains(string(body), `"1.1.0"`) { // the new version, not the pre-check
+			body = []byte(strings.Replace(string(body), "\"pid\":", "\"pid\":9", 1))
+		}
+		return code, body, err
+	}
+	wantOK(t, v.activate("1.1.0"))
+	l := v.lastResult()
+	if v.current() != "1.0.0" || l == nil || l.Outcome != outcomeRolledBack || l.ReasonCode != reasonHealthTimeout {
+		t.Fatalf("an impostor on the port passed the health check: current %q last %+v", v.current(), l)
+	}
+}
+
+// FuzzHealthzBody feeds arbitrary bytes as the answer of /healthz and /readyz.
+// Nothing may panic, and a version from strictHealthFrom on is accepted only
+// when the body names exactly the main PID and /readyz said ok (A11.2).
+func FuzzHealthzBody(f *testing.F) {
+	for _, s := range []string{`{"status":"ok","version":"1.0.0","pid":42}`, `{"status":"ok","version":"1.0.0"}`, `{"status":"ok","version":"1.0.0","pid":"42"}`,
+		`{"status":"ok","version":"1.0.0","pid":42.5}`, `{"status":"ok","version":"1.0.0","pid":1e2}`, `{}`, `null`, `[]`, ``,
+		`{"status":"ok","status":"no","version":"1.0.0","pid":42}`} {
+		f.Add([]byte(s), []byte(`{"status":"ok"}`), int64(42))
+	}
+	f.Fuzz(func(t *testing.T, health, ready []byte, mainPID int64) {
+		h := &handler{healthGet: func(_, path string) (int, []byte, error) {
+			if path == readyPath {
+				return 200, ready, nil
+			}
+			return 200, health, nil
+		}}
+		if !h.healthzOK("127.0.0.1:1", "1.0.0", mainPID) {
+			return
+		}
+		var r struct {
+			Status  *string `json:"status"`
+			Version *string `json:"version"`
+			PID     *int64  `json:"pid"`
+		}
+		if json.Unmarshal(health, &r) != nil || r.Status == nil || *r.Status != "ok" || r.Version == nil || *r.Version != "1.0.0" {
+			t.Fatalf("accepted %q", health)
+		}
+		if r.PID == nil || *r.PID != mainPID || mainPID <= 0 {
+			t.Fatalf("accepted pid %v for MainPID %d: %q", r.PID, mainPID, health)
+		}
+		var rd struct{ Status *string }
+		if json.Unmarshal(ready, &rd) != nil || rd.Status == nil || *rd.Status != "ok" {
+			t.Fatalf("accepted readyz %q", ready)
+		}
+	})
 }

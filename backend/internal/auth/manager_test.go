@@ -207,3 +207,56 @@ func TestRestartEndsAllSessions(t *testing.T) {
 		}
 	}
 }
+
+// ADR 0010 U9 (D-C55): a fresh password confirmation costs exactly one hash,
+// whose memory is returned, goes through the same limiter as login, and changes
+// nothing.
+func TestConfirmPassword(t *testing.T) {
+	c := newCounted(t)
+	c.setup(t)
+	ctx := context.Background()
+	account, err := os.ReadFile(c.dir + "/auth/account.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := c.hashes.Load()
+	if err := c.m.ConfirmPassword(ctx, sentinelPassword); err != nil {
+		t.Fatal(err)
+	}
+	if n := c.hashes.Load() - before; n != 1 {
+		t.Fatalf("%d hashes, want 1 (and its memory returned)", n)
+	}
+	if after, _ := os.ReadFile(c.dir + "/auth/account.json"); string(after) != string(account) {
+		t.Fatal("the account file changed")
+	}
+	if err := c.m.ConfirmPassword(ctx, "wrong-password-123"); !errors.Is(err, ErrWrongPassword) {
+		t.Fatalf("%v", err)
+	}
+	// Five failures, from any caller of the limiter, refuse the next attempt
+	// before a hash is computed, even with the right password.
+	for i := 1; i < FailuresBeforeBackoff; i++ {
+		c.clock.Advance(7 * time.Second)
+		if _, _, err := c.m.Login(ctx, "admin-test", "wrong-password-123"); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("%v", err)
+		}
+	}
+	before = c.hashes.Load()
+	var limited *RateLimitedError
+	if err := c.m.ConfirmPassword(ctx, sentinelPassword); !errors.As(err, &limited) {
+		t.Fatalf("%v", err)
+	}
+	if c.hashes.Load() != before {
+		t.Fatal("a hash was computed for a refused attempt")
+	}
+	c.clock.Advance(BackoffMax)
+	if err := c.m.ConfirmPassword(ctx, sentinelPassword); err != nil {
+		t.Fatalf("after the wait: %v", err)
+	}
+}
+
+func TestConfirmPasswordWithoutAnAccount(t *testing.T) {
+	c := newCounted(t)
+	if err := c.m.ConfirmPassword(context.Background(), "whatever-password"); !errors.Is(err, ErrSetupRequired) {
+		t.Fatalf("%v", err)
+	}
+}

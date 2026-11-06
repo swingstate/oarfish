@@ -10,7 +10,7 @@ The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.
 
 What the binary does today:
 
-- serves `GET /healthz` (`{"status":"ok"}`, public, no device data)
+- serves `GET /healthz` (`{"status":"ok","version":"...","pid":n}`, public, no device data) and `GET /readyz`
 - protects everything else under `/api/v1` with one local administrator account: a first-start setup with a one-time token from `sudo cat /var/lib/oarfish/setup-token`, login, logout and password change, in-memory sessions, CSRF, origin and Host checks, a rate-limited login and an own audit file ([`docs/AUTH.md`](docs/AUTH.md)). A device updated from `v0.1.0-alpha.5` starts in setup mode
 - detects, read-only and without running any program, the board, the operating system, the kernel and what the system can do, and serves the result at `GET /api/v1/device` ([`docs/DETECTION.md`](docs/DETECTION.md))
 - reads live metrics, read-only from `/proc` and `/sys` and only while a browser watches (host name, uptime, CPU, memory and swap, temperatures, storage, network), evaluates alerts, and serves them at `GET /api/v1/metrics` and as a Server-Sent Events stream at `GET /api/v1/events` ([`docs/DASHBOARD.md`](docs/DASHBOARD.md))

@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/swingstate/oarfish/backend/internal/relverify"
 )
 
 // The health check of ADR 0010 U6. The helper decides, nobody else.
@@ -17,6 +19,16 @@ import (
 const (
 	defaultListen = "127.0.0.1:8484"
 	healthPath    = "/healthz"
+	readyPath     = "/readyz"
+
+	// strictHealthFrom is the first release that reports the process ID in
+	// /healthz and serves /readyz (ADR 0010 A11.2, D-C68). From this version
+	// on the health check also requires pid == MainPID and a 200 from /readyz;
+	// an older version, for example a rollback target, is checked with
+	// criteria 1 to 4 of U6 as before. The value is set when that release is
+	// cut: it must equal the version of the first release built from the code
+	// that serves both (docs/RELEASING.md).
+	strictHealthFrom = "0.1.0-alpha.7"
 
 	healthDeadline  = 45 * time.Second // after the restart returned
 	healthStability = 10 * time.Second // conditions hold at least this long
@@ -162,9 +174,25 @@ func parseHTTP(raw []byte) (int, []byte, error) {
 	return code, body, nil
 }
 
+// strictHealth says whether version is checked with the process ID and
+// /readyz (A11.2). A version that cannot be parsed is checked strictly.
+func strictHealth(version string) bool {
+	v, err := relverify.ParseVersion(version)
+	if err != nil {
+		return true
+	}
+	floor, err := relverify.ParseVersion(strictHealthFrom)
+	if err != nil {
+		return true
+	}
+	return relverify.Compare(v, floor) >= 0
+}
+
 // healthzOK is criteria 3 and 4: 200, "status":"ok", and the version that was
-// installed.
-func (h *handler) healthzOK(addr, want string) bool {
+// installed. For a version from strictHealthFrom on it also requires that the
+// answering process is the one systemd reports (pid == mainPID, so that another
+// process on the loopback port cannot pass) and a 200 from /readyz (A11.2).
+func (h *handler) healthzOK(addr, want string, mainPID int64) bool {
 	get := h.healthGet
 	if get == nil {
 		get = httpGet
@@ -176,11 +204,28 @@ func (h *handler) healthzOK(addr, want string) bool {
 	var r struct {
 		Status  *string `json:"status"`
 		Version *string `json:"version"`
+		PID     *int64  `json:"pid"`
 	}
 	if json.Unmarshal(body, &r) != nil || r.Status == nil || r.Version == nil {
 		return false
 	}
-	return *r.Status == "ok" && *r.Version == want
+	if *r.Status != "ok" || *r.Version != want {
+		return false
+	}
+	if !strictHealth(want) {
+		return true
+	}
+	if r.PID == nil || mainPID <= 0 || *r.PID != mainPID {
+		return false
+	}
+	code, body, err = get(addr, readyPath)
+	if err != nil || code != 200 {
+		return false
+	}
+	var ready struct {
+		Status *string `json:"status"`
+	}
+	return json.Unmarshal(body, &ready) == nil && ready.Status != nil && *ready.Status == "ok"
 }
 
 type healthResult int
@@ -222,7 +267,7 @@ func (h *handler) waitHealthy(p healthParams) (healthResult, unitProps) {
 			}
 			ok := props.Active == "active" && props.Sub == "running" && props.MainPID > 0 &&
 				(p.prevPID < 0 || props.MainPID != p.prevPID) &&
-				h.healthzOK(listenAddress(props.ExecStart), p.version)
+				h.healthzOK(listenAddress(props.ExecStart), p.version, props.MainPID)
 			if ok {
 				if good == 0 {
 					firstGood = now

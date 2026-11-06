@@ -172,7 +172,7 @@ func (r *txnRun) recoverPhase() errorCode {
 		return r.recoverRollingBack(installed)
 	case phaseRollbackFailed:
 		return r.recoverRollbackFailed(installed)
-	case "rolled_back":
+	case phaseRolledBack:
 		st.resetTxn()
 		if err := e.saveState(st); err != nil {
 			return codeIOError

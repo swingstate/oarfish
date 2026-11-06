@@ -64,7 +64,7 @@ jobs:
         run: go test -count=1 -run '^TestHashMemoryIsReturnedToTheOS$' -v ./internal/auth
       # Short fuzz runs of the parsers that read untrusted system files.
       # The seed corpora also run as ordinary tests in the step above.
-      - name: Fuzz the detection, metrics, password-hash, update-helper request and release-verification parsers
+      - name: Fuzz the detection, metrics, password-hash, update-helper request, update service and release-verification parsers
         working-directory: backend
         run: |
           go test -run '^$' -fuzz '^FuzzParseOSRelease$' -fuzztime 5s ./internal/platform/operating_system
@@ -73,8 +73,11 @@ jobs:
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/metrics/parse
           done
           go test -run '^$' -fuzz '^FuzzParsePHC$' -fuzztime 5s ./internal/auth
-          for f in FuzzDecodeRequest FuzzDecodeState; do
+          for f in FuzzDecodeRequest FuzzDecodeActivate FuzzDecodeAck FuzzDecodeState FuzzHealthzBody; do
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./cmd/oarfish-update-helper
+          done
+          for f in FuzzHelperResponse FuzzReleaseList FuzzPlainNotes; do
+            go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/updater
           done
           for f in FuzzParseSignature FuzzParseChecksums FuzzParseManifest FuzzVersion FuzzInspectTar; do
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/relverify

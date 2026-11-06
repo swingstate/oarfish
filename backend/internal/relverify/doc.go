@@ -2,8 +2,8 @@
 // describe: the signature of checksums.txt, the checksums, the manifest, the
 // version rules and the inspection of the tarball. It is the shared
 // verification package of gate G6.4. The update helper (G6.5) and the service
-// (G6.7) will both import it; in G6.4 no binary imports it yet, so it is not
-// linked into the service or the helper and changes no behaviour on a device.
+// (G6.7, internal/updater) both import it; the service uses it for the advisory
+// verification only, and the helper verifies its own copy again.
 //
 // # Design
 //

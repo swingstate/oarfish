@@ -255,6 +255,33 @@ func (m *Manager) ChangePassword(ctx context.Context, s *Session, current, next 
 	return nil
 }
 
+// ConfirmPassword checks the password of the signed-in administrator again,
+// for an action that asks for a fresh confirmation (ADR 0010 U9, D-C55). It
+// goes through the same global limiter as login and password change and costs
+// the same single Argon2id hash, whose memory the hasher returns to the system.
+// It changes nothing: no session ends and no hash is stored.
+func (m *Manager) ConfirmPassword(ctx context.Context, current string) error {
+	m.mu.Lock()
+	acc := m.account
+	m.mu.Unlock()
+	if acc == nil {
+		return ErrSetupRequired
+	}
+	if err := m.allow(); err != nil {
+		return err
+	}
+	ok, _, err := m.hasher.Verify(ctx, acc.PasswordHash, current)
+	if err != nil {
+		return ErrUnavailable
+	}
+	if !ok {
+		m.limiter.Failure()
+		return ErrWrongPassword
+	}
+	m.limiter.Success()
+	return nil
+}
+
 // Logout ends the session of a raw token.
 func (m *Manager) Logout(token string) { m.sessions.Delete(token) }
 

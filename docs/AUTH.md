@@ -29,7 +29,7 @@ Oarfish still listens on loopback only (D-C48): nothing here opens the device to
 ## What changes for a device
 
 - **An updated device starts in setup mode.** A device updated from `v0.1.0-alpha.5` or earlier has no account. The GUI shows the setup page; the dashboard and the device page show data only after setup and login (D-C46). The release notes of the G5.1 release say so ([`RELEASING.md`](RELEASING.md)).
-- **Every `/api/v1` route needs a session**, except `GET /api/v1/session`, `POST /api/v1/session` (login), `POST /api/v1/setup` and the public `/healthz` (which says only `{"status":"ok"}`). The frontend files stay public, so the login page loads.
+- **Every `/api/v1` route needs a session**, except `GET /api/v1/session`, `POST /api/v1/session` (login), `POST /api/v1/setup` and the public `/healthz` and `/readyz`. `/healthz` says `{"status":"ok","version":"<installed version>","pid":<process ID>}` and nothing else; the version is public data (specification 10.3, D-C57) and the process ID of the answering service is not device data in the sense of E9 (ADR 0010 A11.2, D-C68): the update helper compares it with the systemd `MainPID`, so that another process on the loopback port cannot pass its health check. `/readyz` says `{"status":"ok"}` when the access store and the audit log were opened, the detection result names a profile and the embedded frontend has its `index.html`, and otherwise answers `503` with `{"status":"not_ready"}`. Neither route needs a session, and both are subject to the Host check. The frontend files stay public, so the login page loads.
 - **A restart signs everybody out.** Sessions live in memory only (E2).
 - **The service needs its state directory.** systemd passes it as `STATE_DIRECTORY` (`StateDirectory=oarfish`, `/var/lib/oarfish`). Without it, or when it is not writable, the process refuses to start with a message; for development `-state-dir DIR` sets it (`make dev` uses `.dev-state/`). The unit now sets `StateDirectoryMode=0700`.
 
@@ -77,9 +77,11 @@ All bodies are JSON. Every response carries `X-Correlation-ID` (64 random bits a
 | `DELETE /api/v1/session` | yes, with CSRF | Logout: ends the session and its event streams, clears the cookie. |
 | `POST /api/v1/account/password` | yes, with CSRF | `{current_password, new_password}`. Ends every other session. |
 | `GET /api/v1/device`, `GET /api/v1/metrics`, `GET /api/v1/events` | yes | As before ([`DETECTION.md`](DETECTION.md), [`DASHBOARD.md`](DASHBOARD.md)). GET only, no body. The event stream ends with its session. |
-| `GET /healthz` | no | `{"status":"ok"}`, no device data. The installer's health check. |
+| `GET /healthz` | no | `{"status":"ok","version":"...","pid":n}`, no device data. The installer's health check (it only looks for `"status":"ok"`) and the update helper's. |
+| `GET /readyz` | no | `{"status":"ok"}`, or `503 {"status":"not_ready"}`. See above. |
+| `GET /api/v1/update`, `GET /api/v1/update/notice`, `POST /api/v1/update/check`, `POST /api/v1/update/apply`, `POST /api/v1/update/discard` | yes; the POST routes with CSRF | The update (ADR 0010 U9, A11; [`ARCHITECTURE.md`](ARCHITECTURE.md), "The update service"). `apply` takes `{version, current_password}` and, for the second confirmation of a component update, `components_confirmed`; the fresh password goes through the shared limiter below and costs the one Argon2id hash. Audit: `update_started` and `update_finished` with the target `update/<version>` (A6). The notice does not extend the session. |
 
-Only the four account endpoints accept `POST` or `DELETE`; everything else under `/api/v1` is GET only (`405 method_not_allowed` with an `Allow` header). The request bodies of setup, login and password change are limited to 1 KiB (`413 request_too_large`), must be one JSON object with exactly the listed fields (`400 invalid_request`), and are never logged.
+Only the four account endpoints and the three update `POST` routes accept `POST` or `DELETE`; everything else under `/api/v1` is GET only (`405 method_not_allowed` with an `Allow` header). The request bodies of setup, login and password change are limited to 1 KiB (`413 request_too_large`), must be one JSON object with exactly the listed fields (`400 invalid_request`), and are never logged.
 
 Session state (`GET /api/v1/session`, and the answer of setup, login and password change):
 

@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +51,9 @@ const (
 	PasswordChanged      Action = "password_changed"
 	PasswordChangeFailed Action = "password_change_failed"
 	RequestRejected      Action = "request_rejected" // aggregated
+	// The actions of the update (ADR 0009 amendment A6). Neither is aggregated.
+	UpdateStarted  Action = "update_started"
+	UpdateFinished Action = "update_finished"
 )
 
 // Target is what the action was about. The set is closed.
@@ -83,16 +87,75 @@ const (
 	CSRFFailed         Result = "csrf_failed"
 )
 
+// The results of the update (ADR 0009 amendment A6): the error codes and
+// outcomes of the update helper, and Unavailable (the helper could not be
+// reached). The helper codes bad_request, not_found and internal are recorded
+// as Failed.
+const (
+	Busy                 Result = "busy"
+	SignatureInvalid     Result = "signature_invalid"
+	ChecksumMismatch     Result = "checksum_mismatch"
+	ManifestInvalid      Result = "manifest_invalid"
+	DowngradeRefused     Result = "downgrade_refused"
+	AlreadyInstalled     Result = "already_installed"
+	RequirementsNotMet   Result = "requirements_not_met"
+	HelperTooOld         Result = "helper_too_old"
+	InstallerRequired    Result = "installer_required"
+	ConfirmationRequired Result = "confirmation_required"
+	KeyChanged           Result = "key_changed"
+	UnitRejected         Result = "unit_rejected"
+	ComponentsDamaged    Result = "components_damaged"
+	StageExpired         Result = "stage_expired"
+	NoSpace              Result = "no_space"
+	CurrentUnhealthy     Result = "current_unhealthy"
+	Cooldown             Result = "cooldown"
+	IOError              Result = "io_error"
+	RolledBack           Result = "rolled_back"
+	ComponentsRolledBack Result = "components_rolled_back"
+	RollbackFailed       Result = "rollback_failed"
+	Aborted              Result = "aborted"
+	Unavailable          Result = "unavailable"
+)
+
+// UpdateResult maps an error code or outcome of the update (the helper's, or
+// "unavailable") to a result of A6. Success stays Success; the helper codes
+// bad_request, not_found and internal, and anything unknown, become Failed.
+func UpdateResult(code string) Result {
+	r := Result(code)
+	switch r {
+	case Success, Busy, SignatureInvalid, ChecksumMismatch, ManifestInvalid, DowngradeRefused, AlreadyInstalled,
+		RequirementsNotMet, HelperTooOld, InstallerRequired, ConfirmationRequired, KeyChanged, UnitRejected,
+		ComponentsDamaged, StageExpired, NoSpace, CurrentUnhealthy, Cooldown, IOError, RolledBack,
+		ComponentsRolledBack, RollbackFailed, Aborted, Unavailable, RateLimited, WrongPassword:
+		return r
+	}
+	return Failed
+}
+
+// UpdateTarget is the target of an update entry, update/<version> (A6). A
+// version that does not match the pattern makes the event invalid, so it is
+// dropped and counted like any value outside the sets.
+func UpdateTarget(version string) Target { return Target("update/" + version) }
+
 var (
 	actions = map[Action]bool{SetupCompleted: true, LoginSucceeded: true, LoginFailed: true, Logout: true,
-		PasswordChanged: true, PasswordChangeFailed: true, RequestRejected: true}
+		PasswordChanged: true, PasswordChangeFailed: true, RequestRejected: true,
+		UpdateStarted: true, UpdateFinished: true}
 	aggregated = map[Action]bool{LoginFailed: true, RequestRejected: true}
 	targets    = map[Target]bool{TargetNone: true, TargetSetup: true, TargetSession: true, TargetPassword: true,
 		TargetDevice: true, TargetMetrics: true, TargetEvents: true}
 	results = map[Result]bool{Success: true, InvalidCredentials: true, InvalidSetupToken: true, RateLimited: true,
-		WrongPassword: true, PolicyRejected: true, Failed: true, HostRejected: true, OriginRejected: true, CSRFFailed: true}
+		WrongPassword: true, PolicyRejected: true, Failed: true, HostRejected: true, OriginRejected: true, CSRFFailed: true,
+		Busy: true, SignatureInvalid: true, ChecksumMismatch: true, ManifestInvalid: true, DowngradeRefused: true,
+		AlreadyInstalled: true, RequirementsNotMet: true, HelperTooOld: true, InstallerRequired: true,
+		ConfirmationRequired: true, KeyChanged: true, UnitRejected: true, ComponentsDamaged: true, StageExpired: true,
+		NoSpace: true, CurrentUnhealthy: true, Cooldown: true, IOError: true, RolledBack: true,
+		ComponentsRolledBack: true, RollbackFailed: true, Aborted: true, Unavailable: true}
 	// A user is the account name (the rule of auth.ValidateUsername) or "-".
-	userPattern = regexp.MustCompile(`^(-|[a-z0-9._-]{1,32})$`)
+	// An update target is update/<version>, the version regex of ADR 0010 U2 and
+	// at most 64 characters (A6).
+	updateTargetPattern = regexp.MustCompile(`^update/(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$`)
+	userPattern         = regexp.MustCompile(`^(-|[a-z0-9._-]{1,32})$`)
 	// A correlation ID is the server's own 64-bit value in hex.
 	correlationPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 )
@@ -128,8 +191,15 @@ type entry struct {
 // ErrInvalidEvent means an event field is outside its set.
 var ErrInvalidEvent = errors.New("audit event outside the allowed values")
 
+// validUpdateTarget checks the pattern of A6: update/<version>, the version at
+// most 64 characters and without "..".
+func validUpdateTarget(t Target) bool {
+	s := string(t)
+	return len(s) <= len("update/")+64 && !strings.Contains(s, "..") && updateTargetPattern.MatchString(s)
+}
+
 func (e Event) validate() error {
-	if !actions[e.Action] || !targets[e.Target] || !results[e.Result] ||
+	if !actions[e.Action] || !(targets[e.Target] || validUpdateTarget(e.Target)) || !results[e.Result] ||
 		!userPattern.MatchString(e.User) || !correlationPattern.MatchString(e.CorrelationID) {
 		return ErrInvalidEvent
 	}
