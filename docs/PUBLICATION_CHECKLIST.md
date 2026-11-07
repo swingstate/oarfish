@@ -109,6 +109,12 @@ Settings → means the repository's Settings tab: `https://github.com/swingstate
   # expected: true
   ```
 
+## (g0) The rules file stays neutral (D-C65, D-C79)
+
+- **Check before (g) and after every change of the file:** `docs/AGENT_RULES.md` names neither a tool nor a vendor. The AI provider as a product feature of Oarfish Assist is the only allowed mention of a provider.
+- **Verify:** search the tracked tree and `docs/AGENT_RULES.md` case-insensitively for the name of the development tool and of its vendor (the list of names is kept by the maintainer outside the repository, so that this file does not carry them), for example with `git grep -n -i -e '<name>' -- .`. Expected: no match in `docs/AGENT_RULES.md`. A match elsewhere is reviewed by hand; the AI provider as a product feature of Oarfish Assist (ORB-AI-002, D-09) is allowed.
+- Also check that no host name, user name, IP address, serial number or MAC address appears in tracked files.
+
 ## (g) Change visibility to public (last step of the review)
 
 - **Do this only after** `docs/RELEASING.md` "Before making the repository public" is ticked off and the gate's pull request is merged (or the maintainer has decided otherwise). See the note at the top for steps that can only follow it.

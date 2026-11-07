@@ -2,9 +2,9 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.4.1
+- Dokumentversion: 0.4.2
 - Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G5.1 abgenommen)
-- Stand: 6. November 2026
+- Stand: 7. November 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
@@ -1083,9 +1083,11 @@ Ein Core-Update zeigt Herkunft, Signaturstatus, Kompatibilität, Migrationshinwe
 
 Nach Freigabe erhält der Implementierungsagent keinen allumfassenden Implementierungsauftrag. Jede Session bearbeitet genau ein Gate oder ein klar abgegrenztes Teilpaket. Am Ende stehen getesteter Code, aktualisierte Dokumentation, ein sauberer Commit und ein messbares Exit-Kriterium.
 
+Die dauerhaften Regeln für den Implementierungsagenten stehen in `docs/AGENT_RULES.md` (Entscheidung D-C79). Der Agent liest diese Datei zu Beginn jeder Session vollständig; ein Gate-Prompt ergänzt sie um den Umfang des Gates und hebt keine Regel auf. Die Datei nennt weder Werkzeug noch Hersteller.
+
 Der Implementierungsagent muss vor jeder Arbeit:
 
-1. Dieses Pflichtenheft und den aktuellen Gate-Prompt lesen.
+1. Dieses Pflichtenheft, `docs/AGENT_RULES.md` und den aktuellen Gate-Prompt lesen.
 2. Bestehenden Code und CI-Status prüfen.
 3. Nur den freigegebenen Scope implementieren.
 4. Tests und Abnahmekriterien ausführen.
@@ -1129,7 +1131,7 @@ Jeder Gate-Prompt enthält:
 - Regeln für Git und GitHub Actions,
 - Abschlussformat mit Ergebnissen und offenen Punkten.
 
-Gate-Prompts werden außerhalb des Repositorys geführt; im Repository gelten dieses Pflichtenheft und die ADRs.
+Gate-Prompts werden außerhalb des Repositorys geführt; im Repository gelten dieses Pflichtenheft, die ADRs und die Regeldatei `docs/AGENT_RULES.md`. Ein Gate-Prompt beginnt mit dem Hinweis, diese Datei zuerst zu lesen, und wiederholt die dauerhaften Regeln nicht; er enthält aber jeden gatespezifischen Wert, den der Agent braucht, weil private Dokumente für ihn nicht sichtbar sind. Die Aktualisierung der Statuszeile des Gates in `docs/ROADMAP.md` gehört zur Definition of Done jedes Gates und jeder Aufgabe.
 
 ## 15. Risiken und Gegenmaßnahmen
 
@@ -1222,6 +1224,7 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | Datei | Zweck |
 |---|---|
 | `docs/PFLICHTENHEFT.md` | Verbindliche Produkt- und Systemanforderungen. |
+| `docs/AGENT_RULES.md` | Dauerhafte Regeln für den Implementierungsagenten (D-C79). |
 | `docs/adr/` | Architekturentscheidungen und ihre Begründung. |
 | `README.md` | Einstieg, Build und Projektstatus. |
 
@@ -1250,3 +1253,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.3.7 | 3. November 2026 | Kopfzeile, Abschnitte 0.2 (B-09), 0.3, 0.4, 2.1, 2.4, 9.1 und 14: Name des Entwicklungswerkzeugs durch "Implementierungsagent" ersetzt, Titel von Abschnitt 14 und Eintrag in der Inhaltsübersicht angepasst; Abschnitt 14.1: Der Implementierungsagent liest dieses Pflichtenheft und den aktuellen Gate-Prompt, der Verweis auf die lokale Regeldatei entfällt; Abschnitt 14.3: Verweis auf den ersten Gate-Prompt ersetzt durch den Satz, dass Gate-Prompts außerhalb des Repositorys geführt werden; Abschnitt 18.2: Zeilen für die lokale Regeldatei des Agenten und für das Verzeichnis der Gate-Prompts entfernt; Kopfzeile: Dokumentversion aktualisiert (D-C65). |
 | 0.4.0 | 6. November 2026 | Anforderungen des Entscheidungspakets R1 (D-C69 bis D-C76, ADR 0008, Ergänzung nach R1): Abschnitt 4.1 und 4.3 (LAN-Zugriff über HTTPS, Files lesend, optionaler Verlauf; Schreiben in Files, WLAN ändern, OS-Updates ausführen und Datenträgerverwaltung nicht im MVP); ORB-GEN-006 (Deutsch und Englisch vollständig, Sprache folgt dem Browser); ORB-DASH-006 und neu ORB-DASH-008 (optionaler Verlauf, Hintergrundmessung nur auf Einschalten); ORB-LOG-001 von MUSS auf SOLL, ORB-LOG-002 für jede Anzeige von Logs und Systemdateien; ORB-OSU-001 unter Bedingung, ORB-OSU-002 nach dem MVP; ORB-STO-007 und ORB-NFR-009 (Verlauf mit fester Obergrenze, Schreibhäufigkeit nach Medientyp); ORB-NET-001 (Standardroute und DNS) und ORB-NET-003 (WLAN nur anzeigen); ORB-ONB-003 und ORB-SEC-010 (Bindung außerhalb von Loopback nur durch Wahl beim Installieren), neu ORB-SEC-011 (nur HTTPS bei nicht-lokaler Bindung); ORB-UPD-001 (Update-Hinweis, in Übereinstimmung mit ADR 0010, A11.1); neuer Abschnitt 6.13 mit ORB-FIL-001 bis ORB-FIL-005; Abschnitt 7.2 (neue Navigation, erster Eintrag "Dashboard" statt "Home", auch in 1.5, 4.1, UC-02, ORB-DASH-001 und ORB-DASH-007); Abschnitt 8.2 (Einstellungen, Verlaufsschnappschuss, TLS-Zertifikat); Abschnitt 12.3 (AT-028 bis AT-030); Abschnitt 13.2 (Sicherung als dokumentierter Kopierweg); Abschnitt 14.2 (Reserve in G7, Installation in G9, Umsetzungsreihenfolge G10, G9, G11, Entwurfsstopps D-D10, H1 und F1); Abschnitt 16 (Punkte 12, 13 und 19 angepasst, neue Punkte 21 bis 23); Kopfzeile: Dokumentversion, Status (Gates G0 bis G5.1) und Stand. Die Wurzeln von Files, Intervalle und Schreibzahlen des Verlaufs, die WLAN- und DNS-Quelle sowie die Anzeige von Betriebssystem-Updates sind offen. Nichts davon ist auf einem Gerät verifiziert. |
 | 0.4.1 | 6. November 2026 | Abschnitt 6.4, ORB-OSU-001: Ergebnis des Geräte-Spikes S1 (Anzeige verfügbarer Updates nicht ohne Programmaufruf möglich, nicht im MVP-Umfang, kann nach G7 folgen; D-C78, ADR 0008, Ergänzung nach S1); Kopfzeile: Dokumentversion. Sonst unverändert. |
+| 0.4.2 | 7. November 2026 | Abschnitt 14.1 und 14.3 sowie 18.2: Die dauerhaften Regeln für den Implementierungsagenten stehen als `docs/AGENT_RULES.md` im Repository (D-C79, ändert D-C65 Teil 1); Gate-Prompts verweisen darauf und wiederholen die Regeln nicht; Statuszeile in `docs/ROADMAP.md` gehört zur Definition of Done. Kopfzeile: Dokumentversion und Stand. Sonst unverändert. |

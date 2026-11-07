@@ -151,7 +151,7 @@ Rules for editing workflows:
 
 ## Local-only information
 
-Device hostnames, usernames, endpoints and credentials belong in an untracked `*.local.md` file (git-ignored) or an untracked `.env`. `.env.example` documents variables the code reads; Gate G1 reads none.
+The standing rules for the implementation agent are tracked in [`AGENT_RULES.md`](AGENT_RULES.md) (D-C79); gate prompts, hand-over notes, package manifests and device notes stay outside the repository (D-C65). The entry file of the development tool is local and untracked, listed in `.git/info/exclude`, and only points to `AGENT_RULES.md`. Device hostnames, usernames, endpoints and credentials belong in an untracked `*.local.md` file (git-ignored) or an untracked `.env`. Never copy such values into a tracked file, a commit message or a pull request text. `.env.example` documents variables the code reads; Gate G1 reads none.
 
 ## The installer and its tests
 
