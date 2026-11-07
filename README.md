@@ -2,7 +2,7 @@
 
 Oarfish is a GUI-first management platform for ARM single-board computers and embedded Linux.
 
-The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.md). Architecture decisions live in [`docs/adr/`](docs/adr/), the gate sequence in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+The authoritative specification is [`docs/PFLICHTENHEFT.md`](docs/PFLICHTENHEFT.md). Architecture decisions live in [`docs/adr/`](docs/adr/), the gate sequence in [`docs/ROADMAP.md`](docs/ROADMAP.md). The standing rules for the implementation agent are in [`docs/AGENT_RULES.md`](docs/AGENT_RULES.md); only the files that configure the development tool and the files with machine-specific values (`*.local.md`) stay local and untracked.
 
 ## Status
 
@@ -62,7 +62,7 @@ Other targets: `make dev`, `make test`, `make lint`, `make build-arm64`, `make r
 | `backend/` | Go module: `cmd/oarfish` entry point, `internal/` packages |
 | `frontend/` | Svelte 5 + TypeScript + Vite (build time only) |
 | `install/` | `install.sh` (POSIX sh installer) and `oarfish.service` (systemd unit, shipped inside the bundle) |
-| `docs/` | Specification, ADRs, roadmap, architecture, install and development guides |
+| `docs/` | Specification, ADRs, rules for the implementation agent, roadmap, architecture, install and development guides |
 | `scripts/` | Release packaging, signing, verification, installer tests and smoke tests |
 | `.github/workflows/` | CI and release (hosted runners only; no deployment to devices) |
 | `Makefile` | Developer entry points |
