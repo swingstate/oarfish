@@ -204,12 +204,25 @@ func TestStageErrorCodes(t *testing.T) {
 	}
 }
 
+// A state file written by a helper that still carried its release version (the
+// helper of v0.1.0-alpha.7, ADR 0010 A13) is read, and the next write replaces
+// that value with helperID.
+func TestStateFromAReleaseVersionedHelper(t *testing.T) {
+	v := newTenv(t)
+	v.writeState(freshState("0.1.0-alpha.7"))
+	v.stageable("1.1.0")
+	wantOK(t, v.request(stageLine("1.1.0", "feedfacefeedface")))
+	if st, _ := v.readState(); st.HelperVersion != helperID {
+		t.Fatalf("helper_version %q, want %q", st.HelperVersion, helperID)
+	}
+}
+
 func TestStageCorrelationIdAndVersionInTheState(t *testing.T) {
 	v := newTenv(t)
 	v.stageable("1.1.0")
 	wantOK(t, v.request(stageLine("1.1.0", "feedfacefeedface")))
 	st, _ := v.readState()
-	if st.Txn.CorrelationID != "feedfacefeedface" || st.Txn.ID == "" || st.HelperVersion != "test-1" {
+	if st.Txn.CorrelationID != "feedfacefeedface" || st.Txn.ID == "" || st.HelperVersion != helperID {
 		t.Fatalf("state %+v", st)
 	}
 	if got := v.status(); got.Phase != phaseStaged || got.StagedVersion != "1.1.0" {

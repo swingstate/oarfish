@@ -58,7 +58,7 @@ func testOptions(root string) options {
 		lookupUID:       func(string) (uint32, error) { return testUID, nil },
 		peerUID:         func(net.Conn) (uint32, error) { return testUID, nil },
 		root:            root,
-		helperVersion:   "test-1",
+		helperVersion:   helperID,
 		idle:            time.Minute,
 		requestDeadline: 2 * time.Second,
 		maxConnections:  maxConnections,

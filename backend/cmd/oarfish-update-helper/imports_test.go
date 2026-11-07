@@ -13,11 +13,13 @@ const modulePath = "github.com/swingstate/oarfish/backend/"
 
 // The helper is a root process: nothing that is not needed may be compiled
 // into it (ADR 0010 U1). Besides the standard library it may use this
-// repository's version, trustkey and relverify packages and nothing else; in
+// repository's trustkey and relverify packages and nothing else; in
 // particular no net/http, no os/exec, no third-party module (no golang.org/x
 // package: the copies vendored inside the standard library are named
 // vendor/golang.org/x and are part of it) and nothing of the service's web,
-// auth, audit, clock, securefile or server packages. os/exec is allowed for the
+// auth, audit, clock, securefile or server packages, and not the version
+// package: the release version must not reach the helper's bytes (D-C80, ADR
+// 0010 A13). os/exec is allowed for the
 // one function that runs systemctl (G6.6); TestOnlySystemctlExecutes pins it to
 // systemctl.go.
 func TestImports(t *testing.T) {
@@ -25,9 +27,8 @@ func TestImports(t *testing.T) {
 		modulePath + "cmd/oarfish-update-helper": true,
 		modulePath + "internal/relverify":        true,
 		modulePath + "internal/trustkey":         true,
-		modulePath + "internal/version":          true,
 	}
-	forbidden := []string{"net/http", "plugin"}
+	forbidden := []string{"net/http", "plugin", modulePath + "internal/version"}
 	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
 	if _, err := os.Stat(goTool); err != nil {
 		goTool = "go"

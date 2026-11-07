@@ -10,8 +10,8 @@
 #            timestamp of that commit, which makes the output reproducible.
 #
 # Bundle shape (ADR 0010, G6.3b). The default is the COMPONENTS shape: the bundle
-# carries the update helper (built here with scripts/build-helper.sh, same VERSION
-# and COMMIT) and the four unit files from install/ (the three helper units and the
+# carries the update helper (built here with scripts/build-helper.sh; its bytes do
+# not depend on VERSION or COMMIT, D-C80) and the four unit files from install/ (the three helper units and the
 # recover unit), components protocol 1, and the components key id derived from
 # release/oarfish-release.pub (the 16 hex digits of its first line, lower case; the
 # method of scripts/check-helper-key.sh). After building, `bundlegen check
@@ -93,7 +93,7 @@ if [ "$SHAPE" = components ] && [ "$EXPLICIT" = 0 ]; then
   EXPECT_KEY_ID="$(sed -n 1p "$ROOT/release/oarfish-release.pub" | sed -n 's/^untrusted comment: minisign public key \([0-9A-F]\{16\}\)$/\1/p' | tr 'A-F' 'a-f')"
   [ -n "$EXPECT_KEY_ID" ] || die "cannot read the key id from release/oarfish-release.pub"
   mkdir -p "$WORK/components"
-  VERSION="$VERSION" COMMIT="$COMMIT" "$ROOT/scripts/build-helper.sh" -o "$WORK/components/oarfish-update-helper"
+  "$ROOT/scripts/build-helper.sh" -o "$WORK/components/oarfish-update-helper"
   for u in oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service; do
     cp "$ROOT/install/$u" "$WORK/components/$u"
   done

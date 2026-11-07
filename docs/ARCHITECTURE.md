@@ -111,7 +111,7 @@ ADR 0010 splits the update into an unprivileged service and a small, separate, p
 **Requests in the stub (G6.3a).** Only `status` was answered; since G6.5 `stage` and `discard` are as well, `activate` and `ack` are `bad_request` until G6.6, and so is an unknown `op`. The status request is `{"v":1,"op":"status"}`. The stub's answer was one line (the members added in G6.5 are in the next section):
 
 ```json
-{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"0.0.0-dev.abc1234","key_id":"11f1c52777090bfc","installed_version":"0.1.0-alpha.8","phase":"idle","free_bytes":1234567890}
+{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"protocol-1","key_id":"11f1c52777090bfc","installed_version":"0.1.0-alpha.8","phase":"idle","free_bytes":1234567890}
 ```
 
 | Member | Meaning |
@@ -119,7 +119,7 @@ ADR 0010 splits the update into an unprivileged service and a small, separate, p
 | `v` | protocol version of this answer |
 | `ok` | `true`; an error answer is `{"v":1,"ok":false,"error":"<code>","message":"<fixed text>"}` |
 | `protocol_min`, `protocol_max` | the protocol range the helper implements |
-| `helper_version` | the version injected at build time (`dev` for an unstamped build) |
+| `helper_version` | the constant `protocol-1`, named after the highest protocol the helper implements; not a release version, because the helper's bytes must not depend on the release (D-C80, ADR 0010 A13). The stub of G6.3a reported the version injected at build time, and the helper of `v0.1.0-alpha.7` reports `0.1.0-alpha.7` |
 | `key_id` | the id of the embedded release key, 16 lowercase hexadecimal digits |
 | `installed_version` | the version in the name of the target of `/opt/oarfish/current`, which must be `releases/<version>` with a version that matches the pattern of U2; `""` if the link is missing or anything else |
 | `phase` | the transaction phase; always `"idle"` in the stub |
@@ -135,7 +135,7 @@ The names follow `state.json` and the manifest of ADR 0010. Members may only be 
 
 **The units** (`install/oarfish-update-helper.socket`, `.service` and `oarfish-update-recover.service`) have the texts of ADR 0010 U10 as amended by A1, plus a `[Unit]` description, `Documentation=` and an `[Install]` section for the socket (`WantedBy=sockets.target`) and the recover unit (`WantedBy=multi-user.target`), which the ADR text implies without printing. The helper has no `Requires=`, `BindsTo=`, `PartOf=` or ordering against `oarfish.service`, and no `Environment=`. The recover unit alone is ordered `Before=` the socket and `oarfish.service`. `scripts/check-units.sh` pins the required lines and forbids the rest; CI also runs `systemd-analyze verify` against a temporary root and prints `systemd-analyze security --offline` for information, with no threshold.
 
-**Build.** `scripts/build-helper.sh` builds the helper for linux/arm64 with the flags of the main binary and can check that two builds from an empty cache are identical. CI reports its size next to the bundle sizes; it has no budget of its own; since G6.3b its bytes count in the bundle budget.
+**Build.** `scripts/build-helper.sh` builds the helper for linux/arm64 with the flags of the main binary except its `-X` flags, so the helper's bytes do not depend on the release version or the commit (D-C80, ADR 0010 A13; `scripts/check-helper-independent.sh`), and can check that two builds from an empty cache are identical. CI reports its size next to the bundle sizes; it has no budget of its own; since G6.3b its bytes count in the bundle budget.
 
 ## The update helper core (Gate G6, step G6.5)
 

@@ -116,7 +116,8 @@ test-helper: ## Update helper and its key package: vet (also linux/arm64, linux/
 	cd backend && go test -race -count=1 ./cmd/oarfish-update-helper ./internal/trustkey
 	cd backend && go test -count=1 -tags faulthooks -run '^TestFaultHooks' ./cmd/oarfish-update-helper
 
-check-helper: test-helper build-helper ## Everything CI checks for the update helper (tests, key copy, no fault hooks in the release binary, unit texts and their mutation test, reproducible build)
+check-helper: test-helper build-helper ## Everything CI checks for the update helper (tests, key copy, no fault hooks in the release binary, unit texts and their mutation test, reproducible build, bytes independent of the release version)
+	scripts/check-helper-independent.sh
 	scripts/check-helper-key.sh
 	scripts/check-helper-hooks.sh bin/oarfish-update-helper-linux-arm64
 	scripts/check-units.sh

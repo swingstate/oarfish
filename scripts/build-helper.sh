@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # Build the update helper (ADR 0010, U1) for linux/arm64 with the flags of the
-# main binary in scripts/release-bundle.sh. The helper is NOT part of any bundle
-# in G6.3a; this script only builds it, for tests, the smoke test and the size
-# report.
+# main binary in scripts/release-bundle.sh, which puts it into the default
+# (components) bundle.
+#
+# The helper's bytes depend only on its code, the packages it links and the
+# toolchain, never on the release version or the commit (D-C80, ADR 0010 A13):
+# no -X flag is passed, and VERSION and COMMIT are not read. A release whose
+# helper code is unchanged therefore carries the same helper as the release
+# before it, and stage does not answer installer_required for it (U5).
+# scripts/check-helper-independent.sh checks this.
 #
 # Usage: scripts/build-helper.sh [-o FILE] [--twice]
 #   -o FILE   output file (default: bin/oarfish-update-helper-linux-arm64)
 #   --twice   build a second time with an empty Go cache into a temporary
 #             file and fail unless both files are identical
-#   VERSION   default 0.0.0-dev.<short commit>, ".dirty" when tracked files changed
-#   COMMIT    default HEAD
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
@@ -25,19 +29,13 @@ while [ $# -gt 0 ]; do
 done
 
 cd "$ROOT"
-COMMIT="${COMMIT:-$(git rev-parse HEAD)}"
-if [ -z "${VERSION:-}" ]; then
-  VERSION="0.0.0-dev.$(git rev-parse --short=7 "$COMMIT")"
-  [ -z "$(git status --porcelain --untracked-files=no)" ] || VERSION="$VERSION.dirty"
-fi
 mkdir -p "$(dirname "$OUT")"
 OUT="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
 
-# The same flags as the main binary: -trimpath and -buildvcs=false keep checkout
-# paths and VCS state out, -mod=readonly forbids silent go.mod changes.
-LDFLAGS="-s -w \
- -X github.com/swingstate/oarfish/backend/internal/version.Version=$VERSION \
- -X github.com/swingstate/oarfish/backend/internal/version.Commit=$COMMIT"
+# The flags of the main binary without its -X flags: -trimpath and
+# -buildvcs=false keep checkout paths and VCS state out, -mod=readonly forbids
+# silent go.mod changes.
+LDFLAGS="-s -w"
 build() { # output [GOCACHE]
   (
     cd backend
@@ -47,7 +45,7 @@ build() { # output [GOCACHE]
   )
 }
 
-echo "==> oarfish-update-helper $VERSION ($COMMIT)"
+echo "==> oarfish-update-helper (independent of the release version)"
 build "$OUT"
 if [ "$TWICE" -eq 1 ]; then
   TMP="$(mktemp -d)"

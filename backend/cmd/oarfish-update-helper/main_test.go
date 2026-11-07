@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"testing"
 )
 
@@ -62,6 +63,20 @@ func TestProductionOptions(t *testing.T) {
 	}
 	if serviceUser != "oarfish" {
 		t.Fatalf("service user %q", serviceUser)
+	}
+}
+
+// helper_version is a constant of the helper, named after the highest protocol
+// it implements, and never a release version (D-C80, ADR 0010 A13).
+func TestHelperID(t *testing.T) {
+	if helperID != "protocol-"+strconv.Itoa(protocolMax) {
+		t.Fatalf("helperID %q does not name protocol %d", helperID, protocolMax)
+	}
+	if !okHelperV(helperID) || validVersion(helperID) {
+		t.Fatalf("helperID %q: valid helper_version %v, release version %v", helperID, okHelperV(helperID), validVersion(helperID))
+	}
+	if o := productionOptions(); o.helperVersion != helperID {
+		t.Fatalf("production helper version %q, want %q", o.helperVersion, helperID)
 	}
 }
 

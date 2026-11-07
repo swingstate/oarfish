@@ -10,7 +10,7 @@ import (
 
 func fullState() *state {
 	return &state{
-		HelperVersion: "0.2.0", Previous: "0.9.0",
+		HelperVersion: helperID, Previous: "0.9.0",
 		Txn: txn{ID: "00000000000000aa", Phase: "verifying", To: "1.1.0", From: "1.0.0",
 			FromBinarySHA256: strings.Repeat("ab", 32), CorrelationID: testCID, StagedAtUptimeS: 1234,
 			ComponentsFrom: "0.9.0", ComponentsTo: "1.0.0", KnownGoodSHA256: strings.Repeat("cd", 32), SocketRestartPending: true},
