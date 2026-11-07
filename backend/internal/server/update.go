@@ -77,12 +77,22 @@ func updateError(w http.ResponseWriter, r *http.Request, e *updater.Error) {
 	writeError(w, r, updateStatus(e.Code), ae)
 }
 
-// decodeOptionalBody is decodeBody, but an empty body is the empty object.
+// decodeOptionalBody is decodeUpdateBody, but an empty body is the empty object.
 func decodeOptionalBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeUpdate(w, r, v, true)
+}
+
+// decodeUpdateBody is decodeBody with the texts of the update routes: a body
+// that is too large is not about a user name and a password here.
+func decodeUpdateBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeUpdate(w, r, v, false)
+}
+
+func decodeUpdate(w http.ResponseWriter, r *http.Request, v any, optional bool) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAuthBody))
 	dec.DisallowUnknownFields()
 	err := dec.Decode(v)
-	if errors.Is(err, io.EOF) {
+	if optional && errors.Is(err, io.EOF) {
 		return true
 	}
 	if err == nil && dec.More() {
@@ -145,7 +155,7 @@ func (a *updateAPI) apply(w http.ResponseWriter, r *http.Request, s *auth.Sessio
 		CurrentPassword     string `json:"current_password"`
 		ComponentsConfirmed bool   `json:"components_confirmed"`
 	}
-	if !decodeBody(w, r, &body) {
+	if !decodeUpdateBody(w, r, &body) {
 		return
 	}
 	if !validUpdateVersion(body.Version) {
@@ -197,7 +207,7 @@ func (a *updateAPI) discard(w http.ResponseWriter, r *http.Request, _ *auth.Sess
 	var body struct {
 		Version string `json:"version"`
 	}
-	if !decodeBody(w, r, &body) {
+	if !decodeUpdateBody(w, r, &body) {
 		return
 	}
 	if !validUpdateVersion(body.Version) {
