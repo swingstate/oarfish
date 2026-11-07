@@ -209,7 +209,9 @@ jobs:
       - name: Install frontend dependencies (lockfile)
         working-directory: frontend
         run: npm ci
-      - name: Build the bundle twice from scratch and compare SHA-256
+      # Also: the helper and the five compared component files do not depend on
+      # the release version (D-C80, ADR 0010 A13).
+      - name: Build the bundle twice from scratch and compare SHA-256; helper and units independent of the version
         run: scripts/check-reproducible.sh --rebuild-frontend
 
   signing:

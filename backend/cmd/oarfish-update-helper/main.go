@@ -8,10 +8,10 @@
 // The helper has exactly two subcommands. `serve` runs only when started by
 // socket activation (U1, U2); `recover` is the boot-time recovery (U7).
 //
-// It is standard library plus this repository's relverify, trustkey and version
-// packages. It must not import net/http, os/exec, a third-party module or the
-// service's web, auth, audit, clock, securefile or server packages; TestImports
-// checks this against `go list -deps`.
+// It is standard library plus this repository's relverify and trustkey
+// packages. It must not import net/http, os/exec, a third-party module, the
+// version package or the service's web, auth, audit, clock, securefile or
+// server packages; TestImports checks this against `go list -deps`.
 package main
 
 import (
@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/swingstate/oarfish/backend/internal/trustkey"
-	"github.com/swingstate/oarfish/backend/internal/version"
 )
 
 const (
@@ -34,6 +33,13 @@ const (
 	serviceUser = "oarfish"
 	// releaseRoot is the tree the helper manages (U5).
 	releaseRoot = "/opt/oarfish"
+
+	// helperID is helper_version in status and state.json. It names the
+	// highest protocol the helper implements, not a release: the helper's bytes
+	// must not depend on the release version or the commit, or every release
+	// would differ in oarfish-update-helper and need the installer (D-C80, ADR
+	// 0010 A13). TestHelperID keeps it equal to protocolMax.
+	helperID = "protocol-1"
 
 	// softMemoryLimit is the Go runtime's soft limit. The unit's MemoryMax=64M
 	// is not enforced where the memory controller is absent (A4), so the
@@ -85,7 +91,7 @@ func productionOptions() options {
 		cacheDir:        cacheDirPath,
 		arch:            runtime.GOARCH,
 		journal:         os.Stderr,
-		helperVersion:   version.Version,
+		helperVersion:   helperID,
 		idle:            idleExit,
 		requestDeadline: requestDeadline,
 		maxConnections:  maxConnections,

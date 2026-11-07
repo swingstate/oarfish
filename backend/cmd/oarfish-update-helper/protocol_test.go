@@ -195,7 +195,7 @@ func TestStatusAnswer(t *testing.T) {
 	}
 	body := v.request([]byte(okStatus))
 	// Exactly these members, in this order.
-	want := `{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"test-1",` +
+	want := `{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"protocol-1",` +
 		`"key_id":"11f1c52777090bfc","installed_version":"1.0.0","phase":"idle","staged_version":"",` +
 		`"previous_version":"","last_result":null,"needs_attention":false,"free_bytes":`
 	if got := string(body); !strings.HasPrefix(got, want) ||

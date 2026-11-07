@@ -210,7 +210,7 @@ func TestSocketActivatedServe(t *testing.T) {
 	buf := make([]byte, 4096)
 	n, _ := conn.Read(buf)
 	r := parseReply(t, buf[:n])
-	if !r.OK || r.KeyID != testKeyID || r.InstalledVersion != "0.1.0-alpha.8" || r.Phase != "idle" || r.HelperVersion != "dev" {
+	if !r.OK || r.KeyID != testKeyID || r.InstalledVersion != "0.1.0-alpha.8" || r.Phase != "idle" || r.HelperVersion != helperID {
 		t.Fatalf("status answer %q", buf[:n])
 	}
 	conn.Close()
