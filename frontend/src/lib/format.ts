@@ -40,6 +40,14 @@ export function formatLoad(value: number): string {
   return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 }
 
+const dateTime = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/** Local date and time of an ISO timestamp, for example "07.11.2026, 14:05", or null when it is not one. */
+export function formatDateTime(iso: string | null | undefined): string | null {
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isNaN(t) ? null : dateTime.format(new Date(t));
+}
+
 /** Local time of an ISO timestamp, or null when it is not one. */
 export function formatClock(iso: string): string | null {
   const t = Date.parse(iso);

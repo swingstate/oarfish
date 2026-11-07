@@ -214,6 +214,23 @@ The transaction, the health check, the rollback and the recovery ([`ARCHITECTURE
 - Cross-building the Linux tests on a Mac for a VM: `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go test -c -o ../bin/linux-tests/helper.test ./cmd/oarfish-update-helper`, then run it by its absolute path (the activation and recovery tests start the binary through `os.Args[0]`).
 - A change to a privileged function should be tried against the tests by hand first (the 60 deliberate faults of G6.6 were reported at the review and are not kept in the repository).
 
+## Update page and its scenario mode (Gate G6, step G6.8)
+
+The Update page ([`UI.md`](UI.md#update-page-step-g68)) is `frontend/src/pages/Update.svelte` with its client `lib/update.ts`, the code sentences `lib/updateErrors.ts` and the fixtures `lib/update.fixtures.ts`. `npm test` in `frontend/` runs its tests (`pages/Update.test.ts`, `lib/update.test.ts`); they use fake timers for the polling, the 60-second lock and the 3-minute restart limit, and a fake server with plain response objects. **Nothing of the page has run against a real update service or on a device** (G6.9).
+
+**Scenario mode.** To see every state of the page without a device, start the Vite development server and add `?mock=<scenario>` before the `#`:
+
+```bash
+cd frontend && npm run dev     # or make dev
+# then open http://localhost:5173/?mock=available#/update
+```
+
+With `?mock=…` a fake fetch layer answers `/api/v1/session` (signed in as the synthetic user `admin-test`, with a CSRF token) and the four update routes from the fixtures; every other request goes on unchanged (the Dashboard and `/healthz` still need the backend). It exists only in the development server: `main.ts` imports `src/dev/updateMock.ts` in a branch that is `false` in a production build, and `vite.config.ts` fails `npm run build` if the marker string `oarfish-dev-mock` appears in any output file. An unknown scenario prints the list in the browser console and changes nothing. The proxy problem of `make dev` is not touched by this mode.
+
+Scenarios: `no-helper`, `never`, `up-to-date`, `available`, `available-stable`, `available-unverified`, `check-running`, `check-running-then-done`, `check-failed`, `check-rate-limited`, `throttled`, `apply-downloading`, `apply-activating`, `apply-flow`, `awaiting-confirmation`, `installer-required`, `apply-failed`, `result-success`, `result-rolled-back`, `result-components-rolled-back`, `result-rollback-failed`, `result-aborted`, `cooldown`, `needs-attention`, `staged`, `loading`, `load-error`, `restart-timeout`.
+
+Some of them move on their own, two seconds per read: `check-running-then-done` ends in an available version; `apply-flow` (and `apply-downloading`, `apply-activating`) runs through the steps, then three reads without an answer (the restart), then a 401, so the login page appears; sign in with any password and the page shows the successful result; `restart-timeout` stays without an answer and shows the 3-minute failure. In the confirmation, the password `falsch` (or `wrong`) answers `wrong_password`, `viele` answers `rate_limited` with 8 seconds and `busy` answers `busy`; any other password starts the update. "Verwerfen" in `staged` and `awaiting-confirmation` removes the staged release.
+
 ## Known limitations at Gate G3
 
 (Detection limits are in [`DETECTION.md`](DETECTION.md), "Verification status".)

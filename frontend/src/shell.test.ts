@@ -57,11 +57,12 @@ describe('navigation groups (specification 7.2)', () => {
     expect(lists(screen.getByRole('navigation', { name: t.navLabel }))).toHaveLength(1);
   });
 
-  it('has an entry only for a page that exists: today Dashboard first, then Gerät, in no group', () => {
+  it('has an entry only for a page that exists: Dashboard and Gerät in no group, then Update as the first entry of System', () => {
     const nav = routes.filter((r) => r.nav !== false);
     expect(nav.map((r) => [r.id, r.path, r.group])).toEqual([
       ['dashboard', '#/', undefined],
       ['device', '#/device', undefined],
+      ['update', '#/update', 'system'],
     ]);
   });
 });
@@ -183,7 +184,7 @@ describe('version line', () => {
   });
 });
 
-describe('what the frontend must not call yet (ADR 0010, A11.1, D-C68)', () => {
+describe('what the frontend must not call yet (ADR 0010, A11.1, D-C68; G6.8)', () => {
   function sources(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
@@ -193,10 +194,21 @@ describe('what the frontend must not call yet (ADR 0010, A11.1, D-C68)', () => {
     return out;
   }
 
-  it('does not reference the update routes anywhere in the frontend sources', () => {
+  // Since G6.8 the update page uses the four update routes. The notice route
+  // stays unused until a user-visible off switch exists.
+  it('never names the update notice route in the frontend sources, not even in parts', () => {
     const root = join(import.meta.dirname, '..');
-    for (const file of [...sources(import.meta.dirname), join(root, 'index.html')]) {
-      expect(readFileSync(file, 'utf8'), file).not.toMatch(/api\/v1\/update|update\/notice/);
+    const files = [...sources(import.meta.dirname), join(root, 'index.html')];
+    let updateClients = 0;
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8');
+      expect(text, file).not.toMatch(/update\/notice|updateNotice|\/notice\b/);
+      if (text.includes('/api/v1/update')) {
+        updateClients++;
+        expect(text, file).not.toMatch(/['"`]notice['"`]/);
+      }
     }
+    // The client and the development scenario mode name the update routes.
+    expect(updateClients).toBeGreaterThan(0);
   });
 });

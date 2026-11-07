@@ -4,10 +4,13 @@ import { icons } from './lib/icons.fake';
 import { routeFromHash, routes, type Route } from './routes';
 
 describe('navigation list', () => {
-  it('lists Dashboard first and then Gerät in the navigation, and the account page outside it', () => {
+  it('lists Dashboard first, then Gerät, then Update in the group System, and the account page outside it', () => {
     const nav = routes.filter((r) => r.nav !== false);
-    expect(nav.map((r) => r.id)).toEqual(['dashboard', 'device']);
-    expect(nav.map((r) => de[r.labelKey])).toEqual(['Dashboard', 'Gerät']);
+    expect(nav.map((r) => r.id)).toEqual(['dashboard', 'device', 'update']);
+    expect(nav.map((r) => de[r.labelKey])).toEqual(['Dashboard', 'Gerät', 'Update']);
+    expect(nav.map((r) => en[r.labelKey])).toEqual(['Dashboard', 'Device', 'Update']);
+    expect(nav.map((r) => r.group)).toEqual([undefined, undefined, 'system']);
+    expect(routeFromHash('#/update').id).toBe('update');
     expect(routes.filter((r) => r.nav === false).map((r) => r.id)).toEqual(['account']);
     expect(routeFromHash('#/account').id).toBe('account');
   });
