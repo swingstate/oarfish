@@ -142,6 +142,32 @@ func TestUpdateRoutesNeedASessionAndTheCSRFLayers(t *testing.T) {
 	}
 }
 
+// A body over 1 KiB on apply and discard is request_too_large with the
+// recovery of the update routes, not the one of login and setup (G6.8, C2).
+func TestApplyAndDiscardOversizeBodyRecovery(t *testing.T) {
+	f, fake, s := updateFixture(t, clock.System())
+	for _, p := range []string{"/api/v1/update/apply", "/api/v1/update/discard", "/api/v1/update/check"} {
+		rec := f.do(req{method: http.MethodPost, path: p, session: &s, body: `{"version":"` + strings.Repeat("1", 2000) + `"}`})
+		expect(t, rec, http.StatusRequestEntityTooLarge, "request_too_large")
+		var body struct {
+			Error apiError `json:"error"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		if body.Error.Recovery != "Send a smaller request." {
+			t.Errorf("%s: recovery %q", p, body.Error.Recovery)
+		}
+	}
+	// The access routes keep their own text.
+	rec := f.do(req{method: http.MethodPost, path: "/api/v1/account/password", session: &s, body: passwordBody(strings.Repeat("x", 2000), "y")})
+	expect(t, rec, http.StatusRequestEntityTooLarge, "request_too_large")
+	if !strings.Contains(rec.Body.String(), "Use a shorter user name and password.") {
+		t.Errorf("password change: %s", rec.Body.String())
+	}
+	if fake.list() != "" {
+		t.Fatalf("calls: %s", fake.list())
+	}
+}
+
 // The routes take no path, URL or command: a version that is not a version is
 // refused before anything else happens.
 func TestApplyAndDiscardTakeOnlyAVersion(t *testing.T) {
