@@ -125,7 +125,12 @@ export type ActionResult =
   | { ok: true; session: SessionInfo | null }
   | { ok: false; code: string; retryAfter: number | null };
 
-async function send(method: 'POST' | 'DELETE', url: string, body: unknown, fetchFn: typeof fetch): Promise<ActionResult> {
+/** The answer of a state-changing request: the JSON body (null without one), or the typed error code. */
+export type SendResult =
+  | { ok: true; status: number; body: unknown }
+  | { ok: false; code: string; retryAfter: number | null };
+
+async function request(method: 'POST' | 'DELETE', url: string, body: unknown, fetchFn: typeof fetch): Promise<SendResult> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (csrf !== null) headers['X-Oarfish-CSRF'] = csrf;
   let res: Response;
@@ -150,11 +155,25 @@ async function send(method: 'POST' | 'DELETE', url: string, body: unknown, fetch
     return { ok: false, code: err.code || 'unknown', retryAfter: err.retryAfter };
   }
   try {
-    const answer: unknown = await res.json();
-    return { ok: true, session: isSessionInfo(answer) ? adopt(answer) : null };
+    return { ok: true, status: res.status, body: (await res.json()) as unknown };
   } catch {
-    return { ok: true, session: null };
+    return { ok: true, status: res.status, body: null };
   }
+}
+
+/**
+ * A state-changing JSON request to another API route (the update routes), with
+ * the CSRF token of this module and the same session-loss handling as login and
+ * password change. Never throws.
+ */
+export function postJSON(url: string, body: unknown, fetchFn: typeof fetch = fetch): Promise<SendResult> {
+  return request('POST', url, body, fetchFn);
+}
+
+async function send(method: 'POST' | 'DELETE', url: string, body: unknown, fetchFn: typeof fetch): Promise<ActionResult> {
+  const result = await request(method, url, body, fetchFn);
+  if (!result.ok) return result;
+  return { ok: true, session: isSessionInfo(result.body) ? adopt(result.body) : null };
 }
 
 export function login(username: string, password: string, fetchFn: typeof fetch = fetch): Promise<ActionResult> {
