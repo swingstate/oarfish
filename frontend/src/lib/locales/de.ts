@@ -254,7 +254,7 @@ export const deUi = {
   'updCheckState.ok': 'Erfolgreich',
   'updCheckState.error': 'Fehlgeschlagen',
   updCheckedAt: 'Zuletzt geprüft',
-  updNextCheckAt: 'Nächste automatische Prüfung frühestens',
+  updNextCheckAt: 'Nächste Prüfung frühestens',
   updNever: 'Noch nie',
   updCheckNote: 'Oarfish fragt GitHub nur, wenn Sie diese Seite öffnen (höchstens einmal pro Stunde) oder auf „Jetzt prüfen“ klicken.',
   updCheckNow: 'Jetzt prüfen',

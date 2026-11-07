@@ -556,7 +556,7 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `updCheckState.ok` | Erfolgreich | Successful |
 | `updCheckState.error` | Fehlgeschlagen | Failed |
 | `updCheckedAt` | Zuletzt geprüft | Last checked |
-| `updNextCheckAt` | Nächste automatische Prüfung frühestens | Next automatic check at the earliest |
+| `updNextCheckAt` | Nächste Prüfung frühestens | Next check no earlier than |
 | `updNever` | Noch nie | Never |
 | `updCheckNote` | Oarfish fragt GitHub nur, wenn Sie diese Seite öffnen (höchstens einmal pro Stunde) oder auf „Jetzt prüfen“ klicken. | Oarfish asks GitHub only when you open this page (at most once an hour) or select “Check now”. |
 | `updCheckNow` | Jetzt prüfen | Check now |
@@ -824,10 +824,10 @@ Initial frontend, `gzip -9` per file (the budget in ORB-NFR-006 is 750,000 bytes
 
 | | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task | After task U1 | After step G6.8 |
 |---|---|---|---|---|---|---|
-| `index.html` | 263 | 265 | 266 | 263 | 261 | 265 |
+| `index.html` | 263 | 265 | 266 | 263 | 261 | 267 |
 | CSS | 1,806 | 4,522 | 5,003 | 5,013 | 5,144 | 5,405 |
-| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,632 | 56,274 |
-| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **50,037** | **61,944** |
+| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,632 | 56,273 |
+| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **50,037** | **61,945** |
 
 The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way). Task U1 (with the colour baseline and the mark) adds 1,478 bytes (language choice, the English texts in the bundle, the grouped navigation, the footer); measured with `gzip -9 -n` per file on a developer Mac, no dependency added. Step G6.8 adds 11,907 bytes (the Update page, its client and 139 texts in each language); `main` before it was rebuilt and measured the same way (50,037). The development scenario mode is not in the build: `vite.config.ts` fails the build if its marker string appears in any output file.
 

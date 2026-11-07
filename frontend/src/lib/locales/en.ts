@@ -242,7 +242,7 @@ export const enUi: { [K in keyof typeof deUi]: string } = {
   'updCheckState.ok': 'Successful',
   'updCheckState.error': 'Failed',
   updCheckedAt: 'Last checked',
-  updNextCheckAt: 'Next automatic check at the earliest',
+  updNextCheckAt: 'Next check no earlier than',
   updNever: 'Never',
   updCheckNote: 'Oarfish asks GitHub only when you open this page (at most once an hour) or select “Check now”.',
   updCheckNow: 'Check now',
