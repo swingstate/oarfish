@@ -212,9 +212,28 @@ The transaction, the health check, the rollback and the recovery ([`ARCHITECTURE
 - `crashsweep_test.go` runs a scenario once to count the numbered calls and then, for every k, once with "error at k" and once with "stop at k". After each run it checks the invariant of U7 on the disk (`current` names a complete release with the bytes of that version; no directory under a version name is incomplete; `state.json` parses), then runs the next start (`recover` after "stop", the start-up recovery of `serve` after "error") and checks it again: a clean tree, `current` on the new version only after a committed update, and that a second recovery changes nothing. Scenarios: activate with success, activate with a rollback, `recover` from `verifying`, `switching` and `rolling_back`, the live recovery, pruning, and a staged release at boot. `recover_test.go` has one test per row of the U7 table.
 - `TestLinuxRecoverSubcommandAsAProcess` and its sibling re-execute the test binary (`os.Args[0]`) and run the real `recover` subcommand with real `flock`, links and renames; they exist only in `*_linux_test.go`, so the CI log (`go test -v`) names them.
 - Fuzz: `FuzzDecodeActivate` and `FuzzDecodeAck` (and `FuzzDecodeRequest`, which now covers all five ops): `go test -run '^$' -fuzz '^FuzzDecodeActivate$' -fuzztime 60s ./cmd/oarfish-update-helper`. The CI fuzz step still lists the old names.
-- Fault hooks: `go test -tags faulthooks -run '^TestFaultHooks' ./cmd/oarfish-update-helper` (part of `make test-helper`). The hooked helper is built with `go build -tags faulthooks`; its use on a device is G6.9 and needs a throwaway key (D-C56, class T).
+- Fault hooks: `go test -tags faulthooks -run '^TestFaultHooks' ./cmd/oarfish-update-helper` (part of `make test-helper`). See "The test build of the update helper" below.
 - Cross-building the Linux tests on a Mac for a VM: `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go test -c -o ../bin/linux-tests/helper.test ./cmd/oarfish-update-helper`, then run it by its absolute path (the activation and recovery tests start the binary through `os.Args[0]`).
 - A change to a privileged function should be tried against the tests by hand first (the 60 deliberate faults of G6.6 were reported at the review and are not kept in the repository).
+
+## The test build of the update helper (class T, Gate G6, step G6.9)
+
+The evidence class T of ADR 0010 U13 (D-C56) uses a test build of the helper on the reference device. It differs from the release build in two ways only: the embedded public key (`backend/internal/trustkey/oarfish-release.pub` replaced by a throwaway key, in a copy of the tree, never in the repository) and the build tag `faulthooks`:
+
+```bash
+cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -tags faulthooks -ldflags "-s -w" -o ../bin/test-helper ./cmd/oarfish-update-helper
+```
+
+With the tag, `faults_on.go` numbers every mutating file system call (write, `fsync`, directory sync, link, rename, removal, mkdir, chmod) and every `systemctl` call of the process, counted from its start. Two environment variables select a fault; without `OARFISH_FAULT_AT` nothing happens:
+
+| Variable | Meaning |
+|---|---|
+| `OARFISH_FAULT_AT` | the number of the call (from 1) |
+| `OARFISH_FAULT_MODE` | `error`: the call fails and does nothing, every other call runs (also any unknown value). `stop`: the process kills itself with `SIGKILL` before the call, which is what a power loss looks like to the files. `hold`: the call never returns; one line on standard error (the journal) names the call (`fault hook: holding at call N (kind)`), the rest of the process keeps running, and power can be removed at a known point. A held helper keeps its transaction, so it does not exit on its idle timer; `RuntimeMaxSec=900` of the unit ends it after 15 minutes. |
+
+On the device the variables are given to the helper service by a runtime drop-in below `/run/systemd/system/oarfish-update-helper.service.d/`, which is gone after a reboot or a power loss. The device session reads the helper's journal line and `state.json` to confirm the phase that was hit before power is removed.
+
+**Why a release build must not contain the hooks.** An environment variable must never be able to make the production helper fail, stop or hang in the middle of a transaction, and the release helper's bytes are compared on every device (A13). `faults_off.go` (the default, no tag) turns every hook into a no-op that the compiler removes. `TestReleaseBuildHasNoFaultHooks` and `scripts/check-helper-hooks.sh` (part of `make check-helper` and CI) build the helper without and with the tag. They fail unless the release binary contains none of the hook strings (`OARFISH_FAULT_AT`, `OARFISH_FAULT_MODE`, `injected fault`) and the hooked binary contains all of them, so that the check itself can fail. Test releases for class T are signed with a throwaway key and never published; a test copy of `install.sh` (`scripts/make-test-installer.sh` plus the device session's own changes) installs them. Class T is never presented as evidence about the production key path.
 
 ## Update page and its scenario mode (Gate G6, step G6.8)
 
