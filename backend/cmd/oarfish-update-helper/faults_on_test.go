@@ -3,11 +3,15 @@
 package main
 
 import (
+	"bufio"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // Run with: go test -tags faulthooks -run TestFaultHooks ./cmd/oarfish-update-helper
@@ -63,4 +67,73 @@ func TestFaultHooksStopKillsTheProcess(t *testing.T) {
 	if ws := ee.Sys().(syscall.WaitStatus); !ws.Signaled() || ws.Signal() != syscall.SIGKILL {
 		t.Fatalf("child status %v", ws)
 	}
+}
+
+func TestFaultHooksHoldBlocksAtTheChosenCall(t *testing.T) {
+	if os.Getenv("OARFISH_TEST_FAULT_CHILD") == "1" {
+		if faultPoint("first") != nil {
+			os.Exit(3) // the call before the chosen one must pass
+		}
+		faultPoint("second")
+		os.Exit(0) // not reached
+	}
+	cmd := exec.Command(os.Args[0], "-test.run", "^TestFaultHooksHoldBlocksAtTheChosenCall$")
+	cmd.Dir = filepath.Dir(os.Args[0])
+	cmd.Env = append(os.Environ(), "OARFISH_TEST_FAULT_CHILD=1", "OARFISH_FAULT_AT=2", "OARFISH_FAULT_MODE=hold")
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	line := make(chan string, 1)
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			if strings.Contains(sc.Text(), "fault hook") {
+				line <- sc.Text()
+				break
+			}
+		}
+		io.Copy(io.Discard, stderr)
+	}()
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case l := <-line:
+		if want := "oarfish-update-helper: fault hook: holding at call 2 (second)"; l != want {
+			t.Errorf("hold line %q, want %q", l, want)
+		}
+	case err := <-done:
+		t.Fatalf("child ended before the hold: %v", err)
+	case <-time.After(30 * time.Second):
+		cmd.Process.Kill()
+		t.Fatal("no hold line within 30 s")
+	}
+	// The call does not return: the child is still there a while later.
+	select {
+	case err := <-done:
+		t.Fatalf("child ended during the hold: %v", err)
+	case <-time.After(1500 * time.Millisecond):
+	}
+	cmd.Process.Kill()
+	err = <-done
+	ee, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("child ended with %v", err)
+	}
+	if ws := ee.Sys().(syscall.WaitStatus); !ws.Signaled() || ws.Signal() != syscall.SIGKILL {
+		t.Fatalf("child status %v, want killed by the test", ws)
+	}
+}
+
+func TestFaultHooksUnknownModeIsError(t *testing.T) {
+	faultCount.Store(0)
+	t.Setenv("OARFISH_FAULT_AT", "1")
+	t.Setenv("OARFISH_FAULT_MODE", "holdd")
+	if err := faultPoint("x"); err != errFaultInjected {
+		t.Fatalf("unknown mode: %v, want the injected error", err)
+	}
+	faultCount.Store(0)
 }

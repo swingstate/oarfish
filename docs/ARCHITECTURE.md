@@ -92,7 +92,7 @@ internal/securefile/ internal/clock/
 Not implemented, only reserved by the layout and by the project rules:
 
 - Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3) and implemented in G4 (below). Package, network and service adapters (`packages/`, `network/`, `services/` in spec 8.3) do not exist yet.
-- The only privileged code that is installed is the stub of the Update Helper, and only by an installer run of a release that carries it (G6.3b; run once on one device at the G6.3 owner stop with a test release, see [INSTALL.md](INSTALL.md#results-on-the-reference-device-g63); not Verified). Privilege Broker and Update Helper are separate components (spec 8.6): the Update Helper arrives in Gate G6 (its stub is in the repository since step G6.3a and in the release bundle since G6.3b, see "The update helper stub" below), the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
+- The only privileged code that is installed is the Update Helper, and only by an installer run of a release that carries it (a stub in G6.3b, run once on one device at the G6.3 owner stop with a test release, see [INSTALL.md](INSTALL.md#results-on-the-reference-device-g63); the real helper since G6.5 and G6.6, not run on a device; not Verified). The update path as a whole is described below and in [`UPDATE.md`](UPDATE.md). Privilege Broker and Update Helper are separate components (spec 8.6): the Update Helper arrives in Gate G6 (its stub is in the repository since step G6.3a and in the release bundle since G6.3b, see "The update helper stub" below), the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
 - Plugins and self-update are out of scope until their gates (ADR 0003, ADR 0004). Release signing exists (below); the installer verifies signatures with the system `openssl`, but nothing in the Oarfish binary verifies signatures yet.
 
 ## The update helper stub (Gate G6, step G6.3a)
@@ -240,6 +240,21 @@ Source: ADR 0010 U3, U9, U12 and A11 (decision D-C68). Package `internal/updater
 **Cache.** `<cache>/update/<version>/` (directory 0755, files 0644), removed after `stage`, after a failure and at every start (`CleanCache`). The cache directory comes from `$CACHE_DIRECTORY` (systemd) or `-cache-dir`.
 
 **Audit** (ADR 0009 A6): `update_started` when the administrator confirmed (user = the account, correlation ID = the request's), `update_finished` with user `-` and the same correlation ID, written by the service for a failure before `activate` and for a discard (`aborted`), and for the helper's unacknowledged last result. Targets are `update/<version>`; the results are the codes and outcomes of the helper plus `unavailable`. Check and notice are not audited (A6 has no action for them).
+
+## The update path as implemented, and its verification status (Gate G6, step G6.9)
+
+The update path is complete for the base update (ADR 0010 U1 to U14). The replacement of the helper and its units from the GUI is G6.10. The sections above describe each part; [`UPDATE.md`](UPDATE.md) describes the whole path, the order of the checks, the states, the rollback, the cooldown, when the installer is required, the evidence classes and the failure matrix F1 to F32.
+
+| Part | Implemented in | Tested in CI | On the device |
+|---|---|---|---|
+| Installer with the helper layout and the lock | G6.3b | fake root, arm64 containers | layout observed once with a test release (G6.3 owner stop); production key path not run |
+| Helper: `status`, `stage`, `discard`, lock, staging recovery | G6.5 | yes | not run |
+| Helper: `activate`, `ack`, health check, rollback, boot recovery, retention, cooldown | G6.6 | yes (fake systemd, fake health client) | not run |
+| Fault hooks of the test build (`error`, `stop`, `hold`) | G6.6, G6.9 | faulthooks test build | not run |
+| Update service, routes, audit entries | G6.7 | yes (fake GitHub, fake helper) | not run |
+| Update page | G6.8 | jsdom, headless Chrome on one Mac | not run |
+
+**Not verified:** every row of the failure matrix on a device, the real systemd interplay of the helper sandbox with `systemctl`, the timings, the write load and the memory of a real update. G6.9 prepares the device evidence. Its results are recorded by a later closeout step and are not claimed here.
 
 ## The release verification package (Gate G6, step G6.4)
 

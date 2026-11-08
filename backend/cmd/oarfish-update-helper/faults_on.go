@@ -4,10 +4,12 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 // Fault hooks for the test build of the helper (ADR 0010 U13, class T). The
@@ -18,8 +20,12 @@ import (
 //	error  the call fails and does nothing, every other call runs
 //	stop   the process kills itself with SIGKILL before the call, which is
 //	       what a power loss looks like to the files
+//	hold   the call never returns: the goroutine that makes it waits forever,
+//	       after one line on standard error that names the call, so that
+//	       power can be removed at a known point (U13, F8 and F9); the rest
+//	       of the process keeps running
 //
-// Without OARFISH_FAULT_AT nothing happens.
+// Any other mode is error. Without OARFISH_FAULT_AT nothing happens.
 
 const faultsCompiled = true
 
@@ -35,14 +41,22 @@ func faultTarget() (int64, string) {
 	return at, os.Getenv("OARFISH_FAULT_MODE")
 }
 
-func faultPoint(string) error {
+func faultPoint(kind string) error {
 	at, mode := faultTarget()
 	if at == 0 || faultCount.Add(1) != at {
 		return nil
 	}
-	if mode == "stop" {
+	switch mode {
+	case "stop":
 		syscall.Kill(os.Getpid(), syscall.SIGKILL)
 		select {}
+	case "hold":
+		fmt.Fprintf(os.Stderr, "oarfish-update-helper: fault hook: holding at call %d (%s)\n", at, kind)
+		// A sleeping goroutine, not an empty select: with a pending timer the
+		// runtime never reports a deadlock, even if nothing else is running.
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 	return errFaultInjected
 }

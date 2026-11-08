@@ -109,14 +109,15 @@ It runs CI, builds the bundle, checks reproducibility, size budgets and the ARM6
 
 1. Merge the change to `main`; wait for CI.
 2. **Before tagging the first release that reports the process ID in `/healthz` and serves `/readyz`** (ADR 0010, A11.2, D-C68): confirm or adjust the constant `strictHealthFrom` in `backend/cmd/oarfish-update-helper/health.go` so that it equals the version of that release (it is set to `0.1.0-alpha.7` at the time of writing). A wrong value either skips the stricter health check for that release or makes the helper refuse a healthy one.
-3. Tag a commit that is on `main` and push the tag:
+3. **Every release after the bootstrap (`v0.1.0-alpha.8`)**: compare the five files the update helper compares (`oarfish-update-helper`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish.service`) with the previous release before tagging. Build the bundle of the commit (`make release-bundle`) and compare the `sha256` of these five entries in `contents` of its `manifest.json` with the published `manifest.json` of the previous release. All equal: a device on the previous release updates from the GUI. One differs: until G6.10 the update page answers `installer_required`, and the release notes must say that this release needs one installer run on the device (`sudo sh install.sh` from the release page), and why. Devices on `v0.1.0-alpha.7` or earlier always need one installer run ([`UPDATE.md`](UPDATE.md#when-the-installer-is-required)); say that in the notes as well.
+4. Tag a commit that is on `main` and push the tag:
    ```bash
    git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1
    ```
    The workflow rejects tags that are not `vMAJOR.MINOR.PATCH[-prerelease]` and tags whose commit is not on `main`.
-4. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` references the secret and it only starts for a tag push; only `publish` has `contents: write`.
-5. Verify the published assets (below).
-6. **Release notes of the G5.1 release (and any release a device may reach from `v0.1.0-alpha.5` or earlier)** must say: "After this update the device has no administrator account and starts in setup mode. The GUI shows the setup page; read the setup token on the device with `sudo cat /var/lib/oarfish/setup-token`. The dashboard and the device page show data only after setup and login. Every `/api/v1` route except the session status, login and setup now needs a session; `/healthz` stays public." (ADR 0009, Consequences; D-C46)
+5. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` references the secret and it only starts for a tag push; only `publish` has `contents: write`.
+6. Verify the published assets (below).
+7. **Release notes of the G5.1 release (and any release a device may reach from `v0.1.0-alpha.5` or earlier)** must say: "After this update the device has no administrator account and starts in setup mode. The GUI shows the setup page; read the setup token on the device with `sudo cat /var/lib/oarfish/setup-token`. The dashboard and the device page show data only after setup and login. Every `/api/v1` route except the session status, login and setup now needs a session; `/healthz` stays public." (ADR 0009, Consequences; D-C46)
 
 Publishing happens only from a tag push; there is no manual publish path. If a release fails halfway, delete the draft/partial release and the tag, fix the cause and tag again. Never reuse a published version.
 
