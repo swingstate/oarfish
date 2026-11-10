@@ -141,7 +141,7 @@ The names follow `state.json` and the manifest of ADR 0010. Members may only be 
 
 Step G6.5 turns the stub into the helper core of ADR 0010: a strict decoder per request, the peer check on every connection, a real `status` from a real state file, and the requests `stage` and `discard`. It is the first privileged code that writes below `/opt/oarfish`, and it is reviewed before anything is built on it. **At the time of this step nothing had been run on a device, and the sandbox of the units (`ProtectSystem=strict`, `ReadWritePaths=/opt/oarfish`, `StateDirectory=`, `SystemCallFilter=@system-service`) had not been exercised with this code. The G6.9 device run later observed the helper on one device ([UPDATE.md](UPDATE.md#results-on-the-reference-device)).** It is tested on CI runners and on a development machine, against temporary directories and a fake peer check. Linux-only parts (`CLOCK_BOOTTIME`, `SO_PEERCRED`) run on the Linux CI job; the development machine for this step was macOS.
 
-**Not in this step** (G6.6 added `activate`, `ack`, the health check, rollback, the `recover` subcommand, retention, cooldown enforcement, `systemctl` and the fault hooks, see the next section): component replacement, `key_changed`, the unit lint (G6.10).
+**Not in this step** (G6.6 added `activate`, `ack`, the health check, rollback, the `recover` subcommand, retention, cooldown enforcement, `systemctl` and the fault hooks, see the next section): component replacement and `key_changed` (G6.10). The unit lint was added to `stage` by step a of G6.10 (step 12 of the stage sequence below).
 
 **Requests.** `status` accepts exactly `v` and `op`. `stage` accepts exactly `v`, `op`, `version` and `correlation_id` (16 lowercase hexadecimal digits). `discard` accepts exactly `v`, `op` and `version`. `version` must match the pattern of U2 (at most 64 characters, no `..`). Every rule of the stub decoder stays: unknown members, repeated members, other letter cases, trailing data, `null`, wrong types, 4 KiB, a missing newline. The peer check (`SO_PEERCRED`, uid of `oarfish` looked up once) still runs before the first byte of the body is looked at; a wrong peer is closed without an answer and the file system is not even opened.
 
@@ -168,7 +168,7 @@ Step G6.5 turns the stub into the helper core of ADR 0010: a strict decoder per 
 9. copy the bundle (limit manifest size plus one byte), `Release.CheckBundle(hash, size)`; from here on only the private copy is read;
 10. `relverify.CheckUpgrade` (strictly newer, minimum version, helper protocol);
 11. `relverify.Inspect` twice on the private copy, first with a nil sink, then with the staging sink (which writes `release/` and `components/` below the staging directory, `O_EXCL`, mode by `fchmod`, by a fixed table of names);
-12. the component comparison (below);
+12. the unit lint (since G6.10 step a; `unitlint.go`, `unitrules.go`; the rules are in [ADR 0010](adr/0010-update-helper.md), amendment A15.3): `oarfish.service` of every release and, when the release carries the components, the three helper units are checked against the rule tables compiled into the helper, and a text they refuse is `unit_rejected`, with one journal line that names the unit and a reason from a closed set; then the component comparison (below);
 13. `fsync` of the files and directories, delete the private copies of the four downloaded files, rename `release/` to `releases/<version>` (a directory of that name that is not the installed or the recorded previous version is moved to `releases/.trash.<id>` first and deleted last), `fsync` of `releases/`, remove the staging directory;
 14. write the state `staged` with `staged_at_uptime_s`, answer ok.
 
@@ -250,6 +250,7 @@ The update path is complete for the base update (ADR 0010 U1 to U14). The replac
 | Installer with the helper layout and the lock | G6.3b | fake root, arm64 containers | layout observed once with a test release (G6.3 owner stop); the production key path ran in the G6.9 run (official installers of `v0.1.0-alpha.7`, `.8` and `.10`, class D, observed on one device) |
 | Helper: `status`, `stage`, `discard`, lock, staging recovery | G6.5 | yes | observed on one device (G6.9, class D) |
 | Helper: `activate`, `ack`, health check, rollback, boot recovery, retention, cooldown | G6.6 | yes (fake systemd, fake health client) | observed on one device (G6.9, class D and T) |
+| Helper: unit lint in `stage` (ADR 0010 A15.3) | G6.10 step a | yes | not run |
 | Fault hooks of the test build (`error`, `stop`, `hold`) | G6.6, G6.9 | faulthooks test build | observed on one device (G6.9, class T) |
 | Update service, routes, audit entries | G6.7 | yes (fake GitHub, fake helper) | the GUI update observed on one device (G6.9, F19, class D) |
 | Update page | G6.8 | jsdom, headless Chrome on one Mac | exercised through the GUI update and its GUI texts in the G6.9 run (observed on one device) |

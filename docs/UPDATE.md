@@ -1,6 +1,6 @@
 # The update path
 
-How a device updates Oarfish from the GUI, what is checked, what happens when something fails, and how the evidence on the reference device is produced. The design is [ADR 0010](adr/0010-update-helper.md) (decisions U1 to U15, amendments A1 to A14). This document describes the code at gate G6.9. **Device observations exist, each labelled with its evidence class (C, D or T); nothing is Verified.** Every device entry below means "observed as expected on one device" (one Raspberry Pi Zero 2 W, one image); class T is never production evidence. The section [Results on the reference device](#results-on-the-reference-device) holds the facts, what was not run and the open items.
+How a device updates Oarfish from the GUI, what is checked, what happens when something fails, and how the evidence on the reference device is produced. The design is [ADR 0010](adr/0010-update-helper.md) (decisions U1 to U15, amendments A1 to A15). This document describes the code at gate G6.9 and, since step a of G6.10, the unit lint in `stage`; the replacement of components from the GUI is not implemented. **Device observations exist, each labelled with its evidence class (C, D or T); nothing is Verified.** Every device entry below means "observed as expected on one device" (one Raspberry Pi Zero 2 W, one image); class T is never production evidence. The section [Results on the reference device](#results-on-the-reference-device) holds the facts, what was not run and the open items.
 
 ## Contents
 
@@ -32,7 +32,7 @@ The service does all network traffic and verifies only so that the page can show
 1. **Check** (user action: opening the page, at most once per 60 minutes, or "Check now", at most once per 60 s per device). The service reads the release list from the GitHub API, picks the highest eligible version (prerelease rule Q7) and verifies the small files of that release (advisory).
 2. **Apply.** The administrator confirms with the fresh password (Q3). The password is checked before anything is downloaded. The service starts one job (a second request answers `busy`).
 3. **Download** into `/var/cache/oarfish/update/<version>/` (directory 0755, files 0644), streamed with size caps and time limits.
-4. **`stage`.** The helper takes the lock, writes the intent `staging`, copies the four files into `releases/.stage.<id>/` and hashes the bytes it writes, verifies them, extracts and checks the tree, compares the five component files with the installed ones, moves the tree to `releases/<version>` and writes `staged`.
+4. **`stage`.** The helper takes the lock, writes the intent `staging`, copies the four files into `releases/.stage.<id>/` and hashes the bytes it writes, verifies them, extracts and checks the tree, lints the unit files of the release, compares the five component files with the installed ones, moves the tree to `releases/<version>` and writes `staged`.
 5. **`activate`.** The helper checks that the installed version is healthy (pre-check), records the hash of the running binary, writes `switching`, switches `current` with one atomic rename, writes `verifying`, restarts `oarfish.service` and runs the health check.
 6. **Commit or rollback.** If the new version is healthy, the helper writes `committed`, keeps the previous version and removes older releases. Otherwise it rolls back (below). The service restarts in both cases, so everybody is signed out.
 7. **Finish.** At the next status read, the restarted service writes `update_finished` to the audit with the correlation ID of `update_started`, and then acknowledges the result (`ack`).
@@ -52,9 +52,12 @@ What the helper checks in `stage`, in this order (`backend/cmd/oarfish-update-he
 | i | bundle copy with the manifest size as limit; its hash and size against the signed values | `checksum_mismatch` |
 | j | strictly newer than installed, minimum installed version, helper protocol | `downgrade_refused`, `already_installed`, `requirements_not_met`, `helper_too_old` |
 | k | tarball inspection and extraction (allow-listed names, regular files, sizes, hashes, ELF) | `manifest_invalid`, `checksum_mismatch`, `requirements_not_met` |
+| k2 | the unit lint (ADR 0010 U4 step 9, U15 rule 3, A15.3): `oarfish.service` of every release and, when the release carries the components, the three helper units, each against the rule tables compiled into the helper | `unit_rejected` |
 | l | the bundle has components; the five compared files equal the installed ones | `requirements_not_met`, `installer_required` |
 
-The bundle hash (i) comes before the version rule (j). A changed or truncated copy of any real release therefore answers `checksum_mismatch` even when that version is installed or older. The version rule (j) comes before the component comparison (l). An older release with other helper bytes therefore answers `downgrade_refused`, not `installer_required`.
+The bundle hash (i) comes before the version rule (j). A changed or truncated copy of any real release therefore answers `checksum_mismatch` even when that version is installed or older. The version rule (j) comes before the component comparison (l). An older release with other helper bytes therefore answers `downgrade_refused`, not `installer_required`. The unit lint (k2) comes after the extraction and before the comparison (l). A release with a unit text that the rules refuse therefore answers `unit_rejected`, whether or not its files differ from the installed ones, and the staging tree is removed. The journal gets one line that names the unit and a reason from a closed set; no part of the unit text reaches the answer or the journal.
+
+**The unit lint in short** (the complete rules, the accepted forms and the table are in ADR 0010 A15.3). A unit file is at most 16 KiB of valid UTF-8 without NUL or other control characters, without a line continuation, a specifier (`%`) or a duplicate key, with only the sections of its unit type, and with nothing but the expected `WantedBy=` in `[Install]`. The three helper units must equal a compiled-in accepted form after their comments, blank lines and the values of `Description=` and `Documentation=` are removed; the order of the lines counts. `oarfish.service` must contain the required baseline (every directive of `install/oarfish.service` except the extras, each with exactly its value, and `ExecStart` with a literal loopback address and port) and may add only the listed extras: `Description`, `Documentation`, `Restart` (`on-failure`, `always`), `RestartSec` (1 to 10 s), `TimeoutStopSec` (5 to 30 s) and `ProtectProc` (`invisible`, `noaccess`). Every other directive is rejected. The lint checks the release, not the installed units, and it runs in `stage` only; the lint at `activate` belongs to step b of G6.10.
 
 The health check (U6, A11.2): `ActiveState=active`, `SubState=running`, a new MainPID, `NRestarts` not increased, `/healthz` with the installed version and, from `strictHealthFrom` (`0.1.0-alpha.7`) on, `pid` equal to MainPID and `/readyz` 200. All of this must hold on 3 polls in a row and for at least 10 s. A failed unit or a higher `NRestarts` ends the wait at once (fail fast). Otherwise the deadline is 45 s.
 
@@ -86,6 +89,7 @@ Results: `success`, `rolled_back` (reasons `start_failed`, `health_timeout`, `re
 - A device on `v0.1.0-alpha.7` or earlier needs the installer once: up to alpha.6 there is no helper (bootstrap, U11), and the alpha.7 helper embeds its release version.
 - A release that changes the helper code, a package it links, the Go version or a unit text needs the installer. Its release notes say so ([`RELEASING.md`](RELEASING.md)).
 - A change of the trust key is never applied from the GUI (U15 rule 5).
+- Since step a of G6.10 the helper lints the units of a release. A helper unit that differs from the accepted form in more than comments, blank lines, `Description=` or `Documentation=`, or an `oarfish.service` outside its rules, answers `unit_rejected` and not `installer_required`; the page then shows the sentence of `unit_rejected`, which does not name the installer. The installer does not lint, so an installer run still installs such a release. How a release changes a helper unit on purpose (the two steps) is in [`RELEASING.md`](RELEASING.md#release-procedure). No helper with the lint has been released yet.
 
 ## Evidence classes
 
@@ -127,7 +131,7 @@ The Device column says what was observed as expected on one device and in which 
 | F22 | Staged release expires | C, D (the helper side); the GUI text "start again": C only (the GUI stages and activates in one job) | H `TestActivateStageExpired`, `TestStatusExpiresAStagedRelease` | D (the "start again" text stays C only) |
 | F23 | FIFO, link, directory, socket or growing file in the cache | C, D | H `TestCacheFileKinds`, `TestCacheFileGrowsDuringTheCopy`, `TestStageDeadline` | D (17 of 17 cases) |
 | F24 | Component replacement, success | D (G6.10) | not implemented (G6.10) | not run (G6.10) |
-| F25 | Unit lint reject | C, T (G6.10) | not implemented (G6.10) | not run (G6.10) |
+| F25 | Unit lint reject | C, T (G6.10) | H `TestStageUnitRejected`, `TestStageUnitLintOrder`, `TestLintParsing`, `TestLintHelperUnits`, `TestLintServiceBaseline`, `TestLintServiceUnlistedDirectives`, `TestLintServiceExtras`, `TestInstallUnitsPassTheLint`, `TestInstallUnitsAreTheFirstForms`, `TestServiceRulesMatchTheInstallUnit`, `FuzzUnitLint` (the lint at `stage`, G6.10 step a; the lint at `activate` is step b) | not run |
 | F26 | Key rule | C, T (G6.10) | not implemented (G6.10) | not run (G6.10) |
 | F27 | New helper does not start | C, T (G6.10) | not implemented (G6.10) | not run (G6.10) |
 | F28 | New helper answers a wrong protocol | C, T (G6.10) | not implemented (G6.10) | not run (G6.10) |
@@ -150,7 +154,7 @@ What the G6 closeout must contain for the base update (U13, U12), in addition to
 - when the finishing audit entry is written (open condition C3);
 - a list of what was not run.
 
-The replacement of components (F24 to F32) belongs to G6.10.
+The replacement of components (F24 to F32) belongs to G6.10. Step a of G6.10 added the unit lint with class C tests (F25); nothing of it ran on a device.
 
 ## How the device evidence is produced
 
@@ -257,6 +261,6 @@ The device test kit stopped several times on its own checks. These are the "ABWE
 ### What was not run, and what is not verified
 
 - F13 and the parts marked "C only" in the matrix: the audit entry of F1, the cut download and the `.part` file of F4, the fake `403` with a reset header of F18, and the GUI text "start again" of F22.
-- F24 to F32 belong to G6.10.
+- F24 to F32 belong to G6.10. The unit lint of step a (F25) has class C tests only; it did not run on a device.
 - Not verified: screen reader use, other boards and models, Ubuntu, behaviour over many days, four simultaneous clients.
 - Nothing is Verified for this device or for any feature. G6 stays open until G6.10.

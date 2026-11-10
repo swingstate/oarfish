@@ -13,6 +13,8 @@
 - Amendment A13 (task HB, written 2026-11-07, `docs/DECISIONS.md` D-C80): the bytes of the helper do not depend on the release version, listed in "Amendment A13 (task HB)" below. It records the finding, the fix and its consequence for devices on `v0.1.0-alpha.7`, and adds pointers in U5, U11 and U15; the specification is not changed.
 - Amendment A14 (G6.9 follow-up, applied 2026-11-10, `docs/DECISIONS.md` D-C81): the boot order of the recover unit, listed in "Amendment A14 (G6.9 follow-up)" below. It changes the recover unit text in U10 and the sentence about the recover unit in U1, and closes the note "not covered by G6.1" about its order at boot; the specification is not changed.
 
+- Amendment A15 (G6.10 step a, written 2026-11-10, `docs/DECISIONS.md` D-C83): the owner decisions D1 to D7 for the replacement of the helper and its units, and the unit lint of U15 rule 3 as implemented, listed in "Amendment A15 (G6.10, step a)" below. It adds pointers in U4 and U15 rule 3 and refines the sentences its change table names; the specification is not changed.
+
 ## How to read this ADR
 
 Every statement carries one of these labels, so that a reader can tell what is known from what is hoped:
@@ -139,7 +141,7 @@ Alternatives considered:
 
 ### U4. Verification: key, manifest, architecture, downgrade, prereleases
 
-- **Proposal: the helper verifies everything itself, in this order, on its private copies:** (1) `checksums.txt.sig` against the embedded key; (2) `checksums.txt` lists the expected bundle name and `manifest.json` exactly once each, with 64 hexadecimal digits; (3) SHA-256 of the manifest and bundle copies equal the listed values; (4) the manifest is decoded strictly for the fields below; (5) `manifest.bundle.sha256` equals the listed bundle hash and `manifest.bundle.size` equals the file size; (6) version, architecture, key and protocol rules; (7) the tarball is inspected and extracted (U5); (8) every extracted file matches `contents` in size, mode and SHA-256; (9) the units are linted (U15 rule 3).
+- **Proposal: the helper verifies everything itself, in this order, on its private copies:** (1) `checksums.txt.sig` against the embedded key; (2) `checksums.txt` lists the expected bundle name and `manifest.json` exactly once each, with 64 hexadecimal digits; (3) SHA-256 of the manifest and bundle copies equal the listed values; (4) the manifest is decoded strictly for the fields below; (5) `manifest.bundle.sha256` equals the listed bundle hash and `manifest.bundle.size` equals the file size; (6) version, architecture, key and protocol rules; (7) the tarball is inspected and extracted (U5); (8) every extracted file matches `contents` in size, mode and SHA-256; (9) the units are linted (U15 rule 3). Step 9 is implemented in `stage` since G6.10 step a (A15.3).
 - **Proposal: trusted key.** The helper embeds `release/oarfish-release.pub` with `go:embed` and reads no key file at run time; an on-disk key would be a mutable trust root. The same file is embedded in the service for the advisory check. `go:embed` cannot reach outside the Go module, so the implementation copies the file into the module at build time and a CI step, like `scripts/check-installer-key.sh` for the installer, requires the copy to equal `release/oarfish-release.pub` (**Fact**: `docs/RELEASING.md` describes the installer check). The key is a list of one entry in G6; rotation is not designed here (D-D12).
 - **Proposal: signature format exactly as ADR 0005 and ADR 0006.** Line 2 of the signature file base64-decodes to 74 bytes: algorithm `Ed`, the 8-byte key id of the embedded key, a 64-byte Ed25519 signature over the exact bytes of `checksums.txt`, checked with `crypto/ed25519`. Algorithm `ED` (prehashed) is refused, as `scripts/verify-release.sh` and the installer refuse it. The trusted comment (lines 3 and 4) is ignored, like the installer ignores it. The standard library is enough, so **no third-party module is added to the helper**.
 - **Proposal: manifest fields used** (ORB-REL-002): `schema_version` must be 1; `name` must be `oarfish`; `version` must equal the requested version, the tag `v<version>` and the version in the bundle file name; `tag`; `prerelease`, which must agree with the presence of a hyphen in `version`; `commit` (40 lowercase hexadecimal digits, shown in the GUI and the audit); `os` = `linux`; `architecture` = `arm64` and equal to the architecture the helper was built for (`runtime.GOARCH`); `requirements.os`, `requirements.architecture` (same checks), `requirements.libc` and `runtime_dependencies` (shown, not enforced); `bundle`; `contents`. Unknown fields are ignored so that additive changes stay compatible; unknown or missing known fields fail. **Fact** (`docs/RELEASING.md`): ORB-REL-002 is met "for architecture, OS and libc only"; kernel and memory minimums are not in the manifest. **Proposal:** three additive, optional fields, added by the release tooling in plan step G6.2: `requirements.min_installed_version` (a version; the helper refuses an update from anything older, which gives spec 9.5 step 2 "Mindestversion" a meaning); `requirements.helper_protocol` (an integer: the lowest helper protocol the release's service needs; the helper refuses a release that needs a newer protocol than the helper it will have after the transaction, `helper_too_old`); and the object `components` with `key_id` (the 16-digit key id embedded in the helper the bundle delivers) and `protocol` (the highest protocol that helper implements). The `components` object is present only when the bundle delivers helper files. Kernel and memory minimums stay out until they are measured.
@@ -472,7 +474,7 @@ Alternatives considered: *one G6 pull request* (privileged code that cannot be r
 
 **Rule 3. Unit lint, and where the units live.**
 - *Recommendation (lint):* a unit text inside a signed release is checked against a compiled-in rule set before any link can point to it, at `stage` and again at `activate`. The form is two-fold, because the units differ in what they may change:
-  - the **three helper units** (socket, service, recover) must equal a compiled-in **canonical form** after removing comments, blank lines and the values of `Description=` and `Documentation=` (printable, at most 200 characters). Any other difference is `unit_rejected`. The canonical form of `oarfish-update-helper.service` contains the lines `SuccessExitStatus=75` and `RestartForceExitStatus=75` (A1, U10);
+  - the **three helper units** (socket, service, recover) must equal a compiled-in **canonical form** after removing comments, blank lines and the values of `Description=` and `Documentation=` (printable, at most 200 characters). Any other difference is `unit_rejected`. Since A15 each unit has an ordered list of at most two accepted forms (D3), and A15.3 prints the forms, the complete table for `oarfish.service` and the parsing rules as they are implemented. The canonical form of `oarfish-update-helper.service` contains the lines `SuccessExitStatus=75` and `RestartForceExitStatus=75` (A1, U10);
   - **`oarfish.service`** must contain a compiled-in **required baseline** (each of these exactly: `User=oarfish`, `Group=oarfish`, `ExecStart` equal to the exact path `/opt/oarfish/current/oarfish` with the exact argument shape `-listen` followed by a literal loopback IP address and port, `NoNewPrivileges=yes`, empty `CapabilityBoundingSet=` and `AmbientCapabilities=`, `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `PrivateDevices=yes`, the kernel and control-group protections, `RestrictNamespaces=yes`, `RestrictSUIDSGID=yes`, `RestrictAddressFamilies` limited to `AF_UNIX AF_INET AF_INET6`, `SystemCallFilter=@system-service`, `SystemCallArchitectures=native`, the state, cache and runtime directory directives, `UMask=0077`; the baseline is the set of directives that `install/oarfish.service` of G6.2 sets, taken over verbatim) plus **allowed extras** from a closed list with a value validator for each (for example `Description`, `Documentation`, `Restart` limited to `on-failure` and `always`, `RestartSec` and `TimeoutStopSec` within bounds, further `Protect*` and `Restrict*` directives with restricting values only). **Every directive that is not listed is rejected** (fail closed), in particular any `Exec*` other than the one `ExecStart`, any `+`, `!`, `@` or `:` prefix on a command, `Environment*`, `User`/`Group` other than expected, `SupplementaryGroups`, `ReadWritePaths`, `BindPaths`, `Capability*` other than empty, `PrivateUsers`, `AppArmor*`, `Conflicts`, `OnFailure` and every dependency directive not on the list.
   - **Parsing:** UTF-8, at most 16 KiB, no NUL, no line continuation (a trailing backslash is rejected), only the sections `[Unit]`, `[Service]`, `[Socket]` and `[Install]` as the unit type allows, `key=value` lines and comment lines, no specifiers (`%`), a duplicate key is rejected unless the rule table marks it as repeatable (none is). The `[Install]` section may contain only `WantedBy=` with the expected target.
   - **A new legitimate directive** (a future release needs one the rules do not know): ship a release that updates the helper first (with the new rule tables, and units that still pass the old rules), then a release with the unit. The rules in force are those of the helper that stages. This two-step rule is accepted.
@@ -862,6 +864,261 @@ The device observation below was made in the G6.9 evidence run on the reference 
 | U1, proposal sentence on the recover unit | `Type=oneshot`, `TimeoutStartSec=120`, no `RemainAfterExit`, `Before=oarfish-update-helper.socket oarfish.service`, `WantedBy=multi-user.target` | adds `DefaultDependencies=no` and `After=local-fs.target` | A14 |
 | U10, recover unit text | `[Unit]` held only `Before=oarfish-update-helper.socket oarfish.service` | `[Unit]` holds `DefaultDependencies=no`, `After=local-fs.target` and the `Before=` line | A14 |
 | "Not covered by G6.1", order of the recover unit at boot | observed at the G6.3 owner stop | adds that the G6.9 evidence run found an ordering cycle on a cold boot | A14 |
+
+## Amendment A15 (G6.10, step a)
+
+Step G6.10 is delivered in three implementation steps (A15.2, statement 3). This amendment belongs to step a: it records the owner decisions that the replacement of the helper and its units needs before the privileged transaction is written, and the unit lint of U15 rule 3 as it is implemented. The owner decisions D1 to D7 were given by the project owner with the prompt of step a on 2026-11-10 and are recorded as D-C83 in `docs/DECISIONS.md`. The decisions D-C53 to D-C81, the owner decisions Q1 to Q7 and the status of this ADR are unchanged; where an accepted sentence is refined, the table at the end names it. The specification is not edited: section 14.2 names for G6.10 the confirmation, the check of the unit files against compiled-in rules, the rollback of the helper and the key rule, and none of these statements changes.
+
+**Evidence label.** Every statement below carries one of four labels. **Owner decision** is one of D1 to D7 or the split of the step, in the owner's wording as far as a table allows. **Fact** names the file it was read from, in the tree of the pull request of step a (`backend/cmd/oarfish-update-helper/`, `install/`). **Proposal** is a choice that the implementation made where U15, A1 to A14 and the owner decisions name a rule and leave its detail open; it is implemented and tested, and the owner's review of step a can change it. **Assumption** is not checked. **Nothing in A15 ran on a device, and nothing is Verified.** Step a changes no file in `install/`, no installer, no release and no behaviour of an update except the new answer `unit_rejected` of `stage`.
+
+### A15.1 Owner decisions D1 to D7 (D-C83)
+
+Each of D1 to D7 is an **owner decision**. Only D3, as far as the lint needs it, is implemented in step a; everything else in this table is implemented in step b or step c.
+
+| # | Subject | Owner decision |
+|---|---|---|
+| D1 | Proof of the new helper without a release version (closes the open point of A13; replaces "its own version equals `components_to`'s" in U15 rule 4 step 4) | The proof is by bytes. The old helper records, with `c_switching`, the SHA-256 that the signed `contents` give for `oarfish-update-helper`. The new helper, started as `serve` while the state says `c_switched`, requires all of: the target of `components/active` is `components_to`; the SHA-256 of `components/active/oarfish-update-helper` equals the recorded one; the SHA-256 of its own executable image equals the recorded one. Any failure, including an own image that cannot be read, rolls the components back. No unit is widened for it and no release version enters the binary. |
+| D2 | Delivery of a changed recover unit (closes the open point of A14) | No new mechanism. The four component files travel as one set. The recover unit link names `components/known-good`, so its text changes when `known-good` moves, after the new helper has proven itself. The helper runs `daemon-reload` after that switch; a changed ordering takes effect at the next boot. |
+| D3 | Accepted forms (refines U15 rule 3, where "a compiled-in canonical form" is singular) | For each of the three helper units the helper carries a short ordered list of accepted canonical forms: the current one and, during a two-step change, the next one. Reason: in step one of the two-step rule the new helper must still accept the unit text that the repository ships, and every later release that keeps that text. The list has at most two entries per unit, and an entry is removed only by a later amendment or decision. In step a every list has exactly one entry. |
+| D4 | `socket_restart_pending` (open since A2) | The flag is set when the normalised text of the socket unit changes (not for a change of comments, `Description=` or `Documentation=`). It is stored with the time since boot at which it was set, reported by `status`, and void when the current uptime is smaller than that value (a reboot happened). The installer is not changed (size budget); after an installer run without a reboot the flag stays until the next boot. |
+| D5 | Protocol reading (U15 rule 4 step 4, rule 6) | A helper of protocol P stages a component set only if its `components.protocol` is P or P+1; otherwise `requirements_not_met`. `helper_too_old` stays for `requirements.helper_protocol`. `status` must be answered for every `v` and report the accepted range. |
+| D6 | A difference of `oarfish.service` alone (U2, U15 rule 7) | It needs the second confirmation as well, but no component set and no component phase. The state therefore needs its own additive record of "a difference is staged, and which names", independent of `components_to`. The answer of `stage` gains an additive list of the differing names (the closed list) so that the dialog can name them. |
+| D7 | Second confirmation (the open point C4 that A12 names) | The present behaviour stays: the password is asked again at the second stage. Whether that is wanted stays an open owner question. |
+
+Statements that belong to the decisions and are not part of them:
+
+- **Assumption (D1), to be observed on the device before the first release that carries the code:** the helper sandbox (`ProtectProc=invisible`, `ProcSubset=pid`) lets the process read its own executable image. It is not checked.
+- **Fact (D1, `main.go`, `handler.go`):** the helper has no release version; `helper_version` is the constant `protocol-1` (A13). Nothing in step a reads the helper's own image.
+- **Fact (D2, `install/install.sh`, `move_known_good`):** the installer moves `known-good` after its health check and runs `daemon-reload` when the recover unit text differs. D2 gives the helper the same order.
+- **Fact (D4, `state.go`):** the state has the boolean `socket_restart_pending` and no member for the time since boot at which it was set; `resetTxn` keeps the flag; nothing sets it and `status` does not report it. The new member and the report are step b.
+- **Fact (D4, `unitlint.go`, `normalisedUnit`):** the normalised text of D4 is the text that the lint compares with the accepted forms (A15.3), so the two rules use one function.
+- **Fact (D5, `protocol.go`, `decodeRequest`):** today the decoder refuses every `v` outside `protocolMin..protocolMax` before it looks at `op`, so `status` with another `v` answers `bad_request`. `relverify.CheckHelperProtocol` (`backend/internal/relverify/policy.go`) compares `requirements.helper_protocol` with `components.protocol` and answers `helper_too_old`; no code compares `components.protocol` with the staging helper's protocol. Both changes are step b.
+- **Fact (D6, `txn.go`, `admit`; `protocol.go`, `stageResponse`):** `activate` treats a non-empty `components_to` as "a difference is staged"; the answer of `stage` has `components_differ` (always false) and no list of names. Both changes are step b.
+- **Fact (D7, ADR 0010 A12):** the page asks for the password again at the second confirmation, and the service checks it. Nothing changes in step a.
+
+### A15.2 Three statements that follow
+
+**1. When `installer_required` can still occur after step b.**
+
+- **Fact (`compare.go`, `stage.go`):** every helper built before step b (the helpers of `v0.1.0-alpha.7` to `v0.1.0-alpha.10`, and the helper of step a) answers `installer_required` for any difference of the five compared files. No GUI update can change that on such a device, because the first release that carries the helper of step b differs from them in the helper's bytes. Every device therefore needs one installer run to reach that release. After it, the installed helper is the one of step b.
+- **Proposal (for the review of step b, not decided here):** a helper that has the component transaction does not answer `installer_required` for a difference: a difference of the helper files selects the component transaction, and a difference of `oarfish.service` alone the second confirmation (D6). The code stays in the closed list of U2. The cases in which such a device still needs the installer have their own codes: a changed trust key (`key_changed`, U15 rule 5); a helper unit text that equals none of the accepted forms of the installed helper (`unit_rejected`, statement 2); a `components.protocol` outside P and P+1 (`requirements_not_met`, D5); a release in the legacy bundle shape (`requirements_not_met`, D-C67). The one-time bootstrap from a version without a helper stays an installer run (U11).
+
+**2. What a release may change in the units.**
+
+- **Fact (`unitlint.go`, `unitrules.go`; D3):** the helper of release N lints the units of release N+1 with the tables compiled into N. A release N+1 that is applied by the helper of release N may therefore differ from N in the three helper units only in comment lines, blank lines and the values of `Description=` and `Documentation=`, unless the helper of N lists the new form. In `oarfish.service` it may also differ in the allowed extras and in the order of its lines (A15.3).
+- **Consequence for the class D row F24 of U13 (the row is not edited):** its "different unit text" is such a difference, or an allowed extra of `oarfish.service`. A release that changes a directive of a helper unit cannot be the F24 release unless the release before it carried the new form in its helper.
+- **Fact:** a helper unit that differs in a directive answers `unit_rejected` at `stage`, also in step a, where the same release without the lint would have answered `installer_required`. The installer does not lint (`install/install.sh`), so an installer run still installs such a release. The update page shows the sentence of `unit_rejected`, which does not name the installer; the texts are step c.
+
+**3. The split of G6.10.** **Owner decision:** G6.10 is implemented in three steps, each with its own session and pull request: (a) the decision record and the unit lint; (b) the component transaction and the recovery, with the links, exit code 75, the first start of the new helper, the key rule, the protocol change, the state members and the answer shape of `stage`; (c) the service, the page, the texts and the closing documentation. A release and the device evidence of U13 (F24 class D, the other rows as marked) follow after step c. The stop point of U14 for G6.10 is unchanged: the owner decides whether G6 passes.
+
+### A15.3 The unit lint as implemented in step a
+
+**Fact (`unitlint.go`, `unitrules.go`, `stage.go`).** The lint is part of the helper's `package main`, has no package of its own and adds no dependency (`TestImports` is unchanged). One function, `lintUnit(name, text)`, returns a typed result: accepted, or rejected with one reason from a closed set. The rule tables are constants of the program; no file, argument or manifest member changes them.
+
+**Parsing.** U15 rule 3 gives the rules; where it is silent, the implementation takes the stricter reading (**proposal**), so that the lint never accepts a text that systemd reads differently from the lint.
+
+| Rule | Source | Reason when it fails |
+|---|---|---|
+| At most 16 KiB (16,384 bytes); a larger file is not read | U15 rule 3 | `too_large` |
+| No NUL byte | U15 rule 3 | `nul_byte` |
+| Valid UTF-8 | U15 rule 3 | `not_utf8` |
+| No control character other than the newline (no carriage return, no tab, no DEL) | proposal; **assumption** (recalled, not checked): systemd also ends a line at a carriage return | `control_character` |
+| No line ends in a backslash, spaces after it ignored, comment lines included | U15 rule 3; proposal for the comment lines | `continuation` |
+| No percent sign outside a comment line | U15 rule 3 | `specifier` |
+| A blank line is empty or holds spaces only; a comment line starts with `#` or `;` in the first column; every other line starts in the first column and is `[Name]` or `Key=value`, without a space around `=` or at the end; a key is ASCII letters and digits; outside comments only printable ASCII | U15 rule 3 ("`key=value` lines and comment lines"); proposal for the spaces and for ASCII | `syntax` |
+| Only `[Unit]`, `[Service]` and `[Install]` in a service unit, `[Unit]`, `[Socket]` and `[Install]` in the socket unit; each section at most once; no `Key=value` line before the first section | U15 rule 3; proposal for "at most once" | `section`, `syntax` |
+| No key twice in one section | U15 rule 3 | `duplicate_key` |
+| `[Install]` holds only `WantedBy=` with the expected target: `multi-user.target` for `oarfish.service` and the recover unit, `sockets.target` for the socket unit; the helper service has no `[Install]` content | U15 rule 3; **fact** `install/` | `install_section` |
+| `Description=` and `Documentation=`: printable ASCII, at most 200 characters | U15 rule 3; proposal for ASCII | `text_value`, `syntax` |
+
+**The closed set of reasons** (17): `unknown_unit`, `too_large`, `nul_byte`, `not_utf8`, `control_character`, `continuation`, `specifier`, `syntax`, `section`, `duplicate_key`, `install_section`, `text_value`, `form_mismatch`, `directive_not_allowed`, `baseline_missing`, `baseline_value`, `extra_value`. A reason is a fixed word. It is written to the journal and is not part of an answer.
+
+**Helper units: the accepted forms (D3).** The text of a helper unit is normalised: comment lines and blank lines are removed, the values of `Description=` and `Documentation=` are removed (the two lines stay, as `Description=` and `Documentation=`), and the remaining lines are joined by newlines. The result must equal one entry of the unit's list, else `form_mismatch`. Each list has one entry, the text that `install/` ships (**fact**, `TestInstallUnitsAreTheFirstForms`). The forms contain `SuccessExitStatus=75` and `RestartForceExitStatus=75` (A1), `TimeoutStartSec=120` (A9), and `DefaultDependencies=no` and `After=local-fs.target` (A14).
+
+**Proposal: the order of the sections and of the lines inside a section is part of the form.** Reasons: (1) U15 rule 3 says "must equal", and one comparison of two texts is the smallest code that implements it in a root process; (2) the form can be compared with the repository file by eye and by one test, with no rule about which reorderings are harmless; (3) nothing needs a reordering: a release that only reorders lines gains nothing, and a deliberate change of a helper unit is a two-step change in any case (D3). Cost: a pure reordering of a helper unit in `install/` is a unit change and needs the two steps. The lines `Description=` and `Documentation=` are part of the form, so a helper unit without one of them is rejected. For `oarfish.service` the order is not part of the rule, because rule 3 defines it as a set (a baseline that must be contained, plus extras).
+
+```ini
+# oarfish-update-helper.socket, accepted form 1
+[Unit]
+Description=
+Documentation=
+[Socket]
+ListenStream=/run/oarfish-update/helper.sock
+SocketUser=root
+SocketGroup=oarfish
+SocketMode=0660
+DirectoryMode=0755
+Accept=no
+Backlog=8
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target
+```
+
+```ini
+# oarfish-update-helper.service, accepted form 1
+[Unit]
+Description=
+Documentation=
+OnFailure=oarfish-update-recover.service
+StartLimitIntervalSec=10
+StartLimitBurst=3
+[Service]
+Type=exec
+ExecStart=/usr/libexec/oarfish-update-helper serve
+Restart=on-failure
+RestartSec=1
+SuccessExitStatus=75
+RestartForceExitStatus=75
+RuntimeMaxSec=900
+User=root
+Group=root
+UMask=0077
+StateDirectory=oarfish-update
+StateDirectoryMode=0700
+ReadWritePaths=/opt/oarfish
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+MemoryMax=64M
+TasksMax=16
+Nice=10
+```
+
+```ini
+# oarfish-update-recover.service, accepted form 1
+[Unit]
+Description=
+Documentation=
+DefaultDependencies=no
+After=local-fs.target
+Before=oarfish-update-helper.socket oarfish.service
+[Service]
+Type=oneshot
+TimeoutStartSec=120
+ExecStart=/opt/oarfish/components/known-good/oarfish-update-helper recover
+(the 35 sandbox lines of the helper service, from User=root to Nice=10, in the same order)
+[Install]
+WantedBy=multi-user.target
+```
+
+**`oarfish.service`: the required baseline and the allowed extras.** Every directive must have a row in the table below, in the section the row names, with a value the row accepts; every baseline row must be present. A directive without a row is `directive_not_allowed`, a missing baseline row `baseline_missing`, another value `baseline_value` or `extra_value`.
+
+**Proposal: which directive is baseline.** U15 rule 3 says that the baseline is the set of directives that `install/oarfish.service` sets, taken over verbatim, and names `Description`, `Documentation`, `Restart`, `RestartSec` and `TimeoutStopSec` as extras. The table follows both sentences: these five are extras, and every other directive of the file is baseline with exactly the value of the file. That decides the directives that rule 3 does not name: `Type=simple`, `StateDirectoryMode=0700`, `RuntimeDirectoryMode=0750`, `ProtectClock=yes`, `ProtectHostname=yes`, `RestrictRealtime=yes`, `LockPersonality=yes`, `SystemCallErrorNumber=EPERM` and `WantedBy=multi-user.target` are baseline. `TestServiceRulesMatchTheInstallUnit` reads `install/oarfish.service` and fails when the file and the table differ.
+
+| Section | Directive | Kind | Accepted value |
+|---|---|---|---|
+| `[Unit]` | `Description` | extra | printable ASCII, at most 200 characters, no `%` |
+| `[Unit]` | `Documentation` | extra | printable ASCII, at most 200 characters, no `%` |
+| `[Service]` | `Type` | baseline | `simple` |
+| `[Service]` | `User` | baseline | `oarfish` |
+| `[Service]` | `Group` | baseline | `oarfish` |
+| `[Service]` | `ExecStart` | baseline | exactly `/opt/oarfish/current/oarfish -listen ` followed by a literal loopback IP address and port in its canonical spelling: `127.0.0.0/8` or `[::1]`, a port from 1 to 65535, no zone, no IPv4-mapped IPv6 address, nothing after it. A prefix character (`+`, `!`, `!!`, `@`, `:`, `-`), a quote, a second argument or a second command fails the comparison |
+| `[Service]` | `Restart` | extra | `on-failure` or `always` |
+| `[Service]` | `RestartSec` | extra | a whole number of seconds from 1 to 10, digits only (no unit, no sign, no leading zero, not `infinity`) |
+| `[Service]` | `TimeoutStopSec` | extra | a whole number of seconds from 5 to 30, digits only |
+| `[Service]` | `StateDirectory` | baseline | `oarfish` |
+| `[Service]` | `StateDirectoryMode` | baseline | `0700` |
+| `[Service]` | `CacheDirectory` | baseline | `oarfish` |
+| `[Service]` | `RuntimeDirectory` | baseline | `oarfish` |
+| `[Service]` | `RuntimeDirectoryMode` | baseline | `0750` |
+| `[Service]` | `UMask` | baseline | `0077` |
+| `[Service]` | `NoNewPrivileges` | baseline | `yes` |
+| `[Service]` | `CapabilityBoundingSet` | baseline | empty |
+| `[Service]` | `AmbientCapabilities` | baseline | empty |
+| `[Service]` | `ProtectSystem` | baseline | `strict` |
+| `[Service]` | `ProtectHome` | baseline | `yes` |
+| `[Service]` | `PrivateTmp` | baseline | `yes` |
+| `[Service]` | `PrivateDevices` | baseline | `yes` |
+| `[Service]` | `ProtectKernelTunables` | baseline | `yes` |
+| `[Service]` | `ProtectKernelModules` | baseline | `yes` |
+| `[Service]` | `ProtectKernelLogs` | baseline | `yes` |
+| `[Service]` | `ProtectControlGroups` | baseline | `yes` |
+| `[Service]` | `ProtectClock` | baseline | `yes` |
+| `[Service]` | `ProtectHostname` | baseline | `yes` |
+| `[Service]` | `ProtectProc` | extra | `invisible` or `noaccess` |
+| `[Service]` | `RestrictNamespaces` | baseline | `yes` |
+| `[Service]` | `RestrictRealtime` | baseline | `yes` |
+| `[Service]` | `RestrictSUIDSGID` | baseline | `yes` |
+| `[Service]` | `LockPersonality` | baseline | `yes` |
+| `[Service]` | `RestrictAddressFamilies` | baseline | `AF_UNIX AF_INET AF_INET6` |
+| `[Service]` | `SystemCallArchitectures` | baseline | `native` |
+| `[Service]` | `SystemCallFilter` | baseline | `@system-service` |
+| `[Service]` | `SystemCallErrorNumber` | baseline | `EPERM` |
+| `[Install]` | `WantedBy` | baseline | `multi-user.target` |
+
+The table has 38 rows: 32 baseline and 6 extras.
+
+**Proposals in the table, with their reasons.**
+
+- *The bounds.* `RestartSec` from 1 to 10 s: with 0 a crashing service restarts without a pause; above 10 s a crash loop raises `NRestarts` too slowly for the fail-fast criterion inside the 45 s health deadline (U6). `TimeoutStopSec` from 5 to 30 s: below 5 s the service has little time to end cleanly; above 30 s a stop and a start no longer fit into the 60 s limit of one `systemctl` call (`systemctl.go`, `systemctlTimeout`). The values of `install/oarfish.service` (2 and 15) are inside.
+- *"Further `Protect*` and `Restrict*` directives with restricting values only."* Every directive of these two families that `install/oarfish.service` sets is baseline. The other directives of these families are `ProtectProc`, `RestrictFileSystems` and `RestrictNetworkInterfaces` (**assumption**: recalled from the systemd documentation, not checked against a systemd version). The table lists one of them, `ProtectProc`, with its two restricting values `invisible` and `noaccess`. `RestrictFileSystems` and `RestrictNetworkInterfaces` are not listed: their values are lists, an inverted list (`~`) changes the meaning of the same words, and no single-line validator can say which list is "restricting only" without also deciding what the service needs. A release that wants one of them takes the two steps.
+- *A baseline value is exact.* A stronger value of a baseline directive (for example a narrower `RestrictAddressFamilies`) is rejected as well; rule 3 says "each of these exactly".
+- *A directive belongs to its section.* `User=` in `[Unit]` is rejected (**assumption**, recalled: systemd ignores a directive in a section it does not belong to, so the baseline would be missing in effect).
+
+**Wiring in `stage` (fact, `stage.go`, `unitlint.go`).** The lint runs after the extraction (step k of the sequence in `stage.go`) and before the component comparison (step l), on the unit files of the staged tree: `oarfish.service` for every release, and the three helper units when the release carries the components (a legacy bundle has none; it is linted for `oarfish.service` and then refused as before with `requirements_not_met`). A file of more than 16 KiB is rejected without being read. The first rejection ends the request with `unit_rejected` and the usual cleanup: the staging tree is removed, the state is `idle`, no last result is written. A unit file that cannot be read is `io_error`. The installed units are not linted. Every earlier check keeps its answer, and a difference that the lint accepts still answers `installer_required`. The lint at `activate` (U15 rule 3, "and again at `activate`") belongs to step b.
+
+**The journal (fact, `unitlint.go`, `logLint`; refines U8).** A rejection writes one additional line before the line of the cleanup: the fields of U8 for the phase `staging` with the result `unit_rejected`, followed by `unit=<name>` and `reason=<reason>`. The name is one of the four unit names of U2 and the reason one of the closed set. No byte of the unit text, no path and no parser message is part of the answer or of the journal (`TestStageUnitRejected`, `TestLintJournalLineShape`, `TestRedaction`).
+
+**Tests (fact, `unitlint_test.go`).** Every unit in `install/` passes and each helper unit normalises to the first form of its list; one rejected case per forbidden construct of rule 3, per removed baseline directive, per baseline directive with another value and per directive in the wrong section; the weakened values that rule 3 names; accepted cases for changed comments, `Description=` and `Documentation=` and for each extra at its bounds; `stage` with a signed bundle that holds a bad unit; the fuzz target `FuzzUnitLint` with the units of `install/` as seeds, added to `make fuzz` and to the fuzz step of CI. These are class C evidence for row F25 of U13. The class T part of F25 was not run.
+
+**Residual risk.** Unchanged from U15 rule 3 and T18: the lint judges text and does not bound what a signed helper binary does. A new property of step a: the lint in the installed helper is as strict as its tables, so an error in a table that rejects a legitimate unit is corrected by a release whose helper carries the corrected table, and that release must itself pass the old table or be installed with the installer.
+
+### Open points of A15
+
+1. **Password at the second confirmation (C4, D7): open owner question.** The present behaviour stays until the owner decides.
+2. **A release tooling check for the two-step rule: not decided.** Nothing in `scripts/` or in CI compares the helper units of a release with the accepted forms of the helper of the release before it. `TestInstallUnitsPassTheLint` only proves that the units and the tables of the same commit agree. `docs/RELEASING.md` has a checklist item; whether a tool should enforce it is an owner decision.
+3. **The wording of the U13 row F14 against the U6 sentence about the hash recorded "before a transaction starts": pending owner check.** Neither text is edited by A15.
+4. **The assumption of D1** (the helper can read its own executable image under its sandbox) is to be observed on the device before the first release that carries the code of step b.
+5. **Statement 1 of A15.2** contains a proposal about `installer_required` after step b; it is confirmed or changed at the review of step b.
+
+### Changes made to the accepted text (A15)
+
+The accepted text is not rewritten. Two sentences got a pointer in place (U4 step 9 and U15 rule 3); for every other row the rule in the column "Now" applies, and the text of the section stays as it is.
+
+| Where | Accepted wording | Now | Source |
+|---|---|---|---|
+| U4, verification step 9 | "the units are linted (U15 rule 3)" | pointer added: implemented in `stage` by G6.10 step a | A15.3 |
+| U15 rule 3, the three helper units | "must equal a compiled-in **canonical form**" (singular) | an ordered list of at most two accepted forms per unit; the order of the lines is part of a form; pointer added in place | D3, A15.3 |
+| U15 rule 3, `oarfish.service` | a baseline in prose and extras "for example" | the complete table of A15.3 with one validator per row and the bounds | A15.3 |
+| U15 rule 3, parsing | the rules of the sentence "Parsing" | those rules and the stricter readings of the parsing table | A15.3 |
+| U15 rule 3, "at `stage` and again at `activate`" | both planned for G6.10 | at `stage` since step a; at `activate` in step b | A15.3 |
+| U15 rule 3, tests | "Tests (G6.10)" | the tests exist (class C) | A15.3 |
+| A9 (a), U10 | "The lint canonical form of the recover unit gets this line in G6.10" | the form has `TimeoutStartSec=120` | A15.3 |
+| U15 rule 4 step 4; A13, open point | "its own version equals `components_to`'s"; how the check is made is open | the proof by bytes of D1 | D1 |
+| U15 rule 4 step 1 | "the recorded hashes" | they include the SHA-256 that the signed contents give for the helper | D1 |
+| A14, "Delivery"; D-C81 | how a GUI update delivers a changed recover unit is a G6.10 question | the recover unit travels with the set and changes when `known-good` moves; `daemon-reload` after that switch | D2 |
+| U8; U15 rule 4 steps 1, 4 and 6, row c7; A2 | `socket_restart_pending` is a status flag; how it is cleared is not decided | set for a change of the normalised socket text, stored with the time since boot, reported by `status`, void after a reboot | D4 |
+| U2, request format; U15 rule 6 | the decoder rejects a protocol version it does not implement; `status` stays answerable for every `v` | `status` is answered for every `v` (step b); a component set is staged only for `components.protocol` P or P+1 | D5 |
+| U2, `activate`; U9; U15 rule 7; U8 | `components_confirmed` when `stage` reported a component difference; the state members of U8 | a difference of `oarfish.service` alone needs the second confirmation without a component set; an additive state record and an additive list of names in the answer of `stage` (step b) | D6 |
+| A12, second confirmation | whether the password is asked again stays open for G6.10 | the present behaviour stays; still an open owner question | D7 |
+| U8, journal | one line per phase | plus one line for a rejected unit, with the unit name and the reason | A15.3 |
+| U13, row F24 (not edited) | "a different helper binary and unit text" | the unit text differs within what the installed helper's lint accepts | A15.2 |
+| U13, row F25 (not edited) | class C and T, planned | class C tests exist; class T not run | A15.3 |
+| U14, row G6.10 (not edited) | one step | three implementation steps a, b and c, then a release and the device evidence | A15.2 |
 
 ## Evidence and test plan for the later implementation
 
