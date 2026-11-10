@@ -87,7 +87,7 @@ echo "systemd-analyze verify: the three update-helper units are accepted"
 # runs through basic.target, so this verifies multi-user.target with the units
 # enabled the way the installer enables them (wants links of the recover unit and
 # of the helper socket). systemd breaks a cycle by deleting a job and only warns,
-# so the output is searched as well as the exit status (ADR 0010 A10).
+# so the output is searched as well as the exit status (ADR 0010 A14).
 mkdir -p "$R$UNITDIR/multi-user.target.wants" "$R$UNITDIR/sockets.target.wants"
 ln -s ../oarfish-update-recover.service "$R$UNITDIR/multi-user.target.wants/oarfish-update-recover.service"
 ln -s ../oarfish.service "$R$UNITDIR/multi-user.target.wants/oarfish.service"

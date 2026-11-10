@@ -13,7 +13,7 @@
 # DefaultDependencies=no: a service gets After=basic.target by default, and
 # basic.target is ordered after sockets.target, which is ordered after the helper
 # socket. With Before=oarfish-update-helper.socket that is an ordering cycle, and
-# systemd drops the socket job at boot (A10). The unit needs only the local file
+# systemd drops the socket job at boot (A14). The unit needs only the local file
 # systems (/opt/oarfish and /var/lib/oarfish-update).
 
 [Unit]
