@@ -412,7 +412,7 @@ Alternatives considered: *a hard CI gate on memory and time* (the numbers depend
 | F11 | Same version | Files of the installed version | `already_installed` | C, D |
 | F12 | Release changes the helper or a unit, before G6.10 | Real or throwaway-signed release with different helper bytes or unit text | `installer_required` with the list of names; GUI shows the installer instruction; nothing changed | C, D |
 | F13 | Hostile archive or sizes | Signed bundle with a symlink, `..` path, extra file, oversized member, size lie | `manifest_invalid`; nothing left behind | C (throwaway key) |
-| F14 | Damaged rollback target | Binary of the previous release altered before a failing update | `rollback_failed`, `needs_attention`, no switch to the damaged tree | C, T |
+| F14 | Damaged rollback target | Binary of the previous release altered after `activate` is accepted and before the rollback compares (the hash is recorded when `activate` starts) | `rollback_failed`, `needs_attention`, no switch to the damaged tree | C, T |
 | F15 | Wrong peer | A different uid connects to the socket | Connection refused or closed, no state change | C, D |
 | F16 | Concurrent apply | Second `apply` during an update | `busy`; one transaction | C, D |
 | F17 | Helper not installed or stopped | Socket unit stopped | GUI shows the installer instruction; no state change | C, D |

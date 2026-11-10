@@ -92,7 +92,7 @@ internal/securefile/ internal/clock/
 Not implemented, only reserved by the layout and by the project rules:
 
 - Hardware detection and OS detection are separate concerns (ADR 0002, spec 3.4, 8.3) and implemented in G4 (below). Package, network and service adapters (`packages/`, `network/`, `services/` in spec 8.3) do not exist yet.
-- The only privileged code that is installed is the Update Helper, and only by an installer run of a release that carries it (a stub in G6.3b, run once on one device at the G6.3 owner stop with a test release, see [INSTALL.md](INSTALL.md#results-on-the-reference-device-g63); the real helper since G6.5 and G6.6, not run on a device; not Verified). The update path as a whole is described below and in [`UPDATE.md`](UPDATE.md). Privilege Broker and Update Helper are separate components (spec 8.6): the Update Helper arrives in Gate G6 (its stub is in the repository since step G6.3a and in the release bundle since G6.3b, see "The update helper stub" below), the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
+- The only privileged code that is installed is the Update Helper, and only by an installer run of a release that carries it (a stub in G6.3b, run once on one device at the G6.3 owner stop with a test release, see [INSTALL.md](INSTALL.md#results-on-the-reference-device-g63); the real helper since G6.5 and G6.6, observed on one device in the G6.9 run, see [UPDATE.md](UPDATE.md#results-on-the-reference-device); not Verified). The update path as a whole is described below and in [`UPDATE.md`](UPDATE.md). Privilege Broker and Update Helper are separate components (spec 8.6): the Update Helper arrives in Gate G6 (its stub is in the repository since step G6.3a and in the release bundle since G6.3b, see "The update helper stub" below), the Privilege Broker in Gate G7, its capability check in Gate G8 (D-C28).
 - Plugins and self-update are out of scope until their gates (ADR 0003, ADR 0004). Release signing exists (below); the installer verifies signatures with the system `openssl`, but nothing in the Oarfish binary verifies signatures yet.
 
 ## The update helper stub (Gate G6, step G6.3a)
@@ -139,7 +139,7 @@ The names follow `state.json` and the manifest of ADR 0010. Members may only be 
 
 ## The update helper core (Gate G6, step G6.5)
 
-Step G6.5 turns the stub into the helper core of ADR 0010: a strict decoder per request, the peer check on every connection, a real `status` from a real state file, and the requests `stage` and `discard`. It is the first privileged code that writes below `/opt/oarfish`, and it is reviewed before anything is built on it. **Nothing of this step has been run on a device, and the sandbox of the units (`ProtectSystem=strict`, `ReadWritePaths=/opt/oarfish`, `StateDirectory=`, `SystemCallFilter=@system-service`) has not been exercised with this code.** It is tested on CI runners and on a development machine, against temporary directories and a fake peer check. Linux-only parts (`CLOCK_BOOTTIME`, `SO_PEERCRED`) run on the Linux CI job; the development machine for this step was macOS.
+Step G6.5 turns the stub into the helper core of ADR 0010: a strict decoder per request, the peer check on every connection, a real `status` from a real state file, and the requests `stage` and `discard`. It is the first privileged code that writes below `/opt/oarfish`, and it is reviewed before anything is built on it. **At the time of this step nothing had been run on a device, and the sandbox of the units (`ProtectSystem=strict`, `ReadWritePaths=/opt/oarfish`, `StateDirectory=`, `SystemCallFilter=@system-service`) had not been exercised with this code. The G6.9 device run later observed the helper on one device ([UPDATE.md](UPDATE.md#results-on-the-reference-device)).** It is tested on CI runners and on a development machine, against temporary directories and a fake peer check. Linux-only parts (`CLOCK_BOOTTIME`, `SO_PEERCRED`) run on the Linux CI job; the development machine for this step was macOS.
 
 **Not in this step** (G6.6 added `activate`, `ack`, the health check, rollback, the `recover` subcommand, retention, cooldown enforcement, `systemctl` and the fault hooks, see the next section): component replacement, `key_changed`, the unit lint (G6.10).
 
@@ -190,7 +190,7 @@ The request has a deadline of 180 s on a monotonic clock, checked between chunks
 
 ## The release transaction and the recovery (Gate G6, step G6.6)
 
-Step G6.6 adds the requests `activate` and `ack`, the transaction of ADR 0010 U5, U6 and U7, the health check, the rollback, the boot-time `recover` subcommand, retention and pruning, the cooldown, and the fault hooks of the test build. It is privileged code and is reviewed before the service side (G6.7) is built on it. **Nothing of it has run on a device. Neither the sandbox of the units (in particular whether `ProtectSystem=strict`, `NoNewPrivileges`, `SystemCallFilter=@system-service` and the empty capability set allow `exec` of `/usr/bin/systemctl` and its connection to systemd), nor a real systemd, a real `oarfish.service` or a real `/healthz` was involved.** The tests use a fake `systemctl`, a fake health client and a fake clock.
+Step G6.6 adds the requests `activate` and `ack`, the transaction of ADR 0010 U5, U6 and U7, the health check, the rollback, the boot-time `recover` subcommand, retention and pruning, the cooldown, and the fault hooks of the test build. It is privileged code and is reviewed before the service side (G6.7) is built on it. **At the time of this step nothing of it had run on a device (the G6.9 device run later observed it on one device, [UPDATE.md](UPDATE.md#results-on-the-reference-device)). Neither the sandbox of the units (in particular whether `ProtectSystem=strict`, `NoNewPrivileges`, `SystemCallFilter=@system-service` and the empty capability set allow `exec` of `/usr/bin/systemctl` and its connection to systemd), nor a real systemd, a real `oarfish.service` or a real `/healthz` was involved at that time.** The tests use a fake `systemctl`, a fake health client and a fake clock.
 
 **Requests.** `activate` accepts exactly `v`, `op`, `version`, `correlation_id` and `components_confirmed` (a JSON boolean; `null`, a string or a number is `bad_request`); `ack` accepts exactly `v`, `op` and `transaction_id` (16 lowercase hexadecimal digits). `activate` answers `{"v":1,"ok":true,"status":"accepted","transaction_id":"…"}` at once; the transaction continues in the helper without the caller. `ack` answers `{"v":1,"ok":true}`, or `not_found` when the id is not the id of the last result; a second `ack` of the same id is accepted and changes nothing.
 
@@ -219,7 +219,7 @@ Step G6.6 adds the requests `activate` and `ack`, the transaction of ADR 0010 U5
 
 ## The update service (Gate G6, step G6.7)
 
-Source: ADR 0010 U3, U9, U12 and A11 (decision D-C68). Package `internal/updater`; the routes are in `internal/server/update.go`. The service is unprivileged, has no timer and no goroutine that runs without a request, and takes no path, URL or command from the user. **Nothing here is verified on a device or against the real GitHub service**; the tests use a fake GitHub server (TLS, own certificate) and a fake helper.
+Source: ADR 0010 U3, U9, U12 and A11 (decision D-C68). Package `internal/updater`; the routes are in `internal/server/update.go`. The service is unprivileged, has no timer and no goroutine that runs without a request, and takes no path, URL or command from the user. **At the time of this step nothing here was verified on a device or against the real GitHub service; the GUI update was observed on one device in the G6.9 run ([UPDATE.md](UPDATE.md#results-on-the-reference-device))**; the tests use a fake GitHub server (TLS, own certificate) and a fake helper.
 
 **Routes** (all behind a session, CSRF layers as everywhere, JSON only, body at most 1 KiB):
 
@@ -247,14 +247,14 @@ The update path is complete for the base update (ADR 0010 U1 to U14). The replac
 
 | Part | Implemented in | Tested in CI | On the device |
 |---|---|---|---|
-| Installer with the helper layout and the lock | G6.3b | fake root, arm64 containers | layout observed once with a test release (G6.3 owner stop); production key path not run |
-| Helper: `status`, `stage`, `discard`, lock, staging recovery | G6.5 | yes | not run |
-| Helper: `activate`, `ack`, health check, rollback, boot recovery, retention, cooldown | G6.6 | yes (fake systemd, fake health client) | not run |
-| Fault hooks of the test build (`error`, `stop`, `hold`) | G6.6, G6.9 | faulthooks test build | not run |
-| Update service, routes, audit entries | G6.7 | yes (fake GitHub, fake helper) | not run |
-| Update page | G6.8 | jsdom, headless Chrome on one Mac | not run |
+| Installer with the helper layout and the lock | G6.3b | fake root, arm64 containers | layout observed once with a test release (G6.3 owner stop); the production key path ran in the G6.9 run (official installers of `v0.1.0-alpha.7`, `.8` and `.10`, class D, observed on one device) |
+| Helper: `status`, `stage`, `discard`, lock, staging recovery | G6.5 | yes | observed on one device (G6.9, class D) |
+| Helper: `activate`, `ack`, health check, rollback, boot recovery, retention, cooldown | G6.6 | yes (fake systemd, fake health client) | observed on one device (G6.9, class D and T) |
+| Fault hooks of the test build (`error`, `stop`, `hold`) | G6.6, G6.9 | faulthooks test build | observed on one device (G6.9, class T) |
+| Update service, routes, audit entries | G6.7 | yes (fake GitHub, fake helper) | the GUI update observed on one device (G6.9, F19, class D) |
+| Update page | G6.8 | jsdom, headless Chrome on one Mac | exercised through the GUI update and its GUI texts in the G6.9 run (observed on one device) |
 
-**Not verified:** every row of the failure matrix on a device, the real systemd interplay of the helper sandbox with `systemctl`, the timings, the write load and the memory of a real update. G6.9 prepares the device evidence. Its results are recorded by a later closeout step and are not claimed here.
+**Not verified:** the rows F24 to F32 of the failure matrix (G6.10), the parts of rows marked "C only" in [`UPDATE.md`](UPDATE.md#failure-matrix-f1-to-f32), and everything else the results section lists as not run. The device observations of G6.9 (class D and T, one device, nothing Verified) are in [UPDATE.md](UPDATE.md#results-on-the-reference-device).
 
 ## The release verification package (Gate G6, step G6.4)
 
