@@ -14,7 +14,7 @@ func TestComponentComparison(t *testing.T) {
 		if strings.HasSuffix(name, "helper") {
 			return elfStub("changed " + name)
 		}
-		return []byte("[Unit]\n# changed " + name + "\n")
+		return changedUnit(name) // a difference the unit lint accepts (a comment)
 	}
 	for i, name := range componentNames {
 		t.Run("only "+name, func(t *testing.T) {

@@ -16,9 +16,10 @@ import (
 // stage implements the request `stage` (ADR 0010 U3 steps 2 and 3, U4, U5):
 // copy the four downloaded files out of the service-owned cache into a private
 // root-owned staging directory, verify the private copies with relverify,
-// extract the release, compare the helper components with the installed ones
-// and move a verified release to releases/<version> as an inactive staged
-// release. Nothing here activates anything.
+// extract the release, lint its unit files (U15 rule 3), compare the helper
+// components with the installed ones and move a verified release to
+// releases/<version> as an inactive staged release. Nothing here activates
+// anything.
 
 type stageRun struct {
 	h   *handler
@@ -238,6 +239,12 @@ func (r *stageRun) build(set *cacheSet, releases *os.File) (stageResponse, error
 	}
 	if r.expired() {
 		return stageResponse{}, codeIOError
+	}
+
+	// k2. the unit lint (U4 step 9, U15 rule 3), for every release, before any
+	// unit text is compared or used.
+	if code := r.lintUnits(dir, rel.Manifest.Components != nil); code != "" {
+		return stageResponse{}, code
 	}
 
 	// l. component comparison. A bundle without components (the legacy shape)
