@@ -83,6 +83,24 @@ if [ -n "$INSTALLED" ]; then
 fi
 echo "systemd-analyze verify: the three update-helper units are accepted"
 
+# The boot transaction. `verify` of single units cannot see an ordering cycle that
+# runs through basic.target, so this verifies multi-user.target with the units
+# enabled the way the installer enables them (wants links of the recover unit and
+# of the helper socket). systemd breaks a cycle by deleting a job and only warns,
+# so the output is searched as well as the exit status (ADR 0010 A10).
+mkdir -p "$R$UNITDIR/multi-user.target.wants" "$R$UNITDIR/sockets.target.wants"
+ln -s ../oarfish-update-recover.service "$R$UNITDIR/multi-user.target.wants/oarfish-update-recover.service"
+ln -s ../oarfish.service "$R$UNITDIR/multi-user.target.wants/oarfish.service"
+ln -s ../oarfish-update-helper.socket "$R$UNITDIR/sockets.target.wants/oarfish-update-helper.socket"
+boot_status=0
+systemd-analyze verify --root="$R" multi-user.target >"$TMP/boot.out" 2>&1 || boot_status=$?
+cat "$TMP/boot.out"
+if grep -qiE 'ordering cycle|deleted to break' "$TMP/boot.out"; then
+  die "the boot transaction of multi-user.target has an ordering cycle (see above)"
+fi
+[ "$boot_status" -eq 0 ] || die "systemd-analyze verify multi-user.target failed with status $boot_status"
+echo "systemd-analyze verify: the boot transaction of multi-user.target has no ordering cycle"
+
 # Informational. The units are not changed to improve a score.
 report="$TMP/security.md"
 {
