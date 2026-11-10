@@ -19,6 +19,10 @@
 # The helper service has no [Install] section and the recover unit no RemainAfterExit.
 # The recover unit has TimeoutStartSec=120 (ADR 0010 A9): a oneshot unit has no
 # start timeout by default, and this one is ordered Before=oarfish.service.
+# The recover unit has DefaultDependencies=no and After=local-fs.target (A10): it is
+# ordered Before= the helper socket, and the default After=basic.target of a service
+# would make an ordering cycle through sockets.target (scripts/verify-units.sh
+# verifies the boot transaction; this check keeps the text that avoids the cycle).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
@@ -101,6 +105,8 @@ EOF
     oarfish-update-recover.service)
       echo "$RECOVER_BEFORE"
       cat <<'EOF'
+Unit|DefaultDependencies=no
+Unit|After=local-fs.target
 Service|Type=oneshot
 Service|TimeoutStartSec=120
 Service|ExecStart=/opt/oarfish/components/known-good/oarfish-update-helper recover

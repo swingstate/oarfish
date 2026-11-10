@@ -9,10 +9,18 @@
 # recovery; systemd then marks the unit failed and oarfish.service still starts,
 # because Before= is an ordering and not a requirement (A9).
 # No socket. Same sandbox as the helper service.
+#
+# DefaultDependencies=no: a service gets After=basic.target by default, and
+# basic.target is ordered after sockets.target, which is ordered after the helper
+# socket. With Before=oarfish-update-helper.socket that is an ordering cycle, and
+# systemd drops the socket job at boot (A10). The unit needs only the local file
+# systems (/opt/oarfish and /var/lib/oarfish-update).
 
 [Unit]
 Description=Oarfish update recovery
 Documentation=https://github.com/swingstate/oarfish
+DefaultDependencies=no
+After=local-fs.target
 Before=oarfish-update-helper.socket oarfish.service
 
 [Service]
