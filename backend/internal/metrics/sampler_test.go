@@ -108,9 +108,31 @@ func step(t testing.TB, c *fakeClock, sub *Subscription, d time.Duration) Frame 
 	}
 }
 
-func newTestSampler(t testing.TB, clock Clock, cfg Config) (*Sampler, fstest.MapFS) {
+// lockedFS is a fake file system the test may change while the sampling
+// goroutine reads it. Every access to the map goes through one mutex.
+type lockedFS struct {
+	mu sync.Mutex
+	m  fstest.MapFS
+}
+
+func newLockedFS(m fstest.MapFS) *lockedFS { return &lockedFS{m: m} }
+
+func (l *lockedFS) Open(name string) (fs.File, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.m.Open(name)
+}
+
+// set replaces the content of one file.
+func (l *lockedFS) set(name, content string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.m[name] = &fstest.MapFile{Data: []byte(content)}
+}
+
+func newTestSampler(t testing.TB, clock Clock, cfg Config) (*Sampler, *lockedFS) {
 	t.Helper()
-	fsys := cloneFixture(t, "pi-zero-2w")
+	fsys := newLockedFS(cloneFixture(t, "pi-zero-2w"))
 	cfg.Collector = NewCollector(fsys, fakeStatfs(map[string]Statfs{
 		"/": {BlockSize: 4096, Blocks: 1000, Free: 500, Available: 500},
 	}))
@@ -179,7 +201,7 @@ func TestSamplerStartsAndStopsWithClients(t *testing.T) {
 
 	// The loop has taken its baseline and waits for the warm-up. Make the CPU busy.
 	clock.waitForTimer(t)
-	fsys["proc/stat"] = &fstest.MapFile{Data: []byte("cpu  41400 310 15430 2291600 1210 0 2210 0 0 0\ncpu0 1\ncpu1 1\n")}
+	fsys.set("proc/stat", "cpu  41400 310 15430 2291600 1210 0 2210 0 0 0\ncpu0 1\ncpu1 1\n")
 	f := step(t, clock, sub, DefaultWarmup)
 	if f.Snapshot.CPU.UsagePercent == nil || *f.Snapshot.CPU.UsagePercent != 20 {
 		t.Errorf("the first published sample must carry CPU usage, got %s", mustJSON(t, f.Snapshot.CPU.UsagePercent))
@@ -256,7 +278,7 @@ func TestHistoryRingIsBounded(t *testing.T) {
 	var temps []float64
 	for i := 0; i < 12; i++ {
 		temp := 40000 + 1000*i
-		fsys["sys/class/thermal/thermal_zone0/temp"] = &fstest.MapFile{Data: []byte(itoa(temp) + "\n")}
+		fsys.set("sys/class/thermal/thermal_zone0/temp", itoa(temp)+"\n")
 		d := DefaultInterval
 		if i == 0 {
 			d = DefaultWarmup
@@ -400,13 +422,13 @@ func TestAlertsVersionChangesOnlyWhenAlertsChange(t *testing.T) {
 		t.Fatalf("alerts = %s", mustJSON(t, f2.Alerts))
 	}
 
-	fsys["sys/class/thermal/thermal_zone0/temp"] = &fstest.MapFile{Data: []byte("75000\n")}
+	fsys.set("sys/class/thermal/thermal_zone0/temp", "75000\n")
 	f3 := step(t, clock, sub, DefaultInterval)
 	if f3.AlertsVersion == f2.AlertsVersion || !hasID(f3, "cpu_temperature") {
 		t.Errorf("a new alert did not change the version: %d -> %d, %s", f2.AlertsVersion, f3.AlertsVersion, mustJSON(t, f3.Alerts))
 	}
 	// A different value of the same alert is a change too (the text shows it).
-	fsys["sys/class/thermal/thermal_zone0/temp"] = &fstest.MapFile{Data: []byte("76000\n")}
+	fsys.set("sys/class/thermal/thermal_zone0/temp", "76000\n")
 	f4 := step(t, clock, sub, DefaultInterval)
 	if f4.AlertsVersion == f3.AlertsVersion {
 		t.Error("changed alert parameters kept the version")
@@ -488,7 +510,7 @@ func TestConcurrentSubscribeAndClose(t *testing.T) {
 func TestOnceWithoutClients(t *testing.T) {
 	clock := newFakeClock()
 	var reads atomic.Int64
-	fsys := cloneFixture(t, "pi-zero-2w")
+	fsys := newLockedFS(cloneFixture(t, "pi-zero-2w"))
 	s := NewSampler(Config{Clock: clock, Collector: NewCollector(countingFS{fsys, &reads}, fakeStatfs(nil))})
 
 	type result struct {
@@ -501,7 +523,7 @@ func TestOnceWithoutClients(t *testing.T) {
 		res <- result{f, err}
 	}()
 	clock.waitForTimer(t)
-	fsys["proc/stat"] = &fstest.MapFile{Data: []byte("cpu  41300 310 15330 2290800 1210 0 2210 0 0 0\ncpu0 1\n")}
+	fsys.set("proc/stat", "cpu  41300 310 15330 2290800 1210 0 2210 0 0 0\ncpu0 1\n")
 	clock.Advance(defaultOnceWindow)
 	r := <-res
 	if r.err != nil || r.f.Snapshot.CPU.UsagePercent == nil || *r.f.Snapshot.CPU.UsagePercent != 20 {
