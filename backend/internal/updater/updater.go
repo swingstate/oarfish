@@ -173,6 +173,9 @@ type HelperView struct {
 	NeedsAttention     bool     `json:"needs_attention,omitempty"`
 	CooldownVersion    string   `json:"cooldown_version,omitempty"`
 	CooldownRemainingS int64    `json:"cooldown_remaining_s,omitempty"`
+	// SocketRestartPending: a component update changed the socket unit of the
+	// helper; the new text takes effect at the next boot (ADR 0010 A15 D4).
+	SocketRestartPending bool `json:"socket_restart_pending,omitempty"`
 }
 
 // CheckView is the state of the shared check result.
@@ -193,6 +196,10 @@ type JobView struct {
 	StartedAt  string   `json:"started_at"`
 	FinishedAt string   `json:"finished_at,omitempty"`
 	Error      *ErrView `json:"error,omitempty"`
+	// Differs names what the staged release replaces besides the release
+	// itself, from the closed list of ADR 0010 U2 (A15 D6). It is set while the
+	// job waits for the second confirmation and after it.
+	Differs []string `json:"differs,omitempty"`
 }
 
 // ResultView is the last result of the helper (ADR 0010 U8).
@@ -202,6 +209,9 @@ type ResultView struct {
 	Outcome    string `json:"outcome"`
 	ReasonCode string `json:"reason_code,omitempty"`
 	FinishedAt string `json:"finished_at,omitempty"`
+	// ComponentsUpdated: the helper components were replaced, whatever the
+	// outcome of the release (ADR 0010 U13 F31).
+	ComponentsUpdated bool `json:"components_updated,omitempty"`
 }
 
 // InstallerView is the transitional instruction (ADR 0010 U9): a release that
@@ -277,14 +287,15 @@ func (u *Updater) stateLocked(hv HelperView, status *HelperStatus, throttled boo
 	}
 	if j := u.job; j != nil {
 		s.Job = &JobView{Kind: string(j.kind), Step: string(j.step), Version: j.version, Running: !j.done,
-			StartedAt: ts(j.started), FinishedAt: ts(j.finished), Error: viewOf(j.err)}
+			StartedAt: ts(j.started), FinishedAt: ts(j.finished), Error: viewOf(j.err), Differs: append([]string(nil), j.differs...)}
 		if j.err != nil && j.err.Code == CodeInstallerRequired && j.kind == jobApply {
 			s.Installer = &InstallerView{Required: true, Version: j.version, Instruction: InstallerInstruction, Differs: append([]string{}, j.err.Differs...)}
 		}
 	}
 	if status != nil && status.LastResult != nil {
 		r := status.LastResult
-		s.LastResult = &ResultView{To: r.To, From: r.From, Outcome: r.Outcome, ReasonCode: r.ReasonCode, FinishedAt: r.FinishedAt}
+		s.LastResult = &ResultView{To: r.To, From: r.From, Outcome: r.Outcome, ReasonCode: r.ReasonCode, FinishedAt: r.FinishedAt,
+			ComponentsUpdated: r.ComponentsUpdated}
 	}
 	return s
 }
@@ -305,7 +316,7 @@ func (u *Updater) helperView(ctx context.Context) (HelperView, *HelperStatus) {
 	u.mu.Unlock()
 	u.reconcile(ctx, &st)
 	return HelperView{Present: true, Phase: st.Phase, StagedVersion: st.StagedVersion, NeedsAttention: st.NeedsAttention,
-		CooldownVersion: st.CooldownVersion, CooldownRemainingS: st.CooldownRemainingS}, &st
+		CooldownVersion: st.CooldownVersion, CooldownRemainingS: st.CooldownRemainingS, SocketRestartPending: st.SocketRestartPending}, &st
 }
 
 // reconcile writes update_finished for a last result that nobody has seen
