@@ -374,9 +374,16 @@ func TestHelperErrorsAreMappedToTypedErrors(t *testing.T) {
 			if got.Error() != string(c)+": "+Text(c) {
 				t.Errorf("error text %q", got.Error())
 			}
-			// Activate failed: the staged release is left for the administrator to discard.
-			if where == "activate" && e.helper.count("discard") != 0 {
-				t.Error("a failed activate discarded the staged release by itself")
+			// A refusal of activate discards the staged release (ADR 0010 A17, F2); a
+			// failed call does not, because the helper may have taken the request.
+			if where == "activate" {
+				want := 1
+				if c == CodeUnavailable || c == CodeTimeout {
+					want = 0
+				}
+				if n := e.helper.count("discard"); n != want {
+					t.Errorf("%s at activate: %d discards, want %d", c, n, want)
+				}
 			}
 		}
 	}

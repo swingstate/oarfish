@@ -22,6 +22,7 @@ const (
 	noticeFloor   = 60 * time.Minute // the notice never retries a failed attempt sooner
 	shortBound    = 3 * time.Second  // check handlers never wait longer for the work
 	pauseLimit    = 30 * time.Minute // a staged release expires after 30 minutes (U5)
+	handOverLimit = 60 * time.Second // F4: how long an unreachable helper counts as the hand-over (A17)
 	maxNotesBytes = 4096
 )
 
@@ -60,6 +61,7 @@ type Updater struct {
 	retry        time.Duration
 	bound        time.Duration
 	pause        time.Duration
+	handOver     time.Duration
 	pageEvery    time.Duration
 	forceEvery   time.Duration
 	noticeEvery  time.Duration
@@ -83,6 +85,7 @@ type Updater struct {
 	audited     map[string]bool
 	acked       map[string]bool
 	helperProto int
+	statusOK    time.Time // the last successful status answer of the helper
 }
 
 // New returns an updater. It does nothing until it is asked.
@@ -98,7 +101,7 @@ func newUpdater(cfg Config, roots *x509.CertPool) *Updater {
 	ctx, cancel := context.WithCancel(context.Background())
 	u := &Updater{
 		cfg: cfg, arch: cfg.Arch, now: cfg.Clock.Now, sleep: sleepCtx,
-		stall: stallTimeout, abs: absoluteTimeout, retry: retryDelay, bound: shortBound, pause: pauseLimit,
+		stall: stallTimeout, abs: absoluteTimeout, retry: retryDelay, bound: shortBound, pause: pauseLimit, handOver: handOverLimit,
 		pageEvery: pageInterval, forceEvery: forceInterval, noticeEvery: noticeAge, noticeBackof: noticeFloor,
 		ctx: ctx, cancel: cancel, audited: map[string]bool{}, acked: map[string]bool{}, helperProto: protocolVersion,
 	}
@@ -176,6 +179,12 @@ type HelperView struct {
 	// SocketRestartPending: a component update changed the socket unit of the
 	// helper; the new text takes effect at the next boot (ADR 0010 A15 D4).
 	SocketRestartPending bool `json:"socket_restart_pending,omitempty"`
+	// HandingOver: the helper is not reachable, and that is the hand-over of a
+	// component update, not a failure (ADR 0010 A17, F4). It is set only while
+	// Present is false, for an apply job whose activate was accepted and whose
+	// staged release replaces a helper file, and for at most handOverLimit after
+	// the later of that acceptance and the last successful status answer.
+	HandingOver bool `json:"handing_over,omitempty"`
 }
 
 // CheckView is the state of the shared check result.
@@ -214,13 +223,30 @@ type ResultView struct {
 	ComponentsUpdated bool `json:"components_updated,omitempty"`
 }
 
-// InstallerView is the transitional instruction (ADR 0010 U9): a release that
-// replaces privileged parts needs one run of the installer until G6.10.
+// InstallerView is the instruction to run the installer (ADR 0010 U9, A17 F1).
+// It is built when stage refused the release with one of the codes for which
+// the device needs the installer (installerCase). Code names the case, so that
+// the page can say why; Differs is set for installer_required only.
 type InstallerView struct {
 	Required    bool     `json:"required"`
 	Version     string   `json:"version"`
+	Code        Code     `json:"code"`
 	Instruction string   `json:"instruction"`
 	Differs     []string `json:"differs"`
+}
+
+// installerCase says whether a refusal of stage means that this device needs
+// the installer for the release (ADR 0010 A16 E1, A17 F1): a helper before G6.10
+// step b (installer_required), a changed trust key (key_changed), a unit text
+// outside the rules of the installed helper (unit_rejected), and
+// requirements_not_met, whose cause (the protocol rule D5, the legacy bundle
+// shape, or another requirement) the answer of stage does not carry.
+func installerCase(c Code) bool {
+	switch c {
+	case CodeInstallerRequired, CodeKeyChanged, CodeUnitRejected, CodeRequirementsNotMet:
+		return true
+	}
+	return false
 }
 
 // InstallerInstruction is the fixed text. It contains nothing from GitHub, the
@@ -288,8 +314,9 @@ func (u *Updater) stateLocked(hv HelperView, status *HelperStatus, throttled boo
 	if j := u.job; j != nil {
 		s.Job = &JobView{Kind: string(j.kind), Step: string(j.step), Version: j.version, Running: !j.done,
 			StartedAt: ts(j.started), FinishedAt: ts(j.finished), Error: viewOf(j.err), Differs: append([]string(nil), j.differs...)}
-		if j.err != nil && j.err.Code == CodeInstallerRequired && j.kind == jobApply {
-			s.Installer = &InstallerView{Required: true, Version: j.version, Instruction: InstallerInstruction, Differs: append([]string{}, j.err.Differs...)}
+		if j.kind == jobApply && j.err != nil && j.stageRefused && installerCase(j.err.Code) {
+			s.Installer = &InstallerView{Required: true, Version: j.version, Code: j.err.Code, Instruction: InstallerInstruction,
+				Differs: append([]string{}, j.err.Differs...)}
 		}
 	}
 	if status != nil && status.LastResult != nil {
@@ -307,9 +334,13 @@ func (u *Updater) helperView(ctx context.Context) (HelperView, *HelperStatus) {
 	}
 	st, e := u.cfg.Helper.Status(ctx)
 	if e != nil {
-		return HelperView{Present: false, Error: viewOf(e)}, nil
+		u.mu.Lock()
+		over := u.handingOverLocked(e)
+		u.mu.Unlock()
+		return HelperView{Present: false, Error: viewOf(e), HandingOver: over}, nil
 	}
 	u.mu.Lock()
+	u.statusOK = u.now()
 	if st.ProtocolMax > 0 {
 		u.helperProto = st.ProtocolMax
 	}
@@ -317,6 +348,39 @@ func (u *Updater) helperView(ctx context.Context) (HelperView, *HelperStatus) {
 	u.reconcile(ctx, &st)
 	return HelperView{Present: true, Phase: st.Phase, StagedVersion: st.StagedVersion, NeedsAttention: st.NeedsAttention,
 		CooldownVersion: st.CooldownVersion, CooldownRemainingS: st.CooldownRemainingS, SocketRestartPending: st.SocketRestartPending}, &st
+}
+
+// handingOverLocked is the rule of F4 (ADR 0010 A17): a helper that cannot be
+// reached (unavailable, or a status call that timed out) is the hand-over of a
+// component update when the job is an apply job whose activate the helper
+// accepted, its staged release replaces at least one of the four helper files
+// (only then does the helper end with exit code 75 and restart), and no more
+// than handOver has passed since the later of that acceptance and the last
+// successful status answer. Anything else is shown as the error it is.
+func (u *Updater) handingOverLocked(e *Error) bool {
+	if e.Code != CodeUnavailable && e.Code != CodeTimeout {
+		return false
+	}
+	j := u.job
+	if j == nil || j.kind != jobApply || j.activated.IsZero() || !replacesHelper(j.differs) {
+		return false
+	}
+	since := j.activated
+	if u.statusOK.After(since) {
+		since = u.statusOK
+	}
+	return !u.now().After(since.Add(u.handOver))
+}
+
+// replacesHelper says whether names contain one of the four files of the
+// component set (U15 rule 2): oarfish.service alone is no hand-over.
+func replacesHelper(names []string) bool {
+	for _, n := range names {
+		if n != "oarfish.service" && componentNames[n] {
+			return true
+		}
+	}
+	return false
 }
 
 // reconcile writes update_finished for a last result that nobody has seen

@@ -41,6 +41,9 @@ type jobState struct {
 	cid     string
 	differs []string // what the staged release replaces (the stage answer, closed list)
 
+	stageRefused bool      // err is the helper's refusal of stage (for the installer view, F1)
+	activated    time.Time // when the helper accepted activate (for the hand-over rule, F4)
+
 	started, finished time.Time
 	err               *Error
 	done              bool
@@ -321,6 +324,9 @@ func (u *Updater) applyFlow(j *jobState, confirmed bool) *Error {
 	}
 	info, he := u.cfg.Helper.Stage(ctx, version, j.cid)
 	if he != nil {
+		u.mu.Lock()
+		j.stageRefused = true
+		u.mu.Unlock()
 		return he
 	}
 	_ = os.RemoveAll(dir) // the staged copy is the helper's; the cache is done
@@ -347,8 +353,22 @@ func (u *Updater) applyFlow(j *jobState, confirmed bool) *Error {
 
 	u.setStep(j, stepActivating)
 	if _, he := u.cfg.Helper.Activate(ctx, version, j.cid, confirmed); he != nil {
+		// F2 (ADR 0010 A17): a refusal of activate (cooldown, confirmation,
+		// pre-check, damaged components, …) can leave the release staged, and the
+		// next stage would answer busy until it expires. The service discards it,
+		// so that a new attempt is possible at once; the cooldown markers of the
+		// helper are not touched by discard, and discard acts only on a release
+		// that is still staged under this version. A failure of the call itself
+		// (unavailable, timeout, cancelled) leaves open whether the helper took
+		// the request, so nothing is sent then and the expiry of U5 applies.
+		if helperCodes[he.Code] {
+			_ = u.cfg.Helper.Discard(context.WithoutCancel(ctx), version)
+		}
 		return he
 	}
+	u.mu.Lock()
+	j.activated = u.now()
+	u.mu.Unlock()
 	return nil
 }
 
