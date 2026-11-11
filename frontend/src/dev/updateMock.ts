@@ -28,16 +28,21 @@ const jobAt = (s: UpdateState, step: JobStep, phase = 'idle'): UpdateState =>
 
 /** What the page sees after "Aktualisieren": the steps, the restart (no answer, then the session is gone), the result. */
 function applyTimeline(from: UpdateState, components = false): Reply[] {
-  const success = updateScenarios()['result-success']!;
-  const steps: Reply[] = components
-    ? []
-    : [jobAt(from, 'fetching_metadata'), jobAt(from, 'downloading'), jobAt(from, 'downloading'), jobAt(from, 'staging', 'staging')];
-  return [...steps, jobAt(from, 'activating', 'switching'), jobAt(from, 'activating', 'verifying'), 'network', 'network', 'network', 'unauthorized', success];
+  const all = updateScenarios();
+  if (components) {
+    // After the second confirmation (G6.10): the component phases, the hand-over of the helper
+    // (F4: no answer from the helper, shown as progress), the release phases, the restart, the result.
+    const done = all['apply-components-phase']!;
+    const at = (phase: string) => withState(done, (x) => (x.helper = { present: true, phase }));
+    return [at('c_switching'), all['apply-handing-over']!, all['apply-handing-over']!, at('c_switched'), at('c_committed'), at('switching'), at('verifying'), 'network', 'network', 'unauthorized', all['result-success-components']!];
+  }
+  const steps: Reply[] = [jobAt(from, 'fetching_metadata'), jobAt(from, 'downloading'), jobAt(from, 'downloading'), jobAt(from, 'staging', 'staging')];
+  return [...steps, jobAt(from, 'activating', 'switching'), jobAt(from, 'activating', 'verifying'), 'network', 'network', 'network', 'unauthorized', all['result-success']!];
 }
 
 /** The scenarios: every state of docs/UI.md, "Update page", plus a few with a course over time. */
 export function scenarioNames(): string[] {
-  return [...Object.keys(updateScenarios()), 'loading', 'load-error', 'check-running-then-done', 'apply-flow', 'restart-timeout'];
+  return [...Object.keys(updateScenarios()), 'loading', 'load-error', 'check-running-then-done', 'apply-flow', 'components-flow', 'restart-timeout'];
 }
 
 function build(name: string): Reply[] | null {
@@ -52,6 +57,9 @@ function build(name: string): Reply[] | null {
       return [all['check-running']!, all['check-running']!, av];
     case 'apply-flow':
       return applyTimeline(av);
+    case 'components-flow':
+      // The pause for the second confirmation; "Bestätigen und aktualisieren" continues with applyTimeline(…, true).
+      return [all['awaiting-confirmation']!];
     case 'restart-timeout':
       return [jobAt(av, 'activating', 'switching'), 'network'];
   }

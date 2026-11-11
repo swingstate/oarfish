@@ -3,7 +3,7 @@
 // own sentence in both languages, http_<three digits> shares one, and anything
 // else gets the generic sentence. The server's English message is never shown.
 import { waitText } from './authErrors';
-import { fmt, t } from './i18n';
+import { fmt, has, msg, t } from './i18n';
 
 export const updateCodes = [
   'bad_request',
@@ -92,4 +92,42 @@ export function actionErrorText(code: string, retryAfter: number | null = null):
     default:
       return { text: updateErrorText(code), field: null };
   }
+}
+
+/**
+ * The reason sentence of the outcome components_rolled_back (ADR 0010 A16, the
+ * closed set of eight reasons), in four groups: the new helper failed its check
+ * at its first start; the transaction was interrupted; the state could not be
+ * read; a step of the helper that handed over failed. An unknown reason has no
+ * sentence: the code is still shown under the technical details.
+ */
+export function componentsReasonText(reason: string | undefined): string | null {
+  switch (reason) {
+    case 'helper_mismatch':
+    case 'key_changed':
+    case 'protocol_mismatch':
+      return t['updComponentsReason.check'];
+    case 'interrupted':
+      return t['updComponentsReason.interrupted'];
+    case 'state_unreadable':
+      return t['updComponentsReason.state'];
+    case 'switch_failed':
+    case 'state_write_failed':
+    case 'reload_failed':
+      return t['updComponentsReason.switch'];
+    default:
+      return null;
+  }
+}
+
+/** The plain words for a component name of the closed list; null for a name this version does not know. */
+export function componentText(name: string): string | null {
+  const key = `updComponent.${name}`;
+  return has(key) ? msg(key) : null;
+}
+
+/** The reason sentence of the installer view; a service that sends no code is a helper before G6.10 step b. */
+export function installerReasonText(code: string | undefined): string {
+  const key = `updInstallerReason.${code ?? 'installer_required'}`;
+  return has(key) ? msg(key) : t['updInstallerReason.installer_required'];
 }

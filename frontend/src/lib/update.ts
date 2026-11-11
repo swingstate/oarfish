@@ -23,6 +23,10 @@ export interface HelperView {
   needs_attention?: boolean;
   cooldown_version?: string;
   cooldown_remaining_s?: number;
+  /** A component update changed the helper's socket unit; it takes effect at the next boot (ADR 0010 A15 D4). */
+  socket_restart_pending?: boolean;
+  /** The helper cannot be reached because it hands over to its new version (ADR 0010 A17, F4); only with present false. */
+  handing_over?: boolean;
 }
 
 export type CheckState = 'never' | 'ok' | 'error';
@@ -66,6 +70,8 @@ export interface JobView {
   started_at: string;
   finished_at?: string;
   error?: UpdateErrorView;
+  /** What the staged release replaces besides the release itself: names of the closed list of ADR 0010 U2. */
+  differs?: string[];
 }
 
 /** The outcomes of the helper (ADR 0010 U8). An outcome this version does not know is kept and shown neutrally. */
@@ -77,11 +83,27 @@ export interface ResultView {
   outcome: string;
   reason_code?: string;
   finished_at?: string;
+  /** The transaction replaced the helper components, whatever the outcome of its release (ADR 0010 U13 F31). */
+  components_updated?: boolean;
 }
+
+/** The names of ADR 0010 U2 that a release can replace besides itself (a closed list of the service). */
+export const componentNames = [
+  'oarfish-update-helper',
+  'oarfish-update-helper.socket',
+  'oarfish-update-helper.service',
+  'oarfish-update-recover.service',
+  'oarfish.service',
+] as const;
+
+/** The codes for which the device needs the installer (ADR 0010 A16 E1, A17 F1). */
+export const installerCodes = ['installer_required', 'key_changed', 'unit_rejected', 'requirements_not_met'] as const;
 
 export interface InstallerView {
   required: boolean;
   version: string;
+  /** Why the installer is needed: one of installerCodes. A service before step c of G6.10 sends none. */
+  code?: string;
   /** The service's English instruction. The page shows its own fixed text instead. */
   instruction: string;
   differs: string[];
@@ -107,6 +129,8 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 const optString = (o: Obj, k: string) => o[k] === undefined || typeof o[k] === 'string';
 const optBool = (o: Obj, k: string) => o[k] === undefined || typeof o[k] === 'boolean';
 const optCount = (o: Obj, k: string) => o[k] === undefined || isCount(o[k]);
+const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((d) => typeof d === 'string');
+const optStrings = (o: Obj, k: string) => o[k] === undefined || isStrings(o[k]);
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
 function isError(v: unknown): v is UpdateErrorView {
@@ -124,7 +148,9 @@ function isHelper(v: unknown): v is HelperView {
     optString(v, 'staged_version') &&
     optBool(v, 'needs_attention') &&
     optString(v, 'cooldown_version') &&
-    optCount(v, 'cooldown_remaining_s')
+    optCount(v, 'cooldown_remaining_s') &&
+    optBool(v, 'socket_restart_pending') &&
+    optBool(v, 'handing_over')
   );
 }
 
@@ -160,7 +186,8 @@ function isJob(v: unknown): v is JobView {
     typeof v.running === 'boolean' &&
     typeof v.started_at === 'string' &&
     optString(v, 'finished_at') &&
-    optError(v, 'error')
+    optError(v, 'error') &&
+    optStrings(v, 'differs')
   );
 }
 
@@ -171,7 +198,8 @@ function isResult(v: unknown): v is ResultView {
     typeof v.from === 'string' &&
     typeof v.outcome === 'string' &&
     optString(v, 'reason_code') &&
-    optString(v, 'finished_at')
+    optString(v, 'finished_at') &&
+    optBool(v, 'components_updated')
   );
 }
 
@@ -180,9 +208,9 @@ function isInstaller(v: unknown): v is InstallerView {
     isObj(v) &&
     typeof v.required === 'boolean' &&
     typeof v.version === 'string' &&
+    optString(v, 'code') &&
     typeof v.instruction === 'string' &&
-    Array.isArray(v.differs) &&
-    v.differs.every((d) => typeof d === 'string')
+    isStrings(v.differs)
   );
 }
 

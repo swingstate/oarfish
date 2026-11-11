@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import App from '../App.svelte';
 import Update from './Update.svelte';
 import { FakeEventSource } from '../lib/eventsource.fake';
-import { en, fmt, t } from '../lib/i18n';
+import { de, en, fmt, t } from '../lib/i18n';
+import { setLang } from '../lib/lang.svelte';
 import { forgetSession, onSessionLost } from '../lib/session';
 import { sentinelCsrf, signedIn } from '../lib/session.fixtures';
 import { available, nextVersion, sampleNotes, updateScenarios, upToDate, withState } from '../lib/update.fixtures';
@@ -231,7 +232,7 @@ describe('update page states', () => {
     expect((byTestId('upd-check-now') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('state awaiting components confirmation: the generic sentence, the password and the discard', async () => {
+  it('state awaiting components confirmation: the sentence, the password and the discard', async () => {
     await open(scenario('awaiting-confirmation'));
     expect(text('upd-components')).toContain(t.updComponentsText);
     expect(text('upd-components')).toContain(t.updConfirmRestart);
@@ -708,5 +709,217 @@ describe('structure', () => {
 
   it('every update error code of the State has its own sentence in the page', () => {
     expect(updateErrorText('tls_failure')).toBe(t['updErr.tls_failure']);
+  });
+});
+
+// ---- the component update (G6.10 step c; ADR 0010 U15 rule 7, A16, A17) ------------
+
+describe('component update', () => {
+  const words = (id: string) => Array.from(byTestId(id).querySelectorAll('li')).map((li) => li.textContent?.replace(/\s+/g, ' ').trim());
+  const helperFiles = ['oarfish-update-helper', 'oarfish-update-helper.socket', 'oarfish-update-helper.service', 'oarfish-update-recover.service'];
+
+  for (const language of ['de', 'en'] as const) {
+    it(`the second confirmation names every staged component in plain words (${language})`, async () => {
+      setLang(language);
+      try {
+        const d = language === 'de' ? de : en;
+        await open(scenario('awaiting-confirmation'));
+        expect(words('upd-components-names')).toEqual(
+          [...helperFiles, 'oarfish.service'].map((n) => `${d[`updComponent.${n}` as keyof typeof d]} (${n})`),
+        );
+        const card = text('upd-components');
+        expect(card).toContain(d.updComponentsText);
+        expect(card).toContain(d.updConfirmRestart);
+        expect(text('upd-components-fail')).toBe(d.updComponentsFail);
+        // D4: the socket unit is among the names, so its text takes effect after the next restart of the device.
+        expect(text('upd-components-socket')).toBe(d.updSocketPending);
+        // D7: the password is asked again, with a help text that says so.
+        const field = screen.getByLabelText(d.updPasswordLabel);
+        expect(document.getElementById(field.getAttribute('aria-describedby')!.split(' ')[0]!)!.textContent).toContain(d.updComponentsPasswordHelp);
+        expect(screen.getByRole('button', { name: d.updComponentsSubmit })).toBeTruthy();
+        expect(screen.getByRole('button', { name: d.updDiscard })).toBeTruthy();
+      } finally {
+        setLang('de');
+      }
+    });
+  }
+
+  it('oarfish.service alone (D6): the same dialog with only that name, the plain rollback sentence, no socket note', async () => {
+    await open(scenario('awaiting-service-only'));
+    expect(words('upd-components-names')).toEqual([`${t['updComponent.oarfish.service']} (oarfish.service)`]);
+    expect(text('upd-components-fail')).toBe(t.updComponentsFailService);
+    expect(screen.queryByTestId('upd-components-socket')).toBeNull();
+  });
+
+  it('a name this version does not know is shown as the name only, never as markup', async () => {
+    await open(withState(scenario('awaiting-service-only'), (s) => (s.job!.differs = ['<b>new</b>'])));
+    const li = byTestId('upd-components-names').querySelector('li')!;
+    expect(li.textContent).toBe('<b>new</b>');
+    expect(li.querySelector('b')).toBeNull();
+  });
+
+  it('"Verwerfen" in the second confirmation sends discard for the job version', async () => {
+    await open(scenario('awaiting-service-only'), { [DISCARD]: () => ok({ schema_version: 1, ok: true }) });
+    routes[GET] = () => ok(available());
+    await fireEvent.click(screen.getByRole('button', { name: t.updDiscard }));
+    await flush();
+    expect(calls.filter((c) => c.key === DISCARD).map((c) => c.body)).toEqual([{ version: nextVersion }]);
+    expect(count(APPLY)).toBe(0);
+  });
+
+  it('the staged release expires while the dialog waits: the dialog goes, and the page says to start again', async () => {
+    await open(scenario('awaiting-confirmation'));
+    routes[GET] = () => ok(scenario('stage-expired'));
+    await flush(2000);
+    expect(screen.queryByTestId('upd-components')).toBeNull();
+    expect(text('upd-job-failed')).toContain(t['updErr.stage_expired']);
+    expect(t['updErr.stage_expired']).toMatch(/noch einmal/);
+  });
+
+  // ---- F4: the hand-over of the helper is progress, within the bound of the service ----
+
+  it('F4: a component phase after activate is progress with its own text', async () => {
+    await open(scenario('apply-components-phase'));
+    expect(text('upd-live')).toBe(t.updComponentsReplacing);
+    expect(screen.queryByTestId('upd-helper-missing')).toBeNull();
+  });
+
+  it('F4: an unreachable helper inside the bound (handing_over) is progress, not an error', async () => {
+    await open(scenario('apply-handing-over'));
+    expect(text('upd-live')).toBe(t.updComponentsReplacing);
+    expect(screen.queryByTestId('upd-helper-missing')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('F4: past the bound (handing_over gone) the same State is the helper error again', async () => {
+    await open(withState(scenario('apply-handing-over'), (s) => delete s.helper.handing_over));
+    expect(text('upd-helper-missing')).toContain(t.updHelperMissing);
+    expect(text('upd-live')).not.toBe(t.updComponentsReplacing);
+  });
+
+  it('F4: the course after the second confirmation, across both sides of the bound', async () => {
+    await open(scenario('awaiting-confirmation'), { [APPLY]: () => ok({ schema_version: 1, accepted: true }, 202) });
+    await fireEvent.input(screen.getByLabelText(t.updPasswordLabel), { target: { value: sentinelPassword } });
+    let reply: Reply = ok(withState(scenario('apply-components-phase'), (s) => (s.helper.phase = 'c_switching')));
+    routes[GET] = () => reply;
+    await fireEvent.click(screen.getByRole('button', { name: t.updComponentsSubmit }));
+    await flush();
+    expect(text('upd-live')).toBe(t.updComponentsReplacing);
+    reply = ok(scenario('apply-handing-over'));
+    await flush(2000);
+    expect(text('upd-live')).toBe(t.updComponentsReplacing);
+    expect(screen.queryByTestId('upd-helper-missing')).toBeNull();
+    // The service no longer counts it as the hand-over: the page shows the error and keeps watching.
+    reply = ok(withState(scenario('apply-handing-over'), (s) => delete s.helper.handing_over));
+    await flush(2000);
+    expect(text('upd-helper-missing')).toContain(t.updHelperMissing);
+    expect(byTestId('upd-progress')).toBeTruthy();
+    // The new helper answers after all.
+    reply = ok(withState(scenario('apply-components-phase'), (s) => (s.helper.phase = 'c_committed')));
+    await flush(2000);
+    expect(screen.queryByTestId('upd-helper-missing')).toBeNull();
+    expect(text('upd-live')).toBe(t.updComponentsReplacing);
+    reply = ok(withState(scenario('apply-components-phase'), (s) => (s.helper.phase = 'verifying')));
+    await flush(2000);
+    expect(text('upd-live')).toBe(fmt('updCurrentStep', { step: t['updStep.activating'] }));
+    reply = ok(scenario('result-success-components'));
+    await flush(2000);
+    expect(text('upd-outcome')).toBe(t['updOutcome.success']);
+  });
+
+  // ---- results (WP2) ----
+
+  it('success with components_updated: the components sentence, and the socket note while it is pending', async () => {
+    const s = scenario('result-success-components');
+    await open(s);
+    expect(text('upd-result-text')).toBe(fmt('updResult.success', { to: nextVersion }));
+    expect(text('upd-result-note')).toBe(t.updResultComponentsUpdated);
+    expect(text('upd-socket-pending')).toBe(t.updSocketPending);
+  });
+
+  it('F31: rolled_back with components_updated says that the new helper stays', async () => {
+    const s = scenario('result-rolled-back-components');
+    await open(s);
+    expect(text('upd-result-text')).toBe(fmt('updResult.rolled_back', { to: nextVersion, from: s.last_result!.from }));
+    expect(text('upd-result-note')).toBe(t.updResultComponentsStay);
+  });
+
+  it('aborted with components_updated (row c6) says that the new helper stays', async () => {
+    await open(withState(scenario('result-aborted'), (s) => (s.last_result!.components_updated = true)));
+    expect(text('upd-result-note')).toBe(t.updResultComponentsStay);
+  });
+
+  it('a result without components_updated has no components sentence', async () => {
+    await open(scenario('result-rolled-back'));
+    expect(screen.queryByTestId('upd-result-note')).toBeNull();
+  });
+
+  for (const [reason, group] of [
+    ['helper_mismatch', 'check'],
+    ['key_changed', 'check'],
+    ['protocol_mismatch', 'check'],
+    ['interrupted', 'interrupted'],
+    ['state_unreadable', 'state'],
+    ['switch_failed', 'switch'],
+    ['state_write_failed', 'switch'],
+    ['reload_failed', 'switch'],
+  ] as const) {
+    it(`components_rolled_back, ${reason}: the sentence of its group (${group})`, async () => {
+      await open(withState(scenario('result-components-rolled-back'), (s) => (s.last_result!.reason_code = reason)));
+      expect(text('upd-result-text')).toBe(fmt('updResult.components_rolled_back', {}));
+      expect(text('upd-result-note')).toBe(t[`updComponentsReason.${group}`]);
+      expect(text('upd-reason')).toBe(reason);
+    });
+  }
+
+  it('components_rolled_back with a reason this version does not know: no guessed sentence, the code as text', async () => {
+    await open(withState(scenario('result-components-rolled-back'), (s) => (s.last_result!.reason_code = 'something_new')));
+    expect(screen.queryByTestId('upd-result-note')).toBeNull();
+    expect(text('upd-reason')).toBe('something_new');
+  });
+
+  it('rollback_failed with known_good_damaged (E5): nothing was switched, a person with a shell is needed, INSTALL.md', async () => {
+    await open(scenario('result-known-good-damaged'));
+    expect(text('upd-outcome')).toBe(t['updOutcome.rollback_failed']);
+    expect(text('upd-result-text')).toBe(t.updKnownGoodDamaged);
+    expect(text('upd-shell-needed')).toBe(t.updShellNeeded);
+    expect(t.updShellNeeded).toContain('INSTALL.md');
+    expect(text('upd-result')).not.toContain(t.updRerunHint);
+    expect(byTestId('upd-needs-attention').getAttribute('data-tone')).toBe('critical');
+  });
+
+  it('F3: a rebuilt state (no versions) has its own sentence and no empty version', async () => {
+    await open(scenario('result-rebuilt'));
+    expect(text('upd-outcome')).toBe(t['updOutcome.aborted']);
+    expect(text('upd-result-text')).toBe(t.updResultRebuilt);
+    expect(text('upd-reason')).toBe('state_rebuilt');
+    expect(text('upd-needs-attention')).toContain(t.updNeedsAttention);
+  });
+
+  // ---- F1: the installer view for every installer case ----
+
+  for (const [name, code] of [
+    ['installer-required', 'installer_required'],
+    ['installer-key-changed', 'key_changed'],
+    ['installer-unit-rejected', 'unit_rejected'],
+    ['installer-requirements-not-met', 'requirements_not_met'],
+  ] as const) {
+    it(`F1, ${code}: the installer view with its reason and the fixed instruction`, async () => {
+      await open(scenario(name));
+      const notice = byTestId('upd-installer');
+      expect(notice.textContent).toContain(t.updInstallerText);
+      expect(text('upd-installer-reason')).toBe(t[`updInstallerReason.${code}`]);
+      expect(notice.textContent).toContain(fmt('updInstallerSteps', { version: nextVersion }));
+      expect(Array.from(notice.querySelectorAll('p > code')).map((c) => c.textContent)).toEqual(['sudo sh install.sh']);
+      expect(notice.textContent).toContain(t.updInstallerKept);
+      expect(notice.textContent).not.toContain('mock');
+      expect(screen.queryByTestId('upd-job-failed')).toBeNull();
+      expect(screen.queryByTestId('upd-apply')).toBeNull();
+    });
+  }
+
+  it('F1: an installer view without a code (a service before step c) reads as installer_required', async () => {
+    await open(withState(scenario('installer-key-changed'), (s) => delete s.installer!.code));
+    expect(text('upd-installer-reason')).toBe(t['updInstallerReason.installer_required']);
   });
 });

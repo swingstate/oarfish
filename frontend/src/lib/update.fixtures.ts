@@ -48,6 +48,9 @@ export function available(now = Date.now()): UpdateState {
   });
 }
 
+/** The four files of the component set (ADR 0010 U15 rule 2). */
+const helperSet = ['oarfish-update-helper', 'oarfish-update-helper.socket', 'oarfish-update-helper.service', 'oarfish-update-recover.service'];
+
 const job = (now: number, step: NonNullable<UpdateState['job']>['step'], running = true) => ({
   kind: 'apply' as const,
   step,
@@ -105,10 +108,28 @@ export function updateScenarios(now = Date.now()): Record<string, UpdateState> {
       s.job = job(now, 'activating');
       s.helper.phase = 'switching';
     }),
+    // G6.10 step c: the second confirmation names what the staged release replaces (U15 rule 7).
     'awaiting-confirmation': withState(av, (s) => {
-      s.job = job(now, 'awaiting_components_confirmation');
+      s.job = { ...job(now, 'awaiting_components_confirmation'), differs: [...helperSet, 'oarfish.service'] };
       s.helper.phase = 'staged';
       s.helper.staged_version = nextVersion;
+    }),
+    'awaiting-service-only': withState(av, (s) => {
+      s.job = { ...job(now, 'awaiting_components_confirmation'), differs: ['oarfish.service'] };
+      s.helper.phase = 'staged';
+      s.helper.staged_version = nextVersion;
+    }),
+    'stage-expired': withState(av, (s) => {
+      s.job = { ...job(now, 'failed', false), differs: [...helperSet], error: { code: 'stage_expired', message: 'The verified release has expired.' } };
+    }),
+    // F4: activate was accepted; the helper replaces its components and hands over to its new process.
+    'apply-components-phase': withState(av, (s) => {
+      s.job = { ...job(now, 'done', false), differs: [...helperSet] };
+      s.helper.phase = 'c_switched';
+    }),
+    'apply-handing-over': withState(av, (s) => {
+      s.job = { ...job(now, 'done', false), differs: [...helperSet] };
+      s.helper = { present: false, error: { code: 'unavailable', message: 'The update helper could not be reached.' }, handing_over: true };
     }),
     'installer-required': withState(av, (s) => {
       s.job = { ...job(now, 'failed', false), error: { code: 'installer_required', message: 'This release must be installed with the installer.' } };
@@ -119,6 +140,16 @@ export function updateScenarios(now = Date.now()): Record<string, UpdateState> {
         differs: ['oarfish-update-helper', 'oarfish.service'],
       };
     }),
+    // F1: the other cases in which the device needs the installer (E1); the service sends the code.
+    ...Object.fromEntries(
+      (['key_changed', 'unit_rejected', 'requirements_not_met'] as const).map((code) => [
+        `installer-${code.replaceAll('_', '-')}`,
+        withState(av, (s) => {
+          s.job = { ...job(now, 'failed', false), error: { code, message: 'mock' } };
+          s.installer = { required: true, version: nextVersion, code, instruction: 'mock', differs: [] };
+        }),
+      ]),
+    ),
     'apply-failed': withState(av, (s) => {
       s.job = { ...job(now, 'failed', false), error: { code: 'timeout', message: 'The update server did not answer in time.' } };
     }),
@@ -126,6 +157,33 @@ export function updateScenarios(now = Date.now()): Record<string, UpdateState> {
       s.installed_version = nextVersion;
       s.last_result = { to: nextVersion, from: installedVersion, outcome: 'success', finished_at: iso(now - 2 * minute) };
       s.helper.phase = 'committed';
+    }),
+    'result-success-components': withState(upToDate(now), (s) => {
+      s.installed_version = nextVersion;
+      s.last_result = { to: nextVersion, from: installedVersion, outcome: 'success', finished_at: iso(now - 2 * minute), components_updated: true };
+      s.helper = { present: true, phase: 'idle', socket_restart_pending: true };
+    }),
+    // F31: the components committed, then the release failed its health check and was rolled back.
+    'result-rolled-back-components': withState(av, (s) => {
+      s.last_result = {
+        to: nextVersion,
+        from: installedVersion,
+        outcome: 'rolled_back',
+        reason_code: 'health_timeout',
+        finished_at: iso(now - 2 * minute),
+        components_updated: true,
+      };
+      s.helper = { present: true, phase: 'idle', cooldown_version: nextVersion, cooldown_remaining_s: 1700 };
+    }),
+    // E5: the known-good set is damaged; nothing was switched and a person with a shell is needed.
+    'result-known-good-damaged': withState(av, (s) => {
+      s.last_result = { to: nextVersion, from: installedVersion, outcome: 'rollback_failed', reason_code: 'known_good_damaged', finished_at: iso(now - 2 * minute) };
+      s.helper = { present: true, phase: 'rollback_failed', needs_attention: true };
+    }),
+    // F3: the helper rebuilt a missing or unreadable state file (U7).
+    'result-rebuilt': withState(av, (s) => {
+      s.last_result = { to: '', from: '', outcome: 'aborted', reason_code: 'state_rebuilt', finished_at: iso(now - 2 * minute) };
+      s.helper = { present: true, phase: 'idle', needs_attention: true };
     }),
     'result-rolled-back': withState(av, (s) => {
       s.last_result = { to: nextVersion, from: installedVersion, outcome: 'rolled_back', reason_code: 'unhealthy', finished_at: iso(now - 2 * minute) };
