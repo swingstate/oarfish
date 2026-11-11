@@ -75,13 +75,15 @@ type fakeSystemd struct {
 	restartHook chan struct{} // when set, restart blocks until it is closed
 	restartFail map[int]bool  // the n-th restart call fails
 	restarts    int
+	reloads     int
+	reloadFail  map[int]bool // the n-th daemon-reload fails
 	showFail    bool
 	healthCalls []string
 }
 
 func (v *tenv) fakeSystemd() *fakeSystemd {
 	f := &fakeSystemd{v: v, pid: 100, active: "active", sub: "running", running: installedVersionString,
-		beh: map[string]behavior{}, restartFail: map[int]bool{}}
+		beh: map[string]behavior{}, restartFail: map[int]bool{}, reloadFail: map[int]bool{}}
 	v.sd = f
 	v.h.sysrun = f.run
 	v.h.healthGet = f.health
@@ -143,8 +145,24 @@ func (f *fakeSystemd) run(args []string) ([]byte, error) {
 		}
 		f.mu.Lock()
 		defer f.mu.Unlock()
+		if args[1] == helperUnit {
+			return nil, nil // the helper service has no state in this fake
+		}
 		if f.active == "failed" {
 			f.active, f.sub = "inactive", "dead"
+		}
+		return nil, nil
+	case "daemon-reload":
+		if f.gate != nil {
+			if err := f.gate.step(); err != nil {
+				return nil, err
+			}
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.reloads++
+		if f.reloadFail[f.reloads] {
+			return nil, errSystemctl
 		}
 		return nil, nil
 	}

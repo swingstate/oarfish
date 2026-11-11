@@ -142,9 +142,16 @@ func TestStageErrorCodes(t *testing.T) {
 			r.man["requirements"].(map[string]any)["helper_protocol"] = 2
 			v.place("1.1.0", r.build())
 		}},
-		{"installer_required: the helper differs", codeInstallerRequired, "", func(v *tenv) {
+		{"key_changed: the helper differs and declares another key", codeKeyChanged, "", func(v *tenv) {
 			r := v.release("1.1.0")
 			r.setFile("oarfish-update-helper", elfStub("a newer helper"))
+			r.man["components"].(map[string]any)["key_id"] = "00000000000000aa"
+			v.place("1.1.0", r.build())
+		}},
+		{"requirements_not_met: the helper differs and implements protocol P+2", codeRequirementsNotMet, "", func(v *tenv) {
+			r := v.release("1.1.0")
+			r.setFile("oarfish-update-helper", elfStub("a newer helper"))
+			r.man["components"].(map[string]any)["protocol"] = protocolMax + 2
 			v.place("1.1.0", r.build())
 		}},
 		{"components_damaged: the active set is incomplete", codeComponentsDamaged, "", func(v *tenv) {
@@ -181,8 +188,8 @@ func TestStageErrorCodes(t *testing.T) {
 				ver = "1.1.0"
 			}
 			r := wantErrCode(t, v.stage(ver), tt.want)
-			if (tt.want == codeInstallerRequired) != (len(r.Differs) > 0) {
-				t.Fatalf("differs %v", r.Differs)
+			if len(r.Differs) > 0 {
+				t.Fatalf("an error answer carries differs %v", r.Differs)
 			}
 			seen[tt.want] = true
 			v.wantClean()

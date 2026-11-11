@@ -8,7 +8,20 @@ import (
 	"testing"
 )
 
+// stagedSet reports whether components/<version> holds the four files.
+func stagedSet(v *tenv, version string) bool {
+	for _, n := range componentNames[:4] {
+		if fi, err := os.Lstat(filepath.Join(v.root, "components", version, n)); err != nil || !fi.Mode().IsRegular() {
+			return false
+		}
+	}
+	return true
+}
+
 // Each of the five names differing alone, several together, none differing.
+// Since G6.10 step b a difference is staged and named, never installer_required
+// (A16, E1): a difference of a helper file stages a component set, a difference
+// of oarfish.service alone only the record of D6.
 func TestComponentComparison(t *testing.T) {
 	changed := func(name string) []byte {
 		if strings.HasSuffix(name, "helper") {
@@ -22,12 +35,21 @@ func TestComponentComparison(t *testing.T) {
 			r := v.release("1.1.0")
 			r.setFile(name, changed(name))
 			v.place("1.1.0", r.build())
-			before := snapshot(t, v.root)
-			got := wantErrCode(t, v.stage("1.1.0"), codeInstallerRequired)
-			if len(got.Differs) != 1 || got.Differs[0] != componentNames[i] {
+			got := wantOK(t, v.stage("1.1.0"))
+			if !got.ComponentsDiffer || len(got.Differs) != 1 || got.Differs[0] != componentNames[i] {
 				t.Fatalf("differs %v, want [%s]", got.Differs, name)
 			}
-			wantNothingLeft(t, v, before) // nothing has been moved into releases/
+			st, _ := v.readState()
+			wantSet := name != unitService
+			if st.Txn.Phase != phaseStaged || strings.Join(st.Txn.Differs, ",") != name || (st.Txn.ComponentsTo == "1.1.0") != wantSet || stagedSet(v, "1.1.0") != wantSet {
+				t.Fatalf("state %+v, set staged %v", st.Txn, stagedSet(v, "1.1.0"))
+			}
+			if wantSet && (st.Txn.ComponentsFrom != "1.0.0" || !isHex(64)(st.Txn.ComponentsHelperSHA256) || !isHex(64)(st.Txn.ComponentsSetSHA256)) {
+				t.Fatalf("state %+v", st.Txn)
+			}
+			if s := v.status(); strings.Join(s.StagedDiffers, ",") != name {
+				t.Fatalf("status names %v", s.StagedDiffers)
+			}
 		})
 	}
 	t.Run("several together, in the fixed order", func(t *testing.T) {
@@ -37,7 +59,7 @@ func TestComponentComparison(t *testing.T) {
 			r.setFile(n, changed(n))
 		}
 		v.place("1.1.0", r.build())
-		got := wantErrCode(t, v.stage("1.1.0"), codeInstallerRequired)
+		got := wantOK(t, v.stage("1.1.0"))
 		want := []string{"oarfish-update-helper", "oarfish-update-recover.service", "oarfish.service"}
 		if strings.Join(got.Differs, ",") != strings.Join(want, ",") {
 			t.Fatalf("differs %v, want %v", got.Differs, want)
@@ -50,7 +72,7 @@ func TestComponentComparison(t *testing.T) {
 			r.setFile(n, changed(n))
 		}
 		v.place("1.1.0", r.build())
-		got := wantErrCode(t, v.stage("1.1.0"), codeInstallerRequired)
+		got := wantOK(t, v.stage("1.1.0"))
 		if strings.Join(got.Differs, ",") != strings.Join(componentNames, ",") {
 			t.Fatalf("differs %v", got.Differs)
 		}
@@ -59,8 +81,11 @@ func TestComponentComparison(t *testing.T) {
 		v := newTenv(t)
 		v.stageable("1.1.0")
 		r := wantOK(t, v.stage("1.1.0"))
-		if r.ComponentsDiffer {
-			t.Fatal("components_differ")
+		if r.ComponentsDiffer || r.Differs == nil || len(r.Differs) != 0 || stagedSet(v, "1.1.0") {
+			t.Fatalf("components_differ %v, differs %v", r.ComponentsDiffer, r.Differs)
+		}
+		if st, _ := v.readState(); st.Txn.ComponentsTo != "" || len(st.Txn.Differs) != 0 {
+			t.Fatalf("state %+v", st.Txn)
 		}
 	})
 	t.Run("a difference in a file the comparison does not cover is not a difference", func(t *testing.T) {
@@ -68,7 +93,9 @@ func TestComponentComparison(t *testing.T) {
 		r := v.release("1.1.0")
 		r.setFile("LICENSE", []byte("another licence\n"))
 		v.place("1.1.0", r.build())
-		wantOK(t, v.stage("1.1.0"))
+		if wantOK(t, v.stage("1.1.0")).ComponentsDiffer {
+			t.Fatal("components_differ")
+		}
 	})
 }
 
@@ -79,7 +106,7 @@ func TestComponentComparisonReadsTheInstalledSide(t *testing.T) {
 		v := newTenv(t)
 		os.WriteFile(filepath.Join(v.root, "releases", "1.0.0", "oarfish.service"), []byte("[Service]\n# edited\n"), 0o644)
 		v.stageable("1.1.0")
-		got := wantErrCode(t, v.stage("1.1.0"), codeInstallerRequired)
+		got := wantOK(t, v.stage("1.1.0"))
 		if strings.Join(got.Differs, ",") != "oarfish.service" {
 			t.Fatalf("%v", got.Differs)
 		}
@@ -94,7 +121,9 @@ func TestComponentComparisonReadsTheInstalledSide(t *testing.T) {
 		}
 		os.Remove(filepath.Join(v.root, "components", "known-good"))
 		os.Symlink("0.9.0", filepath.Join(v.root, "components", "known-good"))
-		wantOK(t, v.stage("1.1.0"))
+		if wantOK(t, v.stage("1.1.0")).ComponentsDiffer {
+			t.Fatal("components_differ")
+		}
 	})
 }
 

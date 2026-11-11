@@ -26,12 +26,42 @@ import (
 //	       of the process keeps running
 //
 // Any other mode is error. Without OARFISH_FAULT_AT nothing happens.
+//
+// A component transaction runs in two processes of the helper (the one that
+// hands over and the one systemd starts next), and each process counts its own
+// calls from 1. OARFISH_FAULT_PROC names the process the fault applies to, as
+// <subcommand>:<phase>, where the phase is the one state.json named when the
+// process started: serve:staged is the helper that receives activate after an
+// idle exit, serve:c_switched the new helper at its first start,
+// recover:c_switched the recover unit that finds that phase. Other values of
+// the phase part: every phase name, "invalid" (state.json unusable), "locked"
+// (the lock was held at the start of serve) and "unknown". Without the variable
+// the fault applies to every process, as before.
 
 const faultsCompiled = true
 
 var errFaultInjected = errors.New("injected fault")
 
 var faultCount atomic.Int64
+
+// faultProc is what faultProcess recorded: nil until the process has looked at
+// its state. Only the first call counts: it names the process.
+var faultProc atomic.Pointer[string]
+
+func faultProcess(sub, phase string) {
+	name := sub + ":" + phase
+	faultProc.CompareAndSwap(nil, &name)
+}
+
+// faultSelected: the fault applies to this process.
+func faultSelected() bool {
+	want := os.Getenv("OARFISH_FAULT_PROC")
+	if want == "" {
+		return true
+	}
+	got := faultProc.Load()
+	return got != nil && *got == want
+}
 
 func faultTarget() (int64, string) {
 	at, err := strconv.ParseInt(os.Getenv("OARFISH_FAULT_AT"), 10, 64)
@@ -43,7 +73,7 @@ func faultTarget() (int64, string) {
 
 func faultPoint(kind string) error {
 	at, mode := faultTarget()
-	if at == 0 || faultCount.Add(1) != at {
+	if at == 0 || faultCount.Add(1) != at || !faultSelected() {
 		return nil
 	}
 	switch mode {

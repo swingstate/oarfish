@@ -163,17 +163,24 @@ func (f *testFile) Close() error { return f.w.Close() }
 
 // ---- the closed write-target table of ADR 0010 U2 -------------------------
 
-// allowedTarget reports whether a mutated path is in the closed table: below
-// /opt/oarfish releases/<version>, releases/.stage.<id> and
-// releases/.trash.<id> (and, from G6.6, current, components/...), and the
-// state directory. withComponents widens the table to the G6.6 targets; G6.5
-// never mutates them.
+// allowedTarget reports whether a mutated path is in the closed table of U2:
+// below /opt/oarfish releases/<version>, releases/.stage.<id>,
+// releases/.trash.<id>, current and .current.new.<id>, components/<id>,
+// components/active, components/known-good and components/.new.<id>, and the
+// state directory.
 func allowedTarget(t tree, p string) bool {
 	if t == treeState {
 		return p == "." || p == stateFile || strings.HasPrefix(p, stateTempPrefix)
 	}
-	if p == "releases" || p == "." || p == "current" {
+	if p == "releases" || p == "." || p == "current" || p == "components" {
 		return true // fsync of a directory; the current link
+	}
+	if rest, ok := strings.CutPrefix(p, "components/"); ok {
+		// G6.10: a component set, the two links and their temporaries.
+		if id, isTemp := strings.CutPrefix(rest, componentTempPrefix); isTemp {
+			return isHex(16)(id)
+		}
+		return rest == linkActive || rest == linkKnownGood || validVersion(rest)
 	}
 	if id, ok := strings.CutPrefix(p, tempLinkPrefix); ok {
 		return isHex(16)(id)

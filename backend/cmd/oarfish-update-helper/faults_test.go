@@ -36,7 +36,7 @@ func TestReleaseBuildHasNoFaultHooks(t *testing.T) {
 		}
 		return data
 	}
-	markers := [][]byte{[]byte("OARFISH_FAULT_AT"), []byte("OARFISH_FAULT_MODE"), []byte("injected fault")}
+	markers := [][]byte{[]byte("OARFISH_FAULT_AT"), []byte("OARFISH_FAULT_MODE"), []byte("OARFISH_FAULT_PROC"), []byte("injected fault")}
 	release := build("")
 	for _, m := range markers {
 		if bytes.Contains(release, m) {

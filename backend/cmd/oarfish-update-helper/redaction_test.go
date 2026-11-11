@@ -69,9 +69,10 @@ func TestRedaction(t *testing.T) {
 			v.place("0.9.0", v.release("0.9.0").build())
 			return [][]byte{v.request(stageLine("0.9.0", hexMarker))}
 		}},
-		{"installer_required", failWith(func(v *tenv) {
+		{"key_changed", failWith(func(v *tenv) {
 			r := v.release("1.1.0")
 			r.setFile("oarfish-update-helper", elfStub("x"))
+			r.man["components"].(map[string]any)["key_id"] = "00000000000000aa"
 			v.place("1.1.0", r.build())
 		})},
 		{"unit_rejected", failWith(func(v *tenv) {
@@ -143,6 +144,7 @@ func TestJournalLineShape(t *testing.T) {
 	wantOK(t, v.request(discardLine("1.1.0")))
 	r := v.release("1.2.0")
 	r.setFile("oarfish-update-helper", elfStub("x"))
+	r.man["components"].(map[string]any)["key_id"] = "00000000000000aa"
 	v.place("1.2.0", r.build())
 	v.stage("1.2.0")
 	re := regexp.MustCompile(`^phase=(idle|staging|staged) to=[0-9A-Za-z.-]+ from=[0-9A-Za-z.-]+ cid=[0-9a-f]{16} result=[a-z_]+$`)
@@ -160,7 +162,7 @@ func TestJournalLineShape(t *testing.T) {
 		"phase=staged to=1.1.0 from=1.0.0 cid=decafbad0badc0de result=ok",
 		"phase=idle to=1.1.0 from=1.0.0 cid=decafbad0badc0de result=discarded",
 		"phase=staging to=1.2.0 from=1.0.0 cid=0123456789abcdef result=ok",
-		"phase=idle to=1.2.0 from=1.0.0 cid=0123456789abcdef result=installer_required",
+		"phase=idle to=1.2.0 from=1.0.0 cid=0123456789abcdef result=key_changed",
 	}
 	for i, w := range want {
 		if lines[i] != w {

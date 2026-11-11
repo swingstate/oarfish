@@ -325,9 +325,10 @@ func TestComponentsConfirmedRule(t *testing.T) {
 	if v.phase() != phaseStaged || v.current() != "1.0.0" {
 		t.Fatal("a refused flag changed something")
 	}
-	// A staged component difference (G6.10) needs the flag.
+	// A staged difference needs the flag (D6): here oarfish.service alone, the
+	// record of D6 without a component set.
 	st, _ := v.readState()
-	st.Txn.ComponentsTo = "1.1.0"
+	st.Txn.Differs = []string{unitService}
 	v.writeState(st)
 	wantErrCode(t, v.activate("1.1.0"), codeConfirmationRequired)
 	if v.phase() != phaseStaged || len(v.sd.Calls()) != 0 {

@@ -27,6 +27,11 @@ type crashScenario struct {
 	// leftover that is not ours); it may still be there at the end when the
 	// request failed before it was moved aside.
 	stale bool
+	// check runs on the disk as the request left it and again after the
+	// recovery (recovered).
+	check func(t *testing.T, v *tenv, recovered bool)
+	// components: the release brings a component set (helper bytes of that version).
+	components bool
 }
 
 // preserved is the part of the tree no scenario of this gate may change:
@@ -34,6 +39,10 @@ type crashScenario struct {
 // than the installed one (the closed write-target table of U2).
 func preserved(rel string) bool {
 	if rel == "releases" || strings.HasPrefix(rel, "releases/.stage.") || strings.HasPrefix(rel, "releases/.trash.") {
+		return false
+	}
+	// G6.10: a staged component set, under the version of the release.
+	if rel == "components" || rel == "components/1.1.0" || strings.HasPrefix(rel, "components/1.1.0/") {
 		return false
 	}
 	if rest, ok := strings.CutPrefix(rel, "releases/"); ok {
@@ -99,6 +108,9 @@ func sweepCrashes(t *testing.T, sc crashScenario) {
 				}
 				// releases/<version> is absent or the fully verified tree.
 				checkReleaseDir(t, v, ver)
+				if sc.check != nil {
+					sc.check(t, v, false)
+				}
 				// state.json parses and is the old or a new state.
 				st, ok := v.readState()
 				switch {
@@ -137,8 +149,15 @@ func sweepCrashes(t *testing.T, sc crashScenario) {
 				if v.phase() != phaseIdle {
 					t.Fatalf("phase %s after the recovery", v.phase())
 				}
+				if sc.check != nil {
+					sc.check(t, v, true)
+				}
 				// And the helper is usable again.
-				v.stageable(ver)
+				if sc.components {
+					v.place(ver, v.componentRelease(ver, unitRecover).build())
+				} else {
+					v.stageable(ver)
+				}
 				wantOK(t, v.stage(ver))
 			})
 		}

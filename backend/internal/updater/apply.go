@@ -39,6 +39,7 @@ type jobState struct {
 	step    step
 	version string
 	cid     string
+	differs []string // what the staged release replaces (the stage answer, closed list)
 
 	started, finished time.Time
 	err               *Error
@@ -323,6 +324,9 @@ func (u *Updater) applyFlow(j *jobState, confirmed bool) *Error {
 		return he
 	}
 	_ = os.RemoveAll(dir) // the staged copy is the helper's; the cache is done
+	u.mu.Lock()
+	j.differs = info.Differs
+	u.mu.Unlock()
 
 	if info.ComponentsDiffer && !confirmed {
 		u.setStep(j, stepAwaiting)

@@ -16,10 +16,10 @@ import (
 // only one that may import os/exec (TestOnlySystemctlExecutes checks it).
 const systemctlPath = "/usr/bin/systemctl"
 
-// The five argument shapes of U2 (A2 removed the sixth). G6.6 calls the first
-// three; daemon-reload and reset-failed of the helper service are compiled in
-// for G6.10 and not called. TestSystemctlShapesMatchTheADR compares this list
-// with the table in the ADR.
+// The five argument shapes of U2 (A2 removed the sixth). The release
+// transaction calls the first three; the component transaction of G6.10 calls
+// daemon-reload, and its recovery reset-failed of the helper service.
+// TestSystemctlShapesMatchTheADR compares this list with the table in the ADR.
 var (
 	sysRestart           = []string{"restart", "oarfish.service"}
 	sysResetFailed       = []string{"reset-failed", "oarfish.service"}

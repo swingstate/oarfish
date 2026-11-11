@@ -43,6 +43,9 @@ type HelperResult struct {
 	CorrelationID string `json:"correlation_id"`
 	FinishedAt    string `json:"finished_at"`
 	Acknowledged  bool   `json:"acknowledged"`
+	// ComponentsUpdated: the transaction replaced the helper components,
+	// whatever the outcome of its release part (ADR 0010 U13 F31, A16).
+	ComponentsUpdated bool `json:"components_updated"`
 }
 
 // HelperStatus is the answer to `status`, reduced to what the service uses.
@@ -59,13 +62,22 @@ type HelperStatus struct {
 	FreeBytes          uint64        `json:"free_bytes"`
 	CooldownVersion    string        `json:"cooldown_version"`
 	CooldownRemainingS int64         `json:"cooldown_remaining_s"`
+	// StagedDiffers names the files of the staged release that differ from the
+	// installed ones, and SocketRestartPending says that a changed socket unit
+	// takes effect at the next boot (ADR 0010 A16). Both are additive members of
+	// a helper since G6.10 step b; an older helper does not send them.
+	StagedDiffers        []string `json:"staged_differs"`
+	SocketRestartPending bool     `json:"socket_restart_pending"`
 }
 
-// StageInfo is the answer to a successful `stage`.
+// StageInfo is the answer to a successful `stage`. Differs names the files of
+// the release that differ from the installed ones (ADR 0010 A15 D6); only names
+// of the closed list are kept.
 type StageInfo struct {
-	Version          string `json:"version"`
-	Commit           string `json:"commit"`
-	ComponentsDiffer bool   `json:"components_differ"`
+	Version          string   `json:"version"`
+	Commit           string   `json:"commit"`
+	ComponentsDiffer bool     `json:"components_differ"`
+	Differs          []string `json:"differs"`
 }
 
 // HelperAPI is the five typed requests of ADR 0010 U2. *Helper is the socket
@@ -111,9 +123,11 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 }
 
 var (
-	idPattern      = regexp.MustCompile(`^[0-9a-f]{16}$`)
-	reasonPattern  = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
-	phaseNames     = map[string]bool{"idle": true, "staging": true, "staged": true, "switching": true, "verifying": true, "committed": true, "rolling_back": true, "rolled_back": true, "rollback_failed": true}
+	idPattern     = regexp.MustCompile(`^[0-9a-f]{16}$`)
+	reasonPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+	phaseNames    = map[string]bool{"idle": true, "staging": true, "staged": true, "switching": true, "verifying": true, "committed": true, "rolling_back": true, "rolled_back": true, "rollback_failed": true,
+		// The component phases of ADR 0010 U15 rule 4 (G6.10 step b).
+		"c_switching": true, "c_switched": true, "c_verified": true, "c_committed": true, "c_rolling_back": true}
 	outcomeNames   = map[string]bool{"success": true, "rolled_back": true, "components_rolled_back": true, "rollback_failed": true, "aborted": true}
 	componentNames = map[string]bool{"oarfish-update-helper": true, "oarfish-update-helper.socket": true, "oarfish-update-helper.service": true, "oarfish-update-recover.service": true, "oarfish.service": true}
 	helperCodes    = map[Code]bool{
@@ -173,11 +187,7 @@ func (h *Helper) call(ctx context.Context, timeout time.Duration, line []byte, o
 		}
 		e := fail(env.Error)
 		if env.Error == CodeInstallerRequired {
-			for _, n := range env.Differs {
-				if componentNames[n] {
-					e.Differs = append(e.Differs, n)
-				}
-			}
+			e.Differs = closedNames(env.Differs)
 		}
 		return e
 	}
@@ -185,6 +195,21 @@ func (h *Helper) call(ctx context.Context, timeout time.Duration, line []byte, o
 		return fail(CodeInternal)
 	}
 	return nil
+}
+
+// closedNames keeps the names of the closed list of ADR 0010 U2, each once and
+// in the order given, and drops everything else: what the helper names is never
+// passed on unchecked.
+func closedNames(in []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, n := range in {
+		if componentNames[n] && !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 func isTimeout(err error) bool {
@@ -261,6 +286,7 @@ func (st *HelperStatus) valid() bool {
 	if len(st.HelperVersion) > 64 {
 		st.HelperVersion = ""
 	}
+	st.StagedDiffers = closedNames(st.StagedDiffers)
 	if r := st.LastResult; r != nil {
 		if !idPattern.MatchString(r.TransactionID) || !outcomeNames[r.Outcome] || !validVersion(r.To) || !okVer(r.From) ||
 			!(r.ReasonCode == "" || reasonPattern.MatchString(r.ReasonCode)) || !(r.CorrelationID == "" || idPattern.MatchString(r.CorrelationID)) {
@@ -290,6 +316,7 @@ func (h *Helper) Stage(ctx context.Context, version, correlationID string) (Stag
 	if len(si.Commit) > 64 {
 		si.Commit = ""
 	}
+	si.Differs = closedNames(si.Differs)
 	return si, nil
 }
 

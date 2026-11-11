@@ -10,7 +10,10 @@ import (
 // that has not reached committed is rolled back". The recover subcommand runs
 // it at boot, before oarfish.service starts (modeBoot, only a link switch);
 // serve runs it at start when it finds a transaction that nobody owns (modeLive,
-// the full procedure of U6). Both hold the lock on the state directory.
+// the full procedure of U6). Both hold the lock on the state directory. The
+// component phases follow the table of U15 rule 4 (components.go). When
+// OnFailure= of the helper service started the recover subcommand, the service
+// may be running, so the release phases are left to the next serve start (E6).
 
 // recoverBoot is the recover subcommand. Exit status: 0 when the disk is
 // consistent after it (also after a rollback), 1 when it could not finish or
@@ -31,11 +34,14 @@ func (h *handler) recoverBoot(stderr io.Writer) int {
 	}
 	r := &txnRun{h: h, e: e, lk: lk, mode: modeBoot}
 	defer r.release()
+	if faultsCompiled {
+		faultProcess("recover", r.startPhase())
+	}
 	if code := r.recoverAll(); code != "" {
 		fmt.Fprintln(stderr, "oarfish-update-helper: recovery did not finish: "+errorTexts[code])
 		return 1
 	}
-	if r.st != nil && r.st.Txn.Phase == phaseRollbackFailed {
+	if r.st != nil && r.st.Txn.Phase == phaseRollbackFailed && !r.deferred {
 		fmt.Fprintln(stderr, "oarfish-update-helper: a rollback failed; the installed version needs attention")
 		return 1
 	}
@@ -46,17 +52,29 @@ func (h *handler) recoverBoot(stderr io.Writer) int {
 // accepted. The common case (nothing to recover) is decided under the lock in
 // a moment and costs no write; real work continues in the background while
 // requests get `busy`.
+//
+// A helper that finds c_switched here is the new helper at its first start (U15
+// rule 4 step 4): the self-check and everything after it run in this recovery,
+// under the lock, so every request except status answers busy until it is done.
 func (h *handler) startupRecovery() {
 	lk, code := h.lockState()
 	if code != "" {
-		return // the installer or another helper holds it
+		// The installer or the recover unit holds it. The next request tries again.
+		h.recoveryPending.Store(code == codeBusy)
+		faultProcess("serve", "locked")
+		return
 	}
+	h.recoveryPending.Store(false)
 	e, code := h.open(true)
 	if code != "" {
 		lk.release()
+		faultProcess("serve", "unknown")
 		return
 	}
 	r := &txnRun{h: h, e: e, lk: lk, mode: modeLive}
+	if faultsCompiled {
+		faultProcess("serve", r.startPhase())
+	}
 	if !r.needsRecovery() {
 		r.release()
 		return
@@ -65,6 +83,16 @@ func (h *handler) startupRecovery() {
 		defer r.release()
 		r.recoverAll()
 	})
+}
+
+// startPhase is the phase that state.json names when the process starts, for
+// the process selection of the fault hooks ("invalid" for an unusable file).
+func (r *txnRun) startPhase() string {
+	st, err := r.e.loadState()
+	if err != nil {
+		return "invalid"
+	}
+	return st.Txn.Phase
 }
 
 // needsRecovery: the state file is not valid, the phase is not one a running
@@ -77,7 +105,7 @@ func (r *txnRun) needsRecovery() bool {
 	if st.Txn.Phase != phaseIdle && st.Txn.Phase != phaseStaged {
 		return true
 	}
-	return r.e.hasLeftover()
+	return r.e.hasLeftover() || len(r.e.componentLeftovers(st)) > 0
 }
 
 // hasLeftover looks for .stage.*, .trash.* and .current.new.* entries and for
@@ -124,7 +152,20 @@ func (r *txnRun) recoverAll() errorCode {
 	if err := r.e.sweep(); err != nil {
 		return codeIOError
 	}
+	// Component directories that neither link nor the state names (rows c1, c9).
+	if r.st != nil {
+		if err := r.e.sweepComponents(r.st); err != nil {
+			return codeIOError
+		}
+	}
 	return ""
+}
+
+// releasePhases are the phases of a release transaction that the recover unit
+// leaves to the next serve start when OnFailure= started it (E6).
+var releasePhases = map[string]bool{
+	phaseSwitching: true, phaseVerifying: true, phaseCommitted: true,
+	phaseRollingBack: true, phaseRollbackFailed: true, phaseRolledBack: true,
 }
 
 func (r *txnRun) recoverPhase() errorCode {
@@ -136,6 +177,15 @@ func (r *txnRun) recoverPhase() errorCode {
 	r.st = st
 	installed := installedVersion(r.h.root)
 	t := st.Txn
+	if r.h.onFailure && releasePhases[t.Phase] {
+		// E6: started by OnFailure=, while oarfish.service may be running. A
+		// switch of current without a restart would leave a service whose
+		// binary current no longer names, and this unit cannot restart it (it
+		// is ordered before the service). The next serve start recovers the
+		// release with the full procedure of U6.
+		r.deferred = true
+		return ""
+	}
 	switch t.Phase {
 	case phaseIdle:
 		if err := e.sweep(); err != nil {
@@ -148,19 +198,7 @@ func (r *txnRun) recoverPhase() errorCode {
 		}
 		return e.recoverStaging(st, installed)
 	case phaseStaged:
-		now, err := r.h.uptime()
-		if err != nil {
-			return codeIOError
-		}
-		// At boot the staged release is gone with the reboot (U7 row 4); a
-		// running helper only removes one that has expired.
-		if r.mode == modeBoot || stageExpired(t.StagedAtUptimeS, now) {
-			if installed == "" {
-				return r.markAttention()
-			}
-			return e.expireStaged(st, installed)
-		}
-		return ""
+		return r.recoverStaged(installed)
 	case phaseSwitching, phaseVerifying:
 		return r.recoverSwitch(installed)
 	case phaseCommitted:
@@ -179,8 +217,25 @@ func (r *txnRun) recoverPhase() errorCode {
 		}
 		return ""
 	}
-	// The component phases (G6.10) are not implemented: nothing is touched.
-	return r.markAttention()
+	// The component phases (U15 rule 4, rows c2 to c8).
+	return r.recoverComponents(installed)
+}
+
+// recoverStaged: U7 row 4. The recover subcommand removes the staged release
+// (at boot it is gone with the reboot); a running helper only removes one that
+// has expired.
+func (r *txnRun) recoverStaged(installed string) errorCode {
+	now, err := r.h.uptime()
+	if err != nil {
+		return codeIOError
+	}
+	if r.mode == modeBoot || stageExpired(r.st.Txn.StagedAtUptimeS, now) {
+		if installed == "" {
+			return r.markAttention()
+		}
+		return r.e.expireStaged(r.st, installed)
+	}
+	return ""
 }
 
 // markAttention sets needs_attention and touches nothing else.
@@ -255,9 +310,13 @@ func (r *txnRun) afterRollback() errorCode {
 // needs a person. At boot it is looked at again: when current names from and
 // the old binary still has the recorded hash, the transaction ends (the
 // attention flag stays until the result is acknowledged); a running helper
-// leaves it alone.
+// leaves it alone. A component rollback that found known-good damaged (E5)
+// left an unproven set active, so it stays in either mode until a person acts.
 func (r *txnRun) recoverRollbackFailed(installed string) errorCode {
 	t := r.st.Txn
+	if r.st.Last != nil && r.st.Last.ReasonCode == reasonKnownGoodDamaged {
+		return ""
+	}
 	if r.st.Last != nil && (r.st.Last.ReasonCode == reasonSwitchFailed || r.st.Last.ReasonCode == reasonRestartFailed) &&
 		(installed == t.From || installed == t.To) {
 		reason := r.st.Last.ReasonCode
@@ -299,11 +358,43 @@ func (r *txnRun) rebuild() errorCode {
 	st.NeedsAttention = true
 	st.Last = &lastResult{TransactionID: id, Outcome: outcomeAborted, ReasonCode: reasonStateRebuilt,
 		FinishedAt: r.h.wall().UTC().Format("2006-01-02T15:04:05Z07:00")}
+	installed := installedVersion(r.h.root)
+	// An unproven component set that is active without a readable state goes
+	// back to known-good (U15 rule 4: only a set that proved itself stays).
+	unproven, damaged, code := r.rollbackUnprovenSet()
+	if code != "" {
+		return code
+	}
+	if damaged {
+		// E5: active stays where it is. The rebuilt state holds the failed
+		// rollback as a transaction, so that it stays until a person acts.
+		st.Txn.ID, st.Txn.Phase, st.Txn.To, st.Txn.From = id, phaseRollbackFailed, unproven, installed
+		st.Last.Outcome, st.Last.ReasonCode, st.Last.To, st.Last.From = outcomeRollbackFailed, reasonKnownGoodDamaged, unproven, installed
+		r.st = st
+		r.setCooldown()
+		if err := e.saveState(st); err != nil {
+			return codeIOError
+		}
+		r.h.log(phaseRollbackFailed, unproven, installed, "", reasonKnownGoodDamaged)
+		return ""
+	}
+	if unproven != "" {
+		st.Last.Outcome, st.Last.ReasonCode, st.Last.To, st.Last.From = outcomeComponentsRolledBack, reasonStateUnreadable, unproven, installed
+		if now, err := r.h.uptime(); err == nil {
+			st.Cool = cooldown{RefuseVersion: unproven, RefuseSetAtUptimeS: max(now, 1), RefuseUntilUptimeS: max(now, 1) + cooldownSameS,
+				LastActivateUptimeS: max(now, 1), LastActivateSetAtUptimeS: max(now, 1)}
+		}
+	}
 	r.st = st
 	if err := e.saveState(st); err != nil {
 		return codeIOError
 	}
-	r.h.log(phaseIdle, "", installedVersion(r.h.root), "", reasonStateRebuilt)
+	if unproven != "" {
+		r.h.log(outcomeComponentsRolledBack, unproven, installed, "", reasonStateUnreadable)
+		r.handBack()
+		return ""
+	}
+	r.h.log(phaseIdle, "", installed, "", reasonStateRebuilt)
 	return ""
 }
 

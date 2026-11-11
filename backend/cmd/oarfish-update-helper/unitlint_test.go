@@ -772,14 +772,14 @@ func TestStageUnitLintOrder(t *testing.T) {
 		wantErrCode(t, v.stage("1.1.0"), codeUnitRejected)
 		v.wantClean()
 	})
-	t.Run("a difference that the lint accepts is still installer_required", func(t *testing.T) {
+	t.Run("a difference that the lint accepts is staged and named", func(t *testing.T) {
 		for _, name := range lintedUnits {
 			v := newTenv(t)
 			r := v.release("1.1.0")
 			r.setFile(name, changedUnit(name))
 			v.place("1.1.0", r.build())
-			got := wantErrCode(t, v.stage("1.1.0"), codeInstallerRequired)
-			if strings.Join(got.Differs, ",") != name {
+			got := wantOK(t, v.stage("1.1.0"))
+			if !got.ComponentsDiffer || strings.Join(got.Differs, ",") != name {
 				t.Fatalf("differs %v, want %s", got.Differs, name)
 			}
 		}
@@ -817,7 +817,9 @@ func TestStageUnitLintOrder(t *testing.T) {
 			t.Fatal(err)
 		}
 		v.stageable("1.1.0")
-		wantErrCode(t, v.stage("1.1.0"), codeInstallerRequired)
+		if got := wantOK(t, v.stage("1.1.0")); strings.Join(got.Differs, ",") != unitService {
+			t.Fatalf("differs %v", got.Differs)
+		}
 	})
 	t.Run("a unit that cannot be read is io_error", func(t *testing.T) {
 		v := newTenv(t)

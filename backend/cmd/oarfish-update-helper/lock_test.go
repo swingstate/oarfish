@@ -133,12 +133,13 @@ func TestLockReleasedOnEveryPath(t *testing.T) {
 			v.h.freeBytes = func(*os.File) (uint64, error) { return 1 << 20, nil }
 			return v.stage("1.1.0")
 		}, codeNoSpace},
-		{"installer required", func(v *tenv) []byte {
+		{"key changed", func(v *tenv) []byte {
 			r := v.release("1.1.0")
 			r.setFile("oarfish-update-helper", elfStub("another helper"))
+			r.man["components"].(map[string]any)["key_id"] = "00000000000000aa"
 			v.place("1.1.0", r.build())
 			return v.stage("1.1.0")
-		}, codeInstallerRequired},
+		}, codeKeyChanged},
 		{"io error from the file system", func(v *tenv) []byte {
 			v.stageable("1.1.0")
 			v.h.wrapFS = func(inner fsops) fsops { f := newTestFS(inner); f.failAt = 3; return f }

@@ -17,9 +17,9 @@ import (
 // copy the four downloaded files out of the service-owned cache into a private
 // root-owned staging directory, verify the private copies with relverify,
 // extract the release, lint its unit files (U15 rule 3), compare the helper
-// components with the installed ones and move a verified release to
-// releases/<version> as an inactive staged release. Nothing here activates
-// anything.
+// components with the installed ones, move a component set that differs to
+// components/<version> and a verified release to releases/<version> as an
+// inactive staged release. Nothing here activates anything.
 
 type stageRun struct {
 	h   *handler
@@ -40,7 +40,11 @@ type stageRun struct {
 	renamed bool // the staged tree is releases/<version>
 	staged  bool // state.json says staged
 
-	differs []string
+	// The component set (U15): setAside is the trash name of an existing
+	// components/<version> that was moved aside, setMoved says that the staged
+	// set is components/<version>.
+	setAside string
+	setMoved bool
 }
 
 func (r *stageRun) stageDir() string { return "releases/.stage." + r.id }
@@ -62,10 +66,7 @@ func (h *handler) stage(req request) []byte {
 	defer e.close()
 	r := &stageRun{h: h, e: e, req: req, started: h.monotonic()}
 	res, code := r.run()
-	switch {
-	case code == codeInstallerRequired:
-		return differsBody(r.differs)
-	case code != "":
+	if code != "" {
 		return errorBody(code)
 	}
 	return encode(res)
@@ -142,8 +143,8 @@ func (r *stageRun) run() (stageResponse, errorCode) {
 		return stageResponse{}, codeIOError
 	}
 	r.id = id
-	st.Txn = txn{ID: id, Phase: phaseStaging, To: r.req.Version, From: r.instStr, CorrelationID: r.req.CorrelationID,
-		SocketRestartPending: st.Txn.SocketRestartPending}
+	st.resetTxn() // what outlives a transaction stays (the socket flag, the known-good record)
+	st.Txn.ID, st.Txn.Phase, st.Txn.To, st.Txn.From, st.Txn.CorrelationID = id, phaseStaging, r.req.Version, r.instStr, r.req.CorrelationID
 	if err := e.saveState(st); err != nil {
 		return stageResponse{}, codeIOError
 	}
@@ -252,33 +253,57 @@ func (r *stageRun) build(set *cacheSet, releases *os.File) (stageResponse, error
 	if rel.Manifest.Components == nil {
 		return stageResponse{}, codeRequirementsNotMet
 	}
-	differs, code := r.compareComponents(dir)
+	cmp, code := r.compareComponents(dir)
 	if code != "" {
 		return stageResponse{}, code
 	}
-	if len(differs) > 0 {
-		r.differs = differs
-		return stageResponse{}, codeInstallerRequired
+	// l2. A difference of the four helper files selects the component
+	// transaction (U15 rule 4), and its two rules come before any change: the
+	// delivered helper must embed the key this helper trusts (rule 5), and it
+	// must implement protocol P or P+1 (D5).
+	from := e.linkID(linkActive)
+	if cmp.set {
+		if from == "" {
+			return stageResponse{}, codeComponentsDamaged
+		}
+		if rel.Manifest.Components.KeyID != h.keyID {
+			return stageResponse{}, codeKeyChanged
+		}
+		if p := rel.Manifest.Components.Protocol; p != h.protoMax && p != h.protoMax+1 {
+			return stageResponse{}, codeRequirementsNotMet
+		}
+		// E2: the reference hash of the known-good set, recorded the first time
+		// a component difference is found when the state holds none for it.
+		if ok, _ := e.knownGood(r.st, true); !ok {
+			return stageResponse{}, codeComponentsDamaged
+		}
 	}
 
 	// m. make it durable, drop the private copies, move it into place.
-	if code := r.publish(set.bundle.name); code != "" {
+	if code := r.publish(set.bundle.name, cmp.set); code != "" {
 		return stageResponse{}, code
 	}
 
-	// n. the staged state.
+	// n. the staged state, with the record of what differs (D6) and, with a
+	// component set, what the transaction and the new helper compare (D1).
 	now, err := h.uptime()
 	if err != nil {
 		return stageResponse{}, codeIOError
 	}
-	r.st.Txn.Phase = phaseStaged
-	r.st.Txn.StagedAtUptimeS = now
+	t := &r.st.Txn
+	t.Phase, t.StagedAtUptimeS = phaseStaged, now
+	t.Differs, t.ServiceUnitSHA256 = cmp.differs, hex.EncodeToString(cmp.service[:])
+	if cmp.set {
+		t.ComponentsFrom, t.ComponentsTo = from, r.req.Version
+		t.ComponentsSetSHA256, t.ComponentsHelperSHA256 = setDigest(cmp.staged), hex.EncodeToString(cmp.staged[0][:])
+	}
 	if err := e.saveState(r.st); err != nil {
 		return stageResponse{}, codeIOError
 	}
 	r.staged = true
 	h.log(phaseStaged, r.req.Version, r.instStr, r.req.CorrelationID, "ok")
-	return stageResponse{V: protocolMax, OK: true, Version: rel.Manifest.Version, Commit: rel.Manifest.Commit}, ""
+	return stageResponse{V: protocolMax, OK: true, Version: rel.Manifest.Version, Commit: rel.Manifest.Commit,
+		ComponentsDiffer: len(cmp.differs) > 0, Differs: append([]string{}, cmp.differs...)}, ""
 }
 
 // copied is the result of copying one cache file.
@@ -409,7 +434,7 @@ func (r *stageRun) extract(dir, bundleName string, m *relverify.Manifest) errorC
 // and the recorded previous version are never touched: the version is strictly
 // newer than the installed one, and a collision with the previous one is an
 // error.
-func (r *stageRun) publish(bundleName string) errorCode {
+func (r *stageRun) publish(bundleName string, withSet bool) errorCode {
 	e := r.e
 	dir := r.stageDir()
 	for _, d := range []string{dir + "/" + dirRelease, dir + "/" + dirComponents} {
@@ -424,6 +449,11 @@ func (r *stageRun) publish(bundleName string) errorCode {
 	}
 	if err := e.fs.SyncDir(treeOpt, dir); err != nil {
 		return codeIOError
+	}
+	if withSet {
+		if code := r.publishSet(dir); code != "" {
+			return code
+		}
 	}
 	target := releasePath(r.req.Version)
 	if _, err := e.opt.Lstat(target); err == nil {
@@ -452,14 +482,59 @@ func (r *stageRun) publish(bundleName string) errorCode {
 			return codeIOError
 		}
 	}
+	if r.setAside != "" {
+		if err := e.fs.RemoveAll(treeOpt, r.setAside); err != nil {
+			return codeIOError
+		}
+	}
 	return ""
 }
 
 func (r *stageRun) trashPath() string { return "releases/.trash." + r.id }
 
+// publishSet moves the staged component set to components/<id>, where id is the
+// version of the release (U5), before the release itself is moved (U15 rule 4
+// row c1). An existing components/<id> is handled like an existing
+// releases/<version>: a set that a link names, or the recorded previous set, is
+// never touched and makes the request fail; any other is moved to
+// releases/.trash.<id> first and deleted last.
+func (r *stageRun) publishSet(dir string) errorCode {
+	e := r.e
+	id := r.req.Version
+	src, target := dir+"/"+dirComponents, componentPath(id)
+	// The staging directory is 0700; a set is 0755 like the installer's.
+	if err := e.fs.Chmod(treeOpt, src, 0o755); err != nil {
+		return codeIOError
+	}
+	if _, err := e.opt.Lstat(target); err == nil {
+		if id == e.linkID(linkActive) || id == e.linkID(linkKnownGood) || id == r.st.ComponentsPrevious {
+			return codeIOError
+		}
+		tid, err := r.h.newID()
+		if err != nil {
+			return codeIOError
+		}
+		aside := "releases/.trash." + tid
+		if err := e.fs.Rename(treeOpt, target, aside); err != nil {
+			return codeIOError
+		}
+		r.setAside = aside
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return codeIOError
+	}
+	if err := e.fs.Rename(treeOpt, src, target); err != nil {
+		return codeIOError
+	}
+	r.setMoved = true
+	if err := e.fs.SyncDir(treeOpt, "components"); err != nil {
+		return codeIOError
+	}
+	return ""
+}
+
 // abort is the cleanup duty (U5, U7 row 2 and 3): remove the whole staging
-// tree, remove releases/<version> when it was already renamed and the state
-// does not yet say staged, and set the state back to idle. A synchronous error
+// tree, remove releases/<version> and the component set when they were already
+// moved and the state does not yet say staged, and set the state back to idle. A synchronous error
 // writes no last result (gap rule G3). When the cleanup itself fails the
 // answer is io_error and the state stays at staging with the field "to", so
 // that the staging recovery finds it. The deadline is not consulted here.
@@ -477,6 +552,17 @@ func (r *stageRun) abort(code errorCode) errorCode {
 	}
 	if r.renamed && !r.staged {
 		if err := e.removeRelease(r.req.Version, r.instStr, r.st.Previous); err != nil {
+			return codeIOError
+		}
+	}
+	if r.setAside != "" {
+		if err := e.fs.RemoveAll(treeOpt, r.setAside); err != nil {
+			return codeIOError
+		}
+	}
+	if r.setMoved && !r.staged {
+		r.st.Txn.ComponentsTo = r.req.Version
+		if err := e.removeStagedSet(r.st); err != nil {
 			return codeIOError
 		}
 	}

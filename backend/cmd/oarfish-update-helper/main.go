@@ -3,7 +3,9 @@
 // Steps G6.5 and G6.6: the strict request decoder, the peer check, `status`,
 // `stage`, `discard`, `activate` and `ack`, the release transaction with its
 // health check and rollback, the boot recovery, the state file and the shared
-// lock. Nothing here has been run on a device.
+// lock. Step G6.10: the unit lint and the component transaction (the
+// replacement of the helper and its units). The component transaction has not
+// been run on a device.
 //
 // The helper has exactly two subcommands. `serve` runs only when started by
 // socket activation (U1, U2); `recover` is the boot-time recovery (U7).
@@ -100,7 +102,8 @@ func productionOptions() options {
 }
 
 // run dispatches the subcommand and returns the process exit status: 0 on
-// success, 1 when serve cannot run, 2 for a usage error.
+// success, 1 when serve cannot run, 2 for a usage error, and 75 when serve
+// hands over to the helper that components/active names (U15 rule 4).
 func run(args []string, stderr io.Writer, o options) int {
 	if len(args) != 1 {
 		fmt.Fprintln(stderr, usage)
@@ -137,10 +140,10 @@ func serve(stderr io.Writer, o options) int {
 		return 1
 	}
 	h := newHandler(o, key)
-	s := newServer(o, uid, h)
-	h.startupRecovery()
-	err = s.serve(ln)
-	h.wait() // a transaction that is running is finished before the process ends
+	code, err := serveLoop(h, newServer(o, uid, h), ln)
+	if code != 0 {
+		return code
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, "oarfish-update-helper: the listening socket failed")
 		return 1
@@ -148,12 +151,30 @@ func serve(stderr io.Writer, o options) int {
 	return 0
 }
 
+// serveLoop runs the start-up recovery and the accept loop. It returns the exit
+// status of a hand-over (75, U15 rule 4 step 2), or 0. A hand-over stops the
+// accept loop; when the loop has returned, every connection has been answered
+// and closed, and when the transactions have ended the lock is free. The socket
+// belongs to systemd and stays, so connections that arrive meanwhile wait for
+// the next process.
+func serveLoop(h *handler, s *server, ln *net.UnixListener) (int, error) {
+	h.stop = func() { ln.Close() }
+	h.startupRecovery()
+	err := s.serve(ln)
+	h.wait() // a transaction that is running is finished before the process ends
+	return int(h.exit.Load()), err
+}
+
 // recoverMain is the recover subcommand (U7). It needs no socket, no service
-// user and no key: recovery verifies no release, so an unusable embedded key
+// user and no key, and reads one environment variable: recovery verifies no release, so an unusable embedded key
 // must not stop it.
 func recoverMain(stderr io.Writer, o options) int {
 	var key trustkey.Key
-	return newHandler(o, key).recoverBoot(stderr)
+	h := newHandler(o, key)
+	// Started by OnFailure= of the helper service, not by the boot: systemd
+	// names the failed unit in the environment (assumption, see components.go).
+	h.onFailure = o.getenv != nil && o.getenv(monitorUnitVar) == helperUnit
+	return h.recoverBoot(stderr)
 }
 
 // lookupUID looks the user up once at start (U2). With CGO_ENABLED=0 this

@@ -15,6 +15,8 @@
 
 - Amendment A15 (G6.10 step a, written 2026-11-10, `docs/DECISIONS.md` D-C83): the owner decisions D1 to D7 for the replacement of the helper and its units, and the unit lint of U15 rule 3 as implemented, listed in "Amendment A15 (G6.10, step a)" below. It adds pointers in U4 and U15 rule 3 and refines the sentences its change table names; the specification is not changed.
 
+- Amendment A16 (G6.10 step b, written 2026-11-11, `docs/DECISIONS.md` D-C84): the owner decisions E1 to E4 and the component transaction of U15 rules 1, 2, 4, 5 and 6 as implemented, listed in "Amendment A16 (G6.10, step b)" below. It edits no accepted sentence in place; its change table names the rule that now applies; the specification is not changed. Extended by the remediation of step b (2026-11-11, D-C84 addition): the owner decisions E5 (a damaged known-good set is never switched to; replaces P10) and E6 (the recover unit started by `OnFailure=` leaves the release phases to the next `serve` start; amends U7 row 7 "Live" and the behaviour since G6.6).
+
 ## How to read this ADR
 
 Every statement carries one of these labels, so that a reader can tell what is known from what is hoped:
@@ -1119,6 +1121,156 @@ The accepted text is not rewritten. Two sentences got a pointer in place (U4 ste
 | U13, row F24 (not edited) | "a different helper binary and unit text" | the unit text differs within what the installed helper's lint accepts | A15.2 |
 | U13, row F25 (not edited) | class C and T, planned | class C tests exist; class T not run | A15.3 |
 | U14, row G6.10 (not edited) | one step | three implementation steps a, b and c, then a release and the device evidence | A15.2 |
+
+## Amendment A16 (G6.10, step b)
+
+This amendment belongs to step b of G6.10 (A15.2, statement 3): the component transaction, the first start of the new helper and the recovery of the component phases. It records the owner decisions E1 to E4, which the project owner gave with the prompt of step b on 2026-11-11 (D-C84 in `docs/DECISIONS.md`), and every choice the implementation made where U15, A1 to A15 and E1 to E4 name a rule and leave its detail open. The decisions D-C53 to D-C83, the owner decisions Q1 to Q7 and D1 to D7 and the status of this ADR are unchanged. No accepted sentence is edited in place: the table at the end names, for each sentence that is refined, the rule that now applies. The specification is not edited: section 14.2 names for G6.10 the confirmation, the check of the unit files, the rollback of the helper and the key rule, and none of these statements changes.
+
+**Evidence label.** **Owner decision** is one of E1 to E6, in the owner's wording as far as a table allows. **Fact** names the file it was read from, in the tree of the pull request of step b (`backend/cmd/oarfish-update-helper/`, `backend/internal/updater/`). **Proposal** is a choice of the implementation; it is implemented and tested, and the owner's review of step b can change it. **Assumption** is not checked. **Nothing in A16 ran on a device, and nothing is Verified.** The tests are class C (fake root, fake systemd): they prove the order of the helper's writes and calls and the invariant of U7, not the behaviour of systemd or of the kernel. Step b changes no file in `install/`, no installer, no workflow and no release.
+
+### A16.1 Owner decisions E1 to E6 (D-C84)
+
+| # | Subject | Owner decision |
+|---|---|---|
+| E1 | `installer_required` after step b (accepts the proposal of A15.2, statement 1) | A helper that has the component transaction never answers `installer_required` for a difference. The code stays in the closed list of U2 and in the service. The remaining installer cases are `key_changed`, `unit_rejected`, `requirements_not_met` (D5, and the legacy bundle shape) and the bootstrap. |
+| E2 | Reference hash of the known-good set (U6, U15 rule 4 step 1, row F30) | `known_good_sha256` is one SHA-256 over the four files of the set in the fixed order of U2. The helper writes it when it moves `known-good` (`c_committed`, and the recovery that completes row c5). When the state holds none (the installer moved `known-good` last, or the state was rebuilt), `stage` records it from `known-good` the first time it finds a component difference. `activate` compares `known-good` with the recorded value before `c_switching` and answers `components_damaged` when they differ; recovery row c8 does the same. **Residual risk:** damage to `known-good` before that first recording is not detected. |
+| E3 | What the new helper takes over | The new helper performs the release phases itself, so it reads `MainPID` and `NRestarts` of `oarfish.service` immediately before its own switch of `current`; nothing of that kind is carried across the hand-over in memory. Everything else it needs (`from`, `to`, `correlation_id`, `from_binary_sha256`, the expected helper hash of D1, the key id of the old helper for rule 5, the protocol range of the old helper, the names of D6) is written to `state.json` before `c_switching`, as additive members. |
+| E4 | Cooldown | A transaction that ends in `components_rolled_back` sets the same cooldown markers as a release rollback (U6): the version for 15 minutes, and the 60 s marker. |
+| E5 | A damaged known-good set (remediation of step b; replaces P10) | A damaged rollback target is never switched to, for components as for releases (U6). The rollback of the components compares the known-good set with its reference (P1: only when the reference names the set that `known-good` names) **before** it switches `active`. When the set differs or cannot be read, `active` is not switched, the transaction ends in `rollback_failed` with the reason `known_good_damaged` and `needs_attention`, and nothing else is touched: `daemon-reload` does not run, and neither does `reset-failed` (owner's answer to the question of the remediation). When it matches, the rollback continues as before. The same order holds at the failed self-check, in row c8 and in P11. In P11 the reference was in the lost state, so only a set that cannot be read stops the switch; the rebuilt state then holds the failed rollback as a transaction (phase `rollback_failed`, `to` the active set, `from` the target of `current`). A `rollback_failed` with the reason `known_good_damaged` is kept by every later boot and `serve` start until a person acts (owner's answers). |
+| E6 | The recover unit started by `OnFailure=` (remediation of step b; amends U7 row 7 "Live" and the behaviour since G6.6) | The `recover` subcommand started by `OnFailure=` (P8, `MONITOR_UNIT`) does not touch the release phases: `switching`, `verifying`, `rolling_back` and `committed`, and also `rollback_failed` and `rolled_back` (owner's answer). It handles the component phases as before, otherwise leaves the state as it is, and exits 0. *Reason:* a switch of `current` without a restart of the running service leaves a service whose binary `current` no longer names, and the recover unit cannot restart `oarfish.service` itself: it is ordered `Before=oarfish.service`, so a restart job of the service would wait for the recover unit that started it. The release phase is handled by the next `serve` start (`Restart=on-failure` of the helper, or the next connection through the socket), whose start-up recovery runs the full rollback of U6 with restart and health check. At boot (no `MONITOR_UNIT`) `recover` keeps the link-only rule, because the service is not running yet. **Assumption:** systemd sets `MONITOR_UNIT` only for units started by `OnFailure=` (version 251 and later; not observed). |
+
+### A16.2 The component transaction as implemented
+
+**Fact (`stage.go`, `compare.go`, `components.go`, `txn.go`, `recover.go`, `cleanup.go`, `main.go`).** The numbers P1 to P24 point to the proposals of A16.3.
+
+**`stage`.** The checks a to k2 are unchanged. Step l compares the SHA-256 of the five files with the installed ones (the four helper files through `components/active`, `oarfish.service` through `current`). Then, when one of the **four helper files** differs (the release brings a component set), and before anything is moved into place: `components.key_id` of the signed manifest must equal the key id embedded in this helper, else `key_changed` (rule 5); `components.protocol` must be P or P+1, else `requirements_not_met` (D5); the reference hash of the `known-good` set is recorded when the state holds none for that set, or compared when it holds one, else `components_damaged` (E2, P1). The staged set is then moved from `releases/.stage.<id>/components` to `components/<version>` (mode 0755, one rename, `fsync` of `components/`) **before** the release is moved to `releases/<version>` (row c1). An existing `components/<version>` that a link names, or that is the recorded previous set, is never touched and makes the request fail with `io_error`; any other is moved to `releases/.trash.<id>` first and deleted last, as an existing `releases/<version>` is (D-C67). The staged state records the names that differ (D6), the SHA-256 of the staged `oarfish.service`, and, with a component set, `components_from` (the target of `active`), `components_to` (the version), the set digest of the staged set and the SHA-256 of the staged helper (the expected hash of D1; the file was verified against the signed `contents` by the extraction). A difference of `oarfish.service` alone records the names and no component set (D6). The answer has `components_differ` true for any difference and the additive member `differs` with the names. `discard`, the expiry of a staged release and the staging recovery remove a staged set that no link names. `stage` never answers `installer_required` (E1).
+
+**`activate`, the helper that hands over.** `components_confirmed` must be true when the staged state records any name or a component set (D6), else `confirmation_required`; a true flag when nothing differs is `bad_request`, as before. The staged unit files are linted again: `oarfish.service` of every release and the three helper units of a staged set. Each unit file is read once, and the same bytes are linted and hashed; the hashes must equal those of the staged state (P14). With a component set the target of `active` must still be `components_from`, and the `known-good` set must equal its reference hash, else `components_damaged` (E2). The pre-check of U6 follows as before. Then, with a component set:
+
+1. `c_switching` is written with the members of E3: the key id and the protocol range of this helper, and `socket_text_changed` when the normalised text of the staged socket unit differs from the installed one (the intent of D4; the comparison uses the function of the lint). The answer "accepted" is given.
+2. `components/active` is switched to the new set: a link `components/.new.<id>`, a rename over `active`, `fsync` of `components/`.
+3. `c_switched` is written; `systemctl daemon-reload` runs.
+4. The process ends with exit code 75. It first stops accepting connections, waits until every accepted connection has been answered and closed and the lock is free, and only then returns the status (`serveLoop`, `main.go`). The socket is systemd's and stays; a connection that arrives meanwhile waits for the next process. The old helper executes nothing of the new set and restarts neither itself nor the socket.
+
+A call that fails in steps 2 to 4 ends in a rollback by the same process (P12). Without a component set but with a differing `oarfish.service` there is no component phase: `daemon-reload` runs after the switch of `current` and before the restart, and again after a switch back (U6, P20).
+
+**The first start of the new helper.** `serve` runs its start-up recovery under the lock before it accepts a connection. When the state says `c_switched` and `active` names `components_to`, the process runs the self-check, and every request except `status` answers `busy` until the transaction has ended (the lock). The self-check requires all of: the target of `components/active` is `components_to`; the SHA-256 of `components/active/oarfish-update-helper` equals the expected hash; the SHA-256 of the process's own executable image equals it (read from `/proc/self/exe`, streamed with the 32 KiB buffer, behind a seam that the tests replace); the embedded key id equals the recorded key id of the old helper (rule 5); the protocol range overlaps the recorded range of the old helper (rule 6, D5). That `state.json` is readable is part of the proof by construction: without it the process does not know the transaction (P11). **Pass:** `c_verified` is written; `components/known-good` is switched to the new set; `daemon-reload` runs (D2); one state write records `known_good_sha256` for the new set, `c_committed`, the previous set, `components_updated` and, when the socket text changed, `socket_restart_pending` with the time since boot (D4); the retention runs; the helper reads `MainPID` and `NRestarts` (E3), writes `switching` and continues with the release phases of U5 and U6, without a client request and without an idle exit. **Fail:** the rollback below, with the reason, and exit code 75 (P7).
+
+**Rollback of the components** (failure handling of rule 4, row c8; order of E5). `c_rolling_back` is written with the reason; the `known-good` set is compared with its reference hash (P1). Different, or unreadable: `rollback_failed` with the reason `known_good_damaged` and `needs_attention`; `active` is not switched, and neither `daemon-reload` nor `reset-failed` runs (E5). Equal: `active` is made to name what `known-good` names; `daemon-reload` runs; `reset-failed oarfish-update-helper.service` runs when the process is the recover subcommand started by `OnFailure=` (P8); the never-activated release directory and the failed set are removed (P3), the result is `components_rolled_back` with the reason, both cooldown markers are set (E4), and the state is `idle`.
+
+**The closed set of reasons of `components_rolled_back`** (8): `helper_mismatch`, `key_changed`, `protocol_mismatch`, `state_unreadable`, `interrupted` (a self-check or a recovery); `switch_failed`, `state_write_failed`, `reload_failed` (a call that failed in the helper that handed over). `rollback_failed` after a component rollback has the reason `known_good_damaged`. A reason is a fixed word; it is in the last result and in the journal.
+
+**Recovery of the component phases.** `recover` (at boot, and started by `OnFailure=`; it runs the binary of `known-good`) and `serve` (at its start, under the lock) apply the table of rule 4. "Old" means that `active` does not name `components_to`.
+
+| Row | State and disk | `recover` | `serve` at its start |
+|---|---|---|---|
+| c1 | a set in `components/<id>` that neither link nor the state names | removed through `releases/.trash.<id>` | the same |
+| c2 | `c_switching`, `active` old | the intent is cleared: the phase is `staged` again; then U7 row 4 (removed) | the same; U7 row 4 keeps it until it expires (P4) |
+| c3, c4 | `c_switching` or `c_switched`, `active` new | rollback, reason `interrupted` | `c_switched`: the self-check, forward on a pass, rollback with its reason on a failure. `c_switching`: rollback (P5) |
+| c5 | `c_verified`, both links new | `c_committed` is written (with `daemon-reload` and the reference hash), then row c6 | the same, then the release phases |
+| c5 | `c_verified`, `known-good` old | rollback, reason `interrupted` | the self-check; forward on a pass (P6), else rollback |
+| c6 | `c_committed` | the release is aborted (`aborted`, reason `interrupted`, `components_updated` true), the components stay | the release phases continue (P9) |
+| c7 | `socket_restart_pending` set | nothing | nothing; `status` reports the flag until a reboot |
+| c8 | `c_rolling_back` | the rollback is finished with the recorded reason; a damaged `known-good` set ends it in `rollback_failed` before any switch (E5) | the same |
+| c9 | `releases/.trash.*`, `components/.new.<id>` | removed | removed |
+
+A release that fails after `c_committed` is rolled back alone by the rules of U6 and U7; its result is `rolled_back` (or `aborted`) with the additive member `components_updated` true (F31).
+
+**`recover` started by `OnFailure=` (E6).** When `MONITOR_UNIT` names the helper service, `recover` applies the rows above to the component phases and leaves every release phase (`switching`, `verifying`, `rolling_back`, `committed`, `rollback_failed`, `rolled_back`) as it is, with exit status 0; the removal of leftovers still runs. The next `serve` start recovers the release with the full procedure of U6. At boot the link-only rule of U7 is unchanged.
+
+**Retention.** After `c_committed` the helper keeps the sets that `active` and `known-good` name and the set they replaced (`components_previous` in the state) and removes every other directory below `components/` whose name is a version, through `releases/.trash.<id>`. After a rollback only the failed set is removed; nothing else is pruned. Names that are not a version are never touched.
+
+**Protocol and status.** The decoder answers `status` for every positive integer `v`, with the helper's own `v` and the accepted range; every other request keeps the range check before anything else of it is used. `status` reports three additive members: `staged_differs` (the names of a staged release), `socket_restart_pending` (void when the uptime is smaller than the uptime at which it was set, D4) and, in `last_result`, `components_updated`.
+
+**State members added by step b** (all additive; `TestStateRoundTripWithThePreviousDecoder` holds a copy of the member lists of the code before this step and shows that its decoder ignores them, and that this decoder reads a state of that code):
+
+| Member | Where | Written | Meaning |
+|---|---|---|---|
+| `differs` | `transaction` | `stage` | the record of D6: names of the closed list, in its order |
+| `service_unit_sha256` | `transaction` | `stage` | SHA-256 of the staged `oarfish.service` |
+| `components_set_sha256` | `transaction` | `stage` | set digest of the staged set |
+| `components_helper_sha256` | `transaction` | `stage` | the expected helper hash of D1 |
+| `components_key_id` | `transaction` | `c_switching` | key id of the helper that hands over (rule 5) |
+| `components_protocol_min`, `components_protocol_max` | `transaction` | `c_switching` | its protocol range (rule 6) |
+| `socket_text_changed` | `transaction` | `c_switching` | the intent of D4 |
+| `components_updated` | `transaction`, `last_result` | `c_committed`, every result after it | the components were replaced (F31) |
+| `rollback_reason` | `transaction` | `c_rolling_back` | the reason a finished rollback reports |
+| `known_good_id` | `transaction` | with `known_good_sha256` | the set the reference hash was computed from (P1) |
+| `socket_restart_set_at_uptime_s` | `transaction` | `c_committed` | D4 |
+| `components_previous` | top level | `c_committed` | the set the last commit replaced (retention) |
+
+`known_good_sha256`, `known_good_id`, `socket_restart_pending` and its time outlive a transaction; the others end with it. **The set digest (E2):** the SHA-256 over the four file digests, each 32 bytes, concatenated in the order `oarfish-update-helper`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, written as 64 lowercase hexadecimal digits (`TestKnownGoodDigestEncoding`).
+
+**The journal (refines U8).** The component phases write the line of U8 with their names (`c_switching`, `c_switched`, `c_verified`, `c_committed`, `c_rolling_back`); the end of a component rollback writes `phase=components_rolled_back` with the reason as the result.
+
+**Fault hooks (U13, class T).** The call counter stays per process. Because the transaction runs in two processes, the test build reads a third variable, `OARFISH_FAULT_PROC`, with the value `<subcommand>:<phase>`: the fault applies only to the process whose subcommand is that one and whose `state.json` named that phase when it started (`serve:staged`, `serve:c_switched`, `recover:c_switched`). Without the variable the fault applies to every process, as before. The release build contains none of the three names (`scripts/check-helper-hooks.sh`). The call numbers per phase are in `docs/DEVELOPMENT.md`, and a test of the test build fails when they change.
+
+**The service (`backend/internal/updater`).** It accepts the five component phases in a `status` answer, keeps only names of the closed list from the `differs` of `stage` and the `staged_differs` of `status`, keeps `components_updated` of the last result, and shows the names in the job while it waits for the second confirmation. The job ends when `activate` is accepted, so the hand-over of the helper cannot fail it; a `status` request made during the hand-over waits on the socket or, when it fails, is shown as a helper that is not reachable at that moment. No text was added; the dialog and its texts are step c.
+
+### A16.3 Choices of the implementation
+
+Each of these is a **proposal** in the sense of the evidence label.
+
+- **P1. The reference hash counts only for the set it was computed from.** The state records, with `known_good_sha256`, the id of the set (`known_good_id`). When `known-good` names another set, the record does not apply and is taken again (at `stage`, or at `activate`), and at row c8 there is nothing to compare with. *Reason:* E2 says that the state "holds none" when the installer moved `known-good` last. That is true only if the helper never recorded one: the installer does not write `state.json` (**fact**, `install/install.sh`), so after one component update from the GUI and a later installer run the state would hold the hash of a set that `known-good` no longer names, and every later component update would answer `components_damaged`. The id makes the owner's sentence true in that case.
+- **P2. The set digest** as printed in A16.2. *Reason:* one fixed-length input per file, no separator and no length field to get wrong.
+- **P3. After `components_rolled_back` the staged release and the failed set are removed.** *Reason:* the release was never activated, which is the case in which the release transaction already removes it (`aborted`, U7 row 5); the failed set is named by nothing afterwards and would be removed by row c1 at the next recovery anyway. Nothing else is pruned.
+- **P4. Row c2 sets the phase back to `staged`.** The row says "clear the intent; the staged release follows the rules of U7 row 4". At boot row 4 removes it; a running helper keeps it until it expires, and it can be activated again after the 60 s marker.
+- **P5. Only `c_switched` starts a self-check.** A `serve` process that finds `c_switching` with the new set active rolls back, also when it is the new binary: `c_switched` was not durable and `daemon-reload` may not have run. D1 says "while the state says `c_switched`".
+- **P6. `c_verified` with `known-good` not yet switched:** a `serve` process runs the self-check again and moves forward on a pass; `recover` rolls back (row c5, "as c3").
+- **P7. The hand-back.** After a rollback a `serve` process ends with exit code 75 exactly when its own image is not the helper that `active` names afterwards, or cannot be read. So the new helper hands back after a failed self-check, and the old helper that rolled back after a failed call keeps running. One transaction therefore restarts the helper at most twice (the hand-over and the hand-back).
+- **P8. How `recover` knows that `OnFailure=` started it.** It reads the environment variable `MONITOR_UNIT` and compares it with `oarfish-update-helper.service`. No argument and no unit is added. **Assumption** (recalled from the systemd documentation, version 251 and later; not observed): systemd sets this variable for a unit it starts through `OnFailure=`. Without the variable `reset-failed` is not run.
+- **P9. Row c6.** `recover` (also when `OnFailure=` started it) aborts the release: `aborted`, reason `interrupted`, `components_updated` true, the staged release removed, no cooldown. A `serve` start continues. Before the new helper writes `switching` it requires the staged binary to exist; when it is gone, the release is aborted the same way.
+- **P10. Replaced by E5** (owner decision of the remediation of step b). The proposal switched `active` to `known-good` first and compared afterwards, and let the next boot end the transaction; the owner did not accept it.
+- **P11. `state.json` unreadable.** The rebuild of U7 additionally looks at the links: when `active` and `known-good` name different sets, `active` is switched back to `known-good` and the result is `components_rolled_back` with the reason `state_unreadable`, the former target of `active` as `to`, and the cooldown. *Reason:* an unproven set is active and nothing says why. Since E5, a `known-good` set that cannot be read is not switched to: the rebuilt state holds the transaction in `rollback_failed` with the reason `known_good_damaged`, and nothing else is touched.
+- **P12. A failing call in the helper that hands over** (the link switch, the write of `c_switched`, `daemon-reload`) ends in the rollback above with `switch_failed`, `state_write_failed` or `reload_failed`, by the same process, without a restart.
+- **P13. `daemon-reload` after the `known-good` switch (D2) may fail without undoing the commit:** both links name the new set, and the disk is the truth (row c5). systemd then keeps the loaded text until its next reload or the next boot.
+- **P14. A staged file that changed.** At `activate`, a staged unit that the lint rejects answers `unit_rejected`, and a staged unit or helper whose hash differs from the staged state answers `checksum_mismatch`. In both cases the staged release ends (`aborted`, reason `unit_rejected` or `staged_changed`). A release staged against another `active` set answers `stage_expired`.
+- **P15. The names in answers:** `differs` in the answer of `stage`, `staged_differs` and `socket_restart_pending` in `status`, `components_updated` in `last_result`.
+- **P16. The retention is one rule:** a directory below `components/` whose name is a version and that neither link, nor `components_previous`, nor a transaction in the state names is removed. It runs after `c_committed`, at every start-up recovery of `serve` and in `recover` (rows c1, c9).
+- **P17. E4, the 60 s marker,** is set at the time of the rollback, not only at `activate`.
+- **P18. A start-up recovery that could not take the lock** (the recover unit or the installer holds it) is tried again with the next request. Until then `status` answers with the phase on disk and the other requests answer `busy`.
+- **P19. E3, the pre-check.** The new helper does not repeat the 10 s health pre-check; the old helper made it before `c_switching`. When `systemctl show` fails, the health check of the new version runs without the comparison of the process id and of the restart counter, as a rollback does today.
+- **P20. `oarfish.service` alone.** A `daemon-reload` that fails before the restart rolls the release back (`aborted`, reason `reload_failed`: the new version never ran). After a switch back the reload also runs at boot, because the unit that systemd loaded is the one `current` named.
+- **P21. `socket_restart_pending` without a time** (a state of earlier code) is reported until a commit sets it again.
+- **P22. The installed helper no longer builds an `installer_required` answer.** The code stays in the closed list, in the fixed texts and in the service (E1).
+- **P23. `components.key_id` and `components.protocol` are checked only when the four helper files differ** (the scope the owner gave for step b): without a set nothing of the delivered helper is installed.
+- **P24. The new helper proves its protocol against the range the old helper recorded** (rule 6, D5), not against the manifest's `components.protocol`, which `stage` checked. U13 F28 describes the case with the manifest; the row is not edited.
+
+### A16.4 Not verified, and assumptions
+
+- Nothing ran on a device. In particular: the read of `/proc/self/exe` by the helper under its sandbox (the assumption of D1; the owner's one-command indication of 2026-11-11 is about another process and is not evidence about the helper); the restart of the real units after exit code 75 and the start limit (A1 observed throwaway units); `daemon-reload` from the helper and from the recover unit, also early at boot, and the effect of a changed recover unit at the next boot (D2); `MONITOR_UNIT` (P8, E6), and that systemd sets it only for a unit started by `OnFailure=`; that the helper service is started again after the recover unit (`Restart=on-failure`) or by the next connection, so that its start-up recovery handles a release phase that the recover unit left (E6); that a connection made during the hand-over waits on the socket of the real socket unit.
+- The class T rows of U13 (F26 to F31) and the class D row F24 are not run.
+
+### Open points of A16
+
+1. **Password at the second confirmation (C4, D7):** open owner question, unchanged.
+2. **The finishing audit entry (C3), the retention of failed releases, a release tooling check for the two-step rule, and the wording of the U13 row F14 against U6:** not decided, unchanged.
+3. **A recover unit started by `OnFailure=` treats the release phases as at boot** (a link switch without a restart of `oarfish.service`, U7): **fact**, `recover.go`, since G6.6. **Closed by E6** in the remediation of step b.
+4. **After a refused `activate` the release stays staged** (cooldown, `current_unhealthy`, `components_damaged`), and a new `stage` answers `busy` until it expires or is discarded: **fact**, since G6.6. Not changed here.
+5. **A rebuilt state has a last result without `to`,** which the service's check of a `status` answer refuses: **fact**, `recover.go` and `backend/internal/updater/helper.go`, since G6.7. Not changed here.
+
+### Changes made to the accepted text (A16)
+
+The accepted text is not rewritten; for every row the rule in the column "Now" applies.
+
+| Where | Accepted wording | Now | Source |
+|---|---|---|---|
+| U5, "releases that change the helper or a unit"; U9, transitional rule; U11; A15.2 statement 1 | `installer_required` for a difference until G6.10 | a helper with the component transaction never answers it for a difference; the remaining installer cases are `key_changed`, `unit_rejected`, `requirements_not_met` and the bootstrap | E1 |
+| U6, "records the hashes of the known-good component set"; U15 rule 4 step 1; U8 | "the recorded hashes" | one set digest, `known_good_sha256`, with the set it names; recorded at the commit, or by `stage` at the first component difference | E2, P1, P2 |
+| U15 rule 4 step 4 and 5 | the new helper continues the transaction | everything it needs is in `state.json`; it reads `MainPID` and `NRestarts` itself | E3 |
+| U6, cooldown | after a rollback or a failure of a release | also after `components_rolled_back` | E4 |
+| U2, `stage` and `status` rows; U8 | the members listed there | the additive members of A16.2 | A16.2 |
+| U15 rule 3, "at `stage` and again at `activate`"; A15.3 | at `activate` in step b | implemented; the same bytes are linted and hashed | A16.2, P14 |
+| U15 rule 4, failure handling | "writes `components_rolled_back` with the reason" | the closed set of reasons of A16.2 | A16.2 |
+| U15 rule 4, table rows c1 to c9 | the rows | the table of A16.2 says which process does what; rows c2, c5 and c6 as P4, P6 and P9 | A16.2 |
+| U15 rule 4 step 7; U5, retention | sets older than the previous one are removed | the rule of P16 | P16 |
+| U2, request format; U15 rule 6 | `status` answerable for every `v` (step b) | implemented | D5 |
+| U8, journal | one line per phase | the component phases and `components_rolled_back` | A16.2 |
+| U13, rows F24 and F26 to F32 (not edited) | planned | class C tests exist (`docs/UPDATE.md` names them); class D and T not run | A16.2 |
+| U13, row F28 (not edited) | "a protocol outside the manifest's `components.protocol`" | the new helper compares with the range the old helper recorded | P24 |
+| Evidence and test plan, item 3 and U13 class T | two fault variables | a third, `OARFISH_FAULT_PROC` | A16.2 |
+| U15 rule 4, failure handling and row c8; U6 "a damaged rollback target is never switched to"; P10, P11 | `active` back to `known-good`, then the comparison (P10) | the comparison first; a damaged or unreadable set is never switched to, `rollback_failed` / `known_good_damaged`, nothing else touched, kept until a person acts | E5 |
+| U7 row 7 "Live"; U7 at boot; the `recover` behaviour since G6.6 | the recover unit applies the link-only rule, also when `OnFailure=` started it | started by `OnFailure=`, it leaves the release phases to the next `serve` start; at boot unchanged | E6 |
 
 ## Evidence and test plan for the later implementation
 

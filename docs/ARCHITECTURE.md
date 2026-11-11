@@ -7,7 +7,7 @@ This document describes what exists after Gate G5.1 and the boundaries later gat
 ```text
 backend/                     Go module github.com/swingstate/oarfish/backend
   cmd/oarfish/                 process entry point: flags, listen guard, state directory, signal handling, graceful shutdown (audit flushed), runs detection once
-  cmd/oarfish-update-helper/   the update helper (ADR 0010): a separate root program; the stub of G6.3a plus the core of G6.5 (`status`, `stage`, `discard`, state file, lock). Shipped in the default bundle since G6.3b; the service does not talk to it yet
+  cmd/oarfish-update-helper/   the update helper (ADR 0010): a separate root program; the stub of G6.3a, the core of G6.5 (`status`, `stage`, `discard`, state file, lock), the release transaction of G6.6 and, since G6.10, the unit lint and the component transaction. Shipped in the default bundle since G6.3b; the update service talks to it since G6.7
   internal/server/           HTTP handler: /healthz, the account routes, GET /api/v1/device, /api/v1/metrics, /api/v1/events (SSE), Host/Origin/CSRF checks, correlation IDs, listen guard, static frontend, security headers
   internal/auth/             access control (ADR 0009): Argon2id hashes, account file, setup token, in-memory sessions, login limiter (docs/AUTH.md)
   internal/audit/            the audit file: typed JSON lines, buffered, rotated (docs/AUTH.md)
@@ -141,7 +141,7 @@ The names follow `state.json` and the manifest of ADR 0010. Members may only be 
 
 Step G6.5 turns the stub into the helper core of ADR 0010: a strict decoder per request, the peer check on every connection, a real `status` from a real state file, and the requests `stage` and `discard`. It is the first privileged code that writes below `/opt/oarfish`, and it is reviewed before anything is built on it. **At the time of this step nothing had been run on a device, and the sandbox of the units (`ProtectSystem=strict`, `ReadWritePaths=/opt/oarfish`, `StateDirectory=`, `SystemCallFilter=@system-service`) had not been exercised with this code. The G6.9 device run later observed the helper on one device ([UPDATE.md](UPDATE.md#results-on-the-reference-device)).** It is tested on CI runners and on a development machine, against temporary directories and a fake peer check. Linux-only parts (`CLOCK_BOOTTIME`, `SO_PEERCRED`) run on the Linux CI job; the development machine for this step was macOS.
 
-**Not in this step** (G6.6 added `activate`, `ack`, the health check, rollback, the `recover` subcommand, retention, cooldown enforcement, `systemctl` and the fault hooks, see the next section): component replacement and `key_changed` (G6.10). The unit lint was added to `stage` by step a of G6.10 (step 12 of the stage sequence below).
+**Not in this step** (G6.6 added `activate`, `ack`, the health check, rollback, the `recover` subcommand, retention, cooldown enforcement, `systemctl` and the fault hooks, see the next section): component replacement and `key_changed` (G6.10). The unit lint was added to `stage` by step a of G6.10 (step 12 of the stage sequence below), and the component transaction by step b ([The component transaction](#the-component-transaction-gate-g6-step-g610b)): since then `stage` no longer answers `installer_required` for a difference, `components_differ` can be `true`, and the statements of this section about them describe the code before step b.
 
 **Requests.** `status` accepts exactly `v` and `op`. `stage` accepts exactly `v`, `op`, `version` and `correlation_id` (16 lowercase hexadecimal digits). `discard` accepts exactly `v`, `op` and `version`. `version` must match the pattern of U2 (at most 64 characters, no `..`). Every rule of the stub decoder stays: unknown members, repeated members, other letter cases, trailing data, `null`, wrong types, 4 KiB, a missing newline. The peer check (`SO_PEERCRED`, uid of `oarfish` looked up once) still runs before the first byte of the body is looked at; a wrong peer is closed without an answer and the file system is not even opened.
 
@@ -217,6 +217,75 @@ Step G6.6 adds the requests `activate` and `ack`, the transaction of ADR 0010 U5
 
 **Gap decisions of G6.6** (the most conservative choice where the ADR is silent; the list is also in the pull request): `components_confirmed` must be `false` while no component difference can be staged (G6.10), a `true` is `bad_request`, and with a staged difference a `false` would be `confirmation_required`; the pre-check is 2 polls within 10 s; a rollback after a damaged hash does not switch; a failed rollback whose cause was a call that failed is retried at the next start; results are in `last_result` and only `rollback_failed` stays a phase; `needs_attention` is a state member cleared by `ack`; a missing `state.json` is not an alarm; `os/exec` is allowed in `systemctl.go` only (the architecture test of `internal/platform`, which forbids `os/exec` in product code, names that file as its one exception); a new `cooldown_version` and `cooldown_remaining_s` in `status`. Unit hardening against `exec` of `systemctl` is a **risk, not changed**: it can only be shown on the device (G6.9).
 
+## The component transaction (Gate G6, step G6.10b)
+
+Step b of G6.10 lets the helper replace itself and its units as part of a release update (ADR 0010 U15 rules 1, 2, 4, 5 and 6, amendments A15 and A16, decisions D-C83 and D-C84). It is privileged code. **Nothing of it ran on a device; the tests use the fake root and a fake systemd (class C) and prove the order of the writes and calls and the invariant of U7, not the behaviour of systemd.** [`UPDATE.md`](UPDATE.md#the-steps-of-an-update-with-components) has the steps as a user sees them; ADR 0010 A16 has the rules, the table of the recovery and every choice of the implementation.
+
+**No new request, program, argument shape, unit name or write target.** The transaction is part of `activate` (U15 rule 1). The helper writes only what the closed table of U2 has listed since the ADR was accepted: `components/<id>`, `components/active`, `components/known-good` and `components/.new.<id>`, all through `fsops`; a set that is removed goes through `releases/.trash.<id>`. It calls `systemctl daemon-reload` and `reset-failed oarfish-update-helper.service`, the two shapes that were compiled in and unused. The tests that compare the lists with the ADR are unchanged; the test predicate of the write targets (`allowedTarget`) now accepts the component targets of the row.
+
+**`stage`** (`stage.go`, `compare.go`). After the unit lint the five files are compared with the installed ones. When one of the four helper files differs: `components.key_id` must be the key embedded in this helper (`key_changed`), `components.protocol` must be P or P+1 (`requirements_not_met`), and the known-good set is compared with its reference hash or the hash is recorded (`components_damaged`). The staged set is moved to `components/<version>` before the release is moved. Answer and state:
+
+```json
+{"v":1,"ok":true,"version":"1.1.0","commit":"0123456789abcdef0123456789abcdef01234567","components_differ":true,"differs":["oarfish-update-helper","oarfish.service"]}
+```
+
+`differs` holds names of the closed list of U2 in its fixed order and is `[]` when nothing differs. `stage` never answers `installer_required`; the code stays in the closed list.
+
+**`activate`** (`txn.go`, `components.go`). `components_confirmed` must be `true` when the staged state records a name or a component set. The staged units are linted again and the staged files compared with the recorded hashes; each unit is read once. With a component set the helper writes `c_switching` (with its key id, its protocol range and whether the socket text changes), answers "accepted", switches `components/active` (link, rename, directory `fsync`), writes `c_switched`, runs `daemon-reload` and ends with **exit code 75**: `serveLoop` (`main.go`) stops the accept loop, waits for every accepted connection and for the lock, and returns the status. `SuccessExitStatus=75` and `RestartForceExitStatus=75` of the unit make systemd start the service again without the recover unit (A1). With a difference of `oarfish.service` alone there is no component phase; `daemon-reload` runs after the switch of `current` and before the restart, and again after a switch back.
+
+**The first start of the new helper** (`recover.go`, `components.go`). `serve` runs its start-up recovery under the lock before the first connection. With `c_switched` it runs the self-check: `active` names `components_to`; the SHA-256 of `components/active/oarfish-update-helper` and of the process's own image (`/proc/self/exe`, 32 KiB buffer; `handler.selfImage` is the seam of the tests) equal the hash that `stage` recorded; the embedded key id equals the recorded one; the protocol range overlaps the recorded one. On a pass: `c_verified`, the switch of `components/known-good`, `daemon-reload`, `c_committed` (with the reference hash of the new set, the previous set, and the socket flag with its uptime), the retention, then the release phases of the section above, for which the new helper reads `MainPID` and `NRestarts` itself. On a failure: `c_rolling_back`, `active` back to `known-good`, `daemon-reload`, the result `components_rolled_back` with a reason, the cooldown, and exit code 75 so that the old binary serves again. A serve process hands back only when its own image is not the helper that `active` names, so one transaction restarts the helper at most twice.
+
+**Recovery.** `recover` (boot, and `OnFailure=` of the helper service; it runs the known-good binary) and the start-up recovery of `serve` apply the rows c1 to c9 of U15 rule 4 as the table in A16.2 says: only a serve process that passes the self-check moves an unproven set forward; everything else rolls back. `recover` knows that `OnFailure=` started it from the environment variable `MONITOR_UNIT` and then also runs `reset-failed oarfish-update-helper.service` (assumption about systemd, not observed); started that way it leaves every release phase to the next `serve` start and exits 0, because it cannot restart the running service (E6). The rollback of the components compares the `known-good` set with its reference before it switches `active`; a damaged or unreadable set is never switched to and ends in `rollback_failed` with `known_good_damaged`, kept until a person acts (E5). A release that fails after `c_committed` is rolled back alone.
+
+**State.** All new members are additive (the list is in A16.2). The state after the hand-over of a transaction with a component set, synthetic values:
+
+```json
+{
+  "schema_version": 1,
+  "helper_version": "protocol-1",
+  "previous_version": "0.9.0",
+  "needs_attention": false,
+  "components_previous": "0.9.0",
+  "transaction": {
+    "id": "00000000000a0001",
+    "phase": "c_switched",
+    "to": "1.1.0",
+    "from": "1.0.0",
+    "from_binary_sha256": "abab…abab",
+    "correlation_id": "0123456789abcdef",
+    "staged_at_uptime_s": 1000,
+    "components_from": "1.0.0",
+    "components_to": "1.1.0",
+    "known_good_sha256": "cdcd…cdcd",
+    "socket_restart_pending": false,
+    "differs": ["oarfish-update-helper", "oarfish.service"],
+    "service_unit_sha256": "0a0a…0a0a",
+    "components_set_sha256": "0b0b…0b0b",
+    "components_helper_sha256": "0c0c…0c0c",
+    "components_key_id": "11f1c52777090bfc",
+    "components_protocol_min": 1,
+    "components_protocol_max": 1,
+    "socket_text_changed": false,
+    "components_updated": false,
+    "rollback_reason": "",
+    "known_good_id": "1.0.0",
+    "socket_restart_set_at_uptime_s": 0
+  },
+  "cooldown": {"refuse_version": "", "refuse_until_uptime_s": 0, "refuse_set_at_uptime_s": 0, "last_activate_uptime_s": 1010, "last_activate_set_at_uptime_s": 1010},
+  "last_result": null
+}
+```
+
+(The hashes are 64 hexadecimal digits; they are shortened here.) `known_good_sha256` is the set digest: the SHA-256 over the four file digests in the order of U2.
+
+**`status`.** It is answered for every positive `v` (U15 rule 6, D5) with the helper's own `v` and range; every other request keeps the range check. Three additive members: `staged_differs`, `socket_restart_pending` and `components_updated` in `last_result`. After a release that failed behind committed components:
+
+```json
+{"v":1,"ok":true,"protocol_min":1,"protocol_max":1,"helper_version":"protocol-1","key_id":"11f1c52777090bfc","installed_version":"1.0.0","phase":"idle","staged_version":"","previous_version":"","last_result":{"transaction_id":"00000000000a0001","to":"1.1.0","from":"1.0.0","outcome":"rolled_back","reason_code":"start_failed","correlation_id":"0123456789abcdef","finished_at":"2026-11-11T10:00:00Z","acknowledged":false,"components_updated":true},"needs_attention":false,"free_bytes":1234567890,"cooldown_version":"1.1.0","cooldown_remaining_s":880,"staged_differs":[],"socket_restart_pending":false}
+```
+
+**The service** (`internal/updater`). It accepts the component phases in a `status` answer, keeps only names of the closed list from `differs` and `staged_differs`, shows them in the job (`job.differs`) while it waits for the second confirmation, and carries `components_updated` into `last_result` and `socket_restart_pending` into `helper` of `GET /api/v1/update` (all three are omitted when empty or false). The job ends when `activate` is accepted, so the restart of the helper cannot fail it. The dialog that names the components and every text are step c.
+
 ## The update service (Gate G6, step G6.7)
 
 Source: ADR 0010 U3, U9, U12 and A11 (decision D-C68). Package `internal/updater`; the routes are in `internal/server/update.go`. The service is unprivileged, has no timer and no goroutine that runs without a request, and takes no path, URL or command from the user. **At the time of this step nothing here was verified on a device or against the real GitHub service; the GUI update was observed on one device in the G6.9 run ([UPDATE.md](UPDATE.md#results-on-the-reference-device))**; the tests use a fake GitHub server (TLS, own certificate) and a fake helper.
@@ -243,7 +312,7 @@ Source: ADR 0010 U3, U9, U12 and A11 (decision D-C68). Package `internal/updater
 
 ## The update path as implemented, and its verification status (Gate G6, step G6.9)
 
-The update path is complete for the base update (ADR 0010 U1 to U14). The replacement of the helper and its units from the GUI is G6.10. The sections above describe each part; [`UPDATE.md`](UPDATE.md) describes the whole path, the order of the checks, the states, the rollback, the cooldown, when the installer is required, the evidence classes and the failure matrix F1 to F32.
+The update path is complete for the base update (ADR 0010 U1 to U14). The replacement of the helper and its units from the GUI is G6.10: its helper side is implemented with class C tests (steps a and b), the page and its texts are step c, and nothing of it ran on a device. The sections above describe each part; [`UPDATE.md`](UPDATE.md) describes the whole path, the order of the checks, the states, the rollback, the cooldown, when the installer is required, the evidence classes and the failure matrix F1 to F32.
 
 | Part | Implemented in | Tested in CI | On the device |
 |---|---|---|---|
@@ -251,11 +320,12 @@ The update path is complete for the base update (ADR 0010 U1 to U14). The replac
 | Helper: `status`, `stage`, `discard`, lock, staging recovery | G6.5 | yes | observed on one device (G6.9, class D) |
 | Helper: `activate`, `ack`, health check, rollback, boot recovery, retention, cooldown | G6.6 | yes (fake systemd, fake health client) | observed on one device (G6.9, class D and T) |
 | Helper: unit lint in `stage` (ADR 0010 A15.3) | G6.10 step a | yes | not run |
+| Helper: component transaction, first start of the new helper, recovery of the component phases, `status` for every `v` (ADR 0010 A16) | G6.10 step b | yes (fake root, fake systemd, crash sweep across the process boundary) | not run |
 | Fault hooks of the test build (`error`, `stop`, `hold`) | G6.6, G6.9 | faulthooks test build | observed on one device (G6.9, class T) |
 | Update service, routes, audit entries | G6.7 | yes (fake GitHub, fake helper) | the GUI update observed on one device (G6.9, F19, class D) |
 | Update page | G6.8 | jsdom, headless Chrome on one Mac | exercised through the GUI update and its GUI texts in the G6.9 run (observed on one device) |
 
-**Not verified:** the rows F24 to F32 of the failure matrix (G6.10), the parts of rows marked "C only" in [`UPDATE.md`](UPDATE.md#failure-matrix-f1-to-f32), and everything else the results section lists as not run. The device observations of G6.9 (class D and T, one device, nothing Verified) are in [UPDATE.md](UPDATE.md#results-on-the-reference-device).
+**Not verified:** the rows F24 to F32 of the failure matrix (G6.10; class C tests exist, no device run), the parts of rows marked "C only" in [`UPDATE.md`](UPDATE.md#failure-matrix-f1-to-f32), and everything else the results section lists as not run. The device observations of G6.9 (class D and T, one device, nothing Verified) are in [UPDATE.md](UPDATE.md#results-on-the-reference-device).
 
 ## The release verification package (Gate G6, step G6.4)
 
