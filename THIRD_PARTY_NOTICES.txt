@@ -51,7 +51,7 @@ SOFTWARE.
 
 
 3. Go standard library and runtime (compiled into the oarfish binary)
-   https://go.dev, LICENSE file of the Go 1.27.3 source distribution
+   https://go.dev, LICENSE file of the Go 1.27.4 source distribution
    (BSD 3-Clause)
 -------------------------------------------------------------------------------
 
