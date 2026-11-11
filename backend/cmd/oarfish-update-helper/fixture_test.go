@@ -70,15 +70,69 @@ type tf struct {
 }
 
 // The component files and oarfish.service do not depend on the version, so a
-// release can be built that has exactly the installed ones.
+// release can be built that has exactly the installed ones. The unit texts pass
+// the unit lint (U15 rule 3): each helper unit is its first accepted form with
+// a comment, and oarfish.service is a small unit with the whole baseline. The
+// units of install/ are checked by the tests of the lint, not used here, so
+// that these fixtures do not depend on the repository tree.
 var baseComponents = map[string][]byte{
 	"oarfish-update-helper":          elfStub("helper"),
-	"oarfish-update-helper.service":  []byte("[Service]\n# helper\n"),
-	"oarfish-update-helper.socket":   []byte("[Socket]\n# socket\n"),
-	"oarfish-update-recover.service": []byte("[Service]\n# recover\n"),
+	"oarfish-update-helper.service":  []byte("# helper\n" + helperForms[unitHelperService][0] + "\n"),
+	"oarfish-update-helper.socket":   []byte("# socket\n" + helperForms[unitHelperSocket][0] + "\n"),
+	"oarfish-update-recover.service": []byte("# recover\n" + helperForms[unitRecover][0] + "\n"),
 }
 
-var baseServiceUnit = []byte("[Service]\nExecStart=/opt/oarfish/current/oarfish\n")
+var baseServiceUnit = []byte(`# fixture
+[Unit]
+Description=Oarfish test unit
+[Service]
+Type=simple
+User=oarfish
+Group=oarfish
+ExecStart=/opt/oarfish/current/oarfish -listen 127.0.0.1:8484
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+StateDirectory=oarfish
+StateDirectoryMode=0700
+CacheDirectory=oarfish
+RuntimeDirectory=oarfish
+RuntimeDirectoryMode=0750
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+[Install]
+WantedBy=multi-user.target
+`)
+
+// changedUnit is the fixture unit of a name with one more comment line: other
+// bytes that the unit lint still accepts.
+func changedUnit(name string) []byte {
+	base := baseServiceUnit
+	if name != unitService {
+		base = baseComponents[name]
+	}
+	return append(append([]byte(nil), base...), "# changed\n"...)
+}
 
 func testFiles(version string, components bool) []tf {
 	fs := []tf{

@@ -73,7 +73,7 @@ jobs:
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/metrics/parse
           done
           go test -run '^$' -fuzz '^FuzzParsePHC$' -fuzztime 5s ./internal/auth
-          for f in FuzzDecodeRequest FuzzDecodeActivate FuzzDecodeAck FuzzDecodeState FuzzHealthzBody; do
+          for f in FuzzDecodeRequest FuzzDecodeActivate FuzzDecodeAck FuzzDecodeState FuzzHealthzBody FuzzUnitLint; do
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./cmd/oarfish-update-helper
           done
           for f in FuzzHelperResponse FuzzReleaseList FuzzPlainNotes; do

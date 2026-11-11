@@ -74,6 +74,11 @@ func TestRedaction(t *testing.T) {
 			r.setFile("oarfish-update-helper", elfStub("x"))
 			v.place("1.1.0", r.build())
 		})},
+		{"unit_rejected", failWith(func(v *tenv) {
+			r := v.release("1.1.0")
+			r.setFile(unitService, append(append([]byte(nil), baseServiceUnit...), "Environment=HOME=/var/secret HOST=192.0.2.7\n"...))
+			v.place("1.1.0", r.build())
+		})},
 		{"components_damaged", failWith(func(v *tenv) { v.stageable("1.1.0"); os.RemoveAll(v.root + "/components") })},
 		{"no_space", failWith(func(v *tenv) { v.stageable("1.1.0"); v.h.freeBytes = func(*os.File) (uint64, error) { return 1, nil } })},
 		{"io_error and a failed cleanup", failWith(func(v *tenv) {
