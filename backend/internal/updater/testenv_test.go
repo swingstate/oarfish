@@ -438,7 +438,10 @@ func (e *env) publish(version string, o relOpts, notes string) relFiles {
 	return rf
 }
 
-// settle waits until the current job is done.
+// settle waits until the current job is done and its goroutine has returned.
+// The done flag is set by finishJob before runApply writes the finishing audit
+// entry; the job goroutine is in the updater's wait group, so waiting for the
+// group is the condition the tests check (the entry is written), not a sleep.
 func (e *env) settle() {
 	e.t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
@@ -448,11 +451,31 @@ func (e *env) settle() {
 		running := e.u.reserved || (j != nil && !j.done)
 		e.u.mu.Unlock()
 		if !running {
-			return
+			groupDone := make(chan struct{})
+			go func() { e.u.wg.Wait(); close(groupDone) }()
+			select {
+			case <-groupDone:
+				return
+			case <-time.After(time.Until(deadline)):
+			}
+			break
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
 	e.t.Fatal("the job did not finish")
+}
+
+// resumeAfterPause waits for the pause of a component update, delivers the
+// second confirmation and waits for the job to end.
+func (e *env) resumeAfterPause(version string) {
+	e.t.Helper()
+	for i := 0; i < 5000 && !e.u.Awaiting(version); i++ {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if err := e.u.Resume(version); err != nil {
+		e.t.Fatalf("Resume: %v", err)
+	}
+	e.settle()
 }
 
 func (e *env) check(force bool) State {

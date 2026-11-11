@@ -147,10 +147,9 @@ func (u *Updater) Applicable(version string) *Error {
 
 // ApplyRequest is what the route hands over after the password gate.
 type ApplyRequest struct {
-	Version             string
-	User                string // the account name, for update_started
-	CorrelationID       string // the request's server-made ID; it links both entries
-	ComponentsConfirmed bool
+	Version       string
+	User          string // the account name, for update_started
+	CorrelationID string // the request's server-made ID; it links both entries
 }
 
 func (s *slot) Start(req ApplyRequest) *Error {
@@ -171,7 +170,7 @@ func (s *slot) Start(req ApplyRequest) *Error {
 		Result: audit.Success, CorrelationID: req.CorrelationID})
 	go func() {
 		defer u.wg.Done()
-		u.runApply(j, req.ComponentsConfirmed)
+		u.runApply(j)
 	}()
 	return nil
 }
@@ -254,8 +253,8 @@ func retryable(c Code) bool {
 
 // runApply is the work of an apply job: metadata, bundle, advisory
 // verification, stage, the pause for a component update, activate.
-func (u *Updater) runApply(j *jobState, confirmed bool) {
-	e := u.applyFlow(j, confirmed)
+func (u *Updater) runApply(j *jobState) {
+	e := u.applyFlow(j)
 	u.finishJob(j, e)
 	if e != nil && e.Code != CodeCancelled { // a cancel has its own entry (Discard) or is a shutdown
 		u.logf("update: the update did not start", e.Code)
@@ -266,7 +265,10 @@ func (u *Updater) runApply(j *jobState, confirmed bool) {
 	}
 }
 
-func (u *Updater) applyFlow(j *jobState, confirmed bool) *Error {
+func (u *Updater) applyFlow(j *jobState) *Error {
+	// The confirmation of a component update is never an input of a job (ADR 0010
+	// A17, S7): it exists only after the pause, delivered by Resume.
+	confirmed := false
 	ctx := u.ctx
 	version := j.version
 	dir, e := u.cacheDir(version)

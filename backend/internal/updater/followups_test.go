@@ -263,10 +263,10 @@ func TestNoHandOverWithoutAComponentSet(t *testing.T) {
 			return StageInfo{Version: v, ComponentsDiffer: true, Differs: []string{"oarfish.service"}}, nil
 		}
 		slot, _ := e.u.Reserve()
-		if err := slot.Start(ApplyRequest{Version: v9, User: "admin", CorrelationID: "0123456789abcdef", ComponentsConfirmed: true}); err != nil {
+		if err := slot.Start(ApplyRequest{Version: v9, User: "admin", CorrelationID: "0123456789abcdef"}); err != nil {
 			t.Fatal(err)
 		}
-		e.settle()
+		e.resumeAfterPause(v9)
 		e.helper.setStatus(HelperStatus{}, fail(CodeUnavailable))
 		if hv := e.u.State(ctx).Helper; hv.HandingOver {
 			t.Fatalf("%+v", hv)
@@ -279,10 +279,10 @@ func TestNoHandOverWithoutAComponentSet(t *testing.T) {
 		}
 		e.helper.activateErr = fail(CodeCooldown)
 		slot, _ := e.u.Reserve()
-		if err := slot.Start(ApplyRequest{Version: v9, User: "admin", CorrelationID: "0123456789abcdef", ComponentsConfirmed: true}); err != nil {
+		if err := slot.Start(ApplyRequest{Version: v9, User: "admin", CorrelationID: "0123456789abcdef"}); err != nil {
 			t.Fatal(err)
 		}
-		e.settle()
+		e.resumeAfterPause(v9)
 		e.helper.setStatus(HelperStatus{}, fail(CodeUnavailable))
 		if hv := e.u.State(ctx).Helper; hv.HandingOver {
 			t.Fatalf("%+v", hv)
