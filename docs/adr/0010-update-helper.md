@@ -17,6 +17,8 @@
 
 - Amendment A16 (G6.10 step b, written 2026-11-11, `docs/DECISIONS.md` D-C84): the owner decisions E1 to E4 and the component transaction of U15 rules 1, 2, 4, 5 and 6 as implemented, listed in "Amendment A16 (G6.10, step b)" below. It edits no accepted sentence in place; its change table names the rule that now applies; the specification is not changed. Extended by the remediation of step b (2026-11-11, D-C84 addition): the owner decisions E5 (a damaged known-good set is never switched to; replaces P10) and E6 (the recover unit started by `OnFailure=` leaves the release phases to the next `serve` start; amends U7 row 7 "Live" and the behaviour since G6.6).
 
+- Amendment A17 (G6.10 step c, written 2026-11-11, `docs/DECISIONS.md` D-C84, addition of step c): the owner decisions F1 to F5 for the page, the texts and three follow-ups of the service, and the second confirmation of U15 rule 7 as implemented, listed in "Amendment A17 (G6.10, step c)" below. It edits no accepted sentence in place except a pointer in U14; its change table names the rule that now applies; the specification is not changed.
+
 ## How to read this ADR
 
 Every statement carries one of these labels, so that a reader can tell what is known from what is hoped:
@@ -457,6 +459,8 @@ Each step is its own session and pull request, with a stop point at which the ow
 | G6.8 | Update page (Svelte): states, texts in `de` and `en`, accessibility, errors, the transitional text. | Owner reviews the UI. |
 | G6.9 | Hardware evidence of U13 (rows that do not need G6.10) on the reference device; documentation (`docs/UPDATE.md`, `INSTALL.md`, `RELEASING.md`, `ARCHITECTURE.md`). | Owner reviews the evidence; G6 stays open. |
 | G6.10 | Replacement of the helper and its units by a GUI update (U15): unit lint, component transaction, known-good copy and recovery, key rule, protocol rule, second confirmation in the UI. Needs from G6.5 and G6.6: the staging with a component subtree, the extensible write-ahead state machine, the single `systemctl` function with its argument-shape test, the fault hooks and the crash-test harness. | Evidence: F24 with the production key (class D); the other new rows F25 to F32 with class C and T as marked; the closeout evidence list of U13. **Owner decides whether G6 passes; G7 waits for this.** |
+
+*Pointer (A15.2 statement 3, A17):* G6.10 is implemented in three steps, a (A15), b (A16) and c (A17), each with its own session and pull request; a release that carries the helper of step b and the device evidence of U13 follow after step c. The row above is not rewritten; its stop point is unchanged.
 
 Alternatives considered: *one G6 pull request* (privileged code that cannot be reviewed in one sitting), *helper after the service* (the service cannot be tested against a real peer), *UI first against a mock helper* (the states the UI must show come from the helper), *folding G6.10 into G6.6* (the owner separated it so that the base update can be reviewed and evidenced first), *skipping the spike* (V1, V10 and V11 can change the design; finding that out after the code is the expensive way).
 
@@ -1271,6 +1275,80 @@ The accepted text is not rewritten; for every row the rule in the column "Now" a
 | Evidence and test plan, item 3 and U13 class T | two fault variables | a third, `OARFISH_FAULT_PROC` | A16.2 |
 | U15 rule 4, failure handling and row c8; U6 "a damaged rollback target is never switched to"; P10, P11 | `active` back to `known-good`, then the comparison (P10) | the comparison first; a damaged or unreadable set is never switched to, `rollback_failed` / `known_good_damaged`, nothing else touched, kept until a person acts | E5 |
 | U7 row 7 "Live"; U7 at boot; the `recover` behaviour since G6.6 | the recover unit applies the link-only rule, also when `OnFailure=` started it | started by `OnFailure=`, it leaves the release phases to the next `serve` start; at boot unchanged | E6 |
+
+## Amendment A17 (G6.10, step c)
+
+This amendment belongs to step c of G6.10 (A15.2, statement 3): the second confirmation of U15 rule 7 on the update page, the texts of the results and of the installer cases, three follow-ups of the service found in step b, and the closing documentation. It records the owner decisions F1 to F5, which the project owner gave with the prompt of step c on 2026-11-11 (the addition of step c to D-C84 in `docs/DECISIONS.md`; D-C82 stays reserved), and every choice the implementation made where U9, U15 rule 7, A12, A16 and F1 to F5 leave a detail open. The decisions D-C53 to D-C84 before this addition, the owner decisions Q1 to Q7, D1 to D7 and E1 to E6 and the status of this ADR are unchanged. The specification is not edited: section 14.2 still shows G6.10 as one step; that is an open point for the owner, not a conflict (A15.2 statement 3 records the split).
+
+**Evidence label.** **Owner decision** is one of F1 to F5. **Fact** names the file it was read from, in the tree of the pull request of step c (`backend/internal/updater/`, `frontend/src/`). **Proposal** is a choice of the implementation; it is implemented and tested, and the owner's review of step c can change it. **Nothing in A17 ran on a device or in a browser other than jsdom, and nothing is Verified.** Step c changes no file of the helper (`backend/cmd/oarfish-update-helper/`), no file in `install/`, no workflow and no release.
+
+### A17.1 Owner decisions F1 to F5
+
+| # | Subject | Owner decision |
+|---|---|---|
+| F1 | The installer view (U9 transitional rule, E1) | Shown for every case in which the device needs the installer: `key_changed`, `unit_rejected`, `requirements_not_met` when it is caused by the helper protocol (D5) or by the legacy bundle shape, and `installer_required` (kept for helpers before step b). Each case has its own short reason sentence; the instruction text is the fixed text of A12. If `requirements_not_met` cannot be told apart by its cause from the helper's answer, the view is shown for every `requirements_not_met`, and this amendment says so. |
+| F2 | A refused `activate` (open point 4 of A16) | After the service receives a refusal of `activate`, it sends `discard` for the staged version, so that a new attempt is possible at once; the cooldown of the helper still applies. Tested with the fake helper for every refusal code that leaves a staged release. |
+| F3 | A last result the service refused (open point 5 of A16) | A last result that a rebuilt or deferred state can produce is accepted by the service; what the check accepts is defined precisely and stays closed, and it is tested with the state shapes of P11, E5 and the rebuild of U7. |
+| F4 | The hand-over of the helper (finding of step b) | While an apply job runs and the helper is in a component phase, or is unreachable for a short time after `activate` was accepted, the page shows the progress text "Die Update-Komponenten werden ersetzt" / "The update components are being replaced" (the wording may be improved, the meaning not changed), not an error. The tolerance is bounded (for example 60 seconds after the last successful status), and both sides of the bound are tested. |
+| F5 | German texts | The UI keeps the Sie-form (AGENT_RULES 8.10). The open owner question du versus Sie is not decided here. |
+
+**Fact (F1, `backend/cmd/oarfish-update-helper/stage.go`, `backend/internal/relverify/`):** `stage` answers `requirements_not_met` for the protocol rule of D5 and for the legacy bundle shape (check l, l2), for a manifest that is not for linux/arm64 or another architecture (check g), for a minimum installed version (check j), and for a program that is not an arm64 ELF (check k). The answer carries the code only. The service therefore cannot tell the causes apart, and by F1 the installer view is shown for **every** `requirements_not_met` that `stage` answers. Its reason sentence says only that the version has requirements that this device does not meet with the installed helper.
+
+### A17.2 What step c implements
+
+**Fact (`backend/internal/updater/updater.go`, `apply.go`, `helper.go`).**
+
+- **F1.** `State.installer` is built when the apply job ended with a refusal of `stage` whose code is one of `installer_required`, `key_changed`, `unit_rejected`, `requirements_not_met` (`installerCase`). `InstallerView` has the additive member `code`; `differs` stays set for `installer_required` only. The instruction is the fixed English text `InstallerInstruction`, which the page does not show (A12).
+- **F2.** When `activate` answers with a code of the helper (the closed list of U2), the job sends `discard` for its version before it ends; the job's error and its finishing entry stay the refusal. `discard` of the helper acts only on a staged release of that version and does not touch the cooldown markers (`cleanup.go`, `discard`: `resetTxn` keeps `cooldown`).
+- **F3.** `HelperStatus.valid` accepts a last result whose `to` is a version, or the one result of the rebuild: outcome `aborted`, reason `state_rebuilt`, `to` and `from` empty (`rebuiltResult`). Everything else of the check is unchanged: the transaction id pattern, the closed set of outcomes, `from` empty or a version, the reason pattern, the correlation id pattern, the phase names (all phases of U7 and U15, so the phase on disk that a deferred recovery reports, P18, passes).
+- **F4.** `HelperView` has the additive member `handing_over`. It is true only when `status` failed with `unavailable` or `timeout`, the job is an apply job whose `activate` was accepted, its staged release replaces at least one of the four helper files, and at most 60 seconds (`handOverLimit`) have passed since the later of that acceptance and the last successful `status` answer (`handingOverLocked`). `present` stays false and the error stays in the view.
+
+**Fact (`frontend/src/pages/Update.svelte`, `lib/update.ts`, `lib/updateErrors.ts`, `lib/locales/`).**
+
+- **The second confirmation (U15 rule 7).** The card "Neue Bestandteile bestätigen" names each entry of `job.differs` in plain words with its file name: "Update Helper (oarfish-update-helper)", "Socket-Unit des Update Helpers (oarfish-update-helper.socket)", "Dienst-Unit des Update Helpers (oarfish-update-helper.service)", "Wiederherstellungs-Unit des Update Helpers (oarfish-update-recover.service)", "Dienstdefinition von Oarfish (oarfish.service)"; a name this version does not know is shown as the name only. It says that privileged components are replaced, that the service restarts and everybody is signed out, and what happens on a failure: with a helper file, the previous version is restored and a new helper that passed its check stays; with `oarfish.service` alone (D6), the previous version is restored with its service definition. When the socket unit is among the names it says that the new socket unit takes effect only after the next restart of the device (D4). The password field has a help text that says that the password is asked once more for this step (D7). "Verwerfen" sends `discard`.
+- **The expiry while the dialog waits.** The page reads the State every 2 seconds while the job waits. When the staged release expires (the service's pause of 30 minutes, or the helper's `stage_expired` at `activate`), the job ends with `stage_expired`, the dialog disappears, and the failed job shows "Die vorbereitete Version ist abgelaufen. Prüfen Sie erneut und starten Sie das Update noch einmal."
+- **F4 on the page.** The component phases count as a transaction under way, and so does `handing_over`. While the page watches the update, the live region says "Die Bestandteile des Update Helpers werden ersetzt. Er startet dabei kurz neu." in a component phase and while `handing_over` is true, and the warning "helper not present" is not shown then; when the service no longer reports `handing_over`, the warning comes back.
+- **Results (WP2).** `success` with `components_updated`: one more sentence that the update helper and its units were replaced as well. `rolled_back` or `aborted` with `components_updated` (F31, row c6): the new helper passed its check and stays installed. `components_rolled_back`: one sentence per reason group (S6). `rollback_failed` with `known_good_damaged`: the saved components are damaged, nothing was switched, a person with access to the command line is needed, and the installation guide (INSTALL.md) describes the steps. `aborted` with `state_rebuilt`: the helper rebuilt its state because the state file was missing or could not be read. `helper.socket_restart_pending`: an information notice that the new socket unit takes effect only after the next restart of the device.
+- **The installer view (F1).** "Installer nötig. Diese Version lässt sich nicht von dieser Seite aus installieren." followed by the reason sentence of its code, then the fixed instruction of A12 unchanged. A view without a code reads as `installer_required`.
+
+### A17.3 Choices of the implementation
+
+Each of these is a **proposal** in the sense of the evidence label.
+
+- **S1. The installer view follows a refusal of `stage` only.** The same codes from `activate` do not build it: `unit_rejected` at `activate` (P14) means that a staged file changed after `stage`, which an installer run does not explain. Other refusals keep the failed-job card with their sentence.
+- **S2. `discard` follows a refusal, not a failed call.** After `unavailable`, `timeout` or `cancelled` it is open whether the helper took the request, so nothing is sent and the staged release expires by U5. An unusable answer is mapped to `internal`, which is in the closed list; it is followed by `discard`, which is harmless because `discard` acts only on a release that is still staged under that version. A refusal of `stage` leaves nothing staged and is not followed by `discard`.
+- **S3. The rebuilt result is matched exactly** (outcome, reason and both versions empty), so that no other result can lose its target version.
+- **S4. The bound of F4** is 60 seconds after the later of the acceptance of `activate` and the last successful `status`, decided by the service (it has the times) and reported as `handing_over`; the page follows that member and adds no timer of its own. Only `unavailable` and `timeout` count; `internal` (an unusable answer) does not. A release that changes only `oarfish.service` has no hand-over and gets no tolerance. The wording of F4 was improved to "Die Bestandteile des Update Helpers werden ersetzt. Er startet dabei kurz neu.", because the page uses "Bestandteile" for these files everywhere else (text rule 4).
+- **S5. The socket sentence of the dialog** is shown when `oarfish-update-helper.socket` is among the names, which `stage` compares by bytes; D4 sets the flag only for a change of the normalised text. For a change of comments only the sentence is true but has no visible effect.
+- **S6. The reason groups of `components_rolled_back`:** the new helper failed its check at its first start (`helper_mismatch`, `key_changed`, `protocol_mismatch`); the operation was interrupted (`interrupted`); the saved state could not be read (`state_unreadable`); a step of the switch failed (`switch_failed`, `state_write_failed`, `reload_failed`). An unknown reason gets no sentence; the code stays under "Technische Einzelheiten".
+- **S7. A first-stage `apply` with `components_confirmed`** is unchanged: when no job waits, the service starts an ordinary apply and passes the flag on (G6.7, `TestApplySecondStageNeedsThePasswordAgain`). The page sends the flag only from the dialog, so this happens only when the staged release expired between the last read and the submit; the new job then stages the same signed release again and does not pause. Whether the service should answer `stage_expired` instead is left to the owner.
+- **S8. The steps after `known_good_damaged`** in `docs/INSTALL.md` are derived from the code: no process of the helper clears this result (E5: kept until a person acts), the installer does not write `state.json`, and an uninstall without `--purge` keeps `/var/lib/oarfish-update`. The documented way out is an uninstall without `--purge`, the removal of `state.json` while no helper runs, and the installer of the installed release. It was not run anywhere; the owner confirms it or asks for a typed repair.
+
+### A17.4 Not verified, and assumptions
+
+- Nothing ran on a device: the dialog against a real staged component set, the hand-over as the page sees it (the length of the gap, whether a status call waits on the socket or fails), the bound of 60 seconds against real timings, the texts of the real results, the repair steps of S8.
+- The page was checked in jsdom only for step c: not in Chrome, Safari or Firefox, not with a screen reader, not in forced-colours mode, and no reference screenshot of the new states was taken.
+- **Assumption (S4):** 60 seconds cover the hand-over and the hand-back of one transaction (A1: `daemon-reload` about 3 s, a recovery run about 3.5 s, at most two restarts within 10 s). Not measured.
+
+### Open points of A17
+
+1. The password at the second confirmation (C4, D7), the finishing audit entry (C3), the retention of failed releases, a release tooling check for the two-step rule, the wording of the U13 row F14 against U6, and du versus Sie (F5): open owner questions, unchanged.
+2. Specification 14.2 shows G6.10 as one step: not edited; for the owner.
+3. S7 and S8 are for the owner's review.
+
+### Changes made to the accepted text (A17)
+
+The accepted text is not rewritten; U14 got a pointer below its table. For every other row the rule in the column "Now" applies.
+
+| Where | Accepted wording | Now | Source |
+|---|---|---|---|
+| U9, transitional rule; A12, "Transitional rule"; E1 | the installer instruction on `installer_required` | on `installer_required`, `key_changed`, `unit_rejected` and `requirements_not_met` from `stage`, each with its reason sentence; the instruction unchanged | F1, S1 |
+| U9, component confirmation; U15 rule 7; A12, "Second confirmation" | a dialog that names what will be replaced; A12: a generic sentence, the State does not name the components | the names of `job.differs` in plain words, the failure sentence per case, the socket sentence (D4), the password help (D7) | A17.2 |
+| A16, open point 4; U5, staged release | a refused `activate` leaves the release staged until it expires or is discarded | the service discards it after a refusal; the cooldown stays | F2, S2 |
+| A16, open point 5; U7, rebuild | the service refuses a last result without `to` | the closed rule of F3 | F3, S3 |
+| A16.2, "The service" | a status that fails during the hand-over is shown as a helper that is not reachable | progress within the bound of F4, the error after it | F4, S4 |
+| U13, rows F24 to F32 (not edited) | class C tests of step b | plus the service and page tests of step c (`docs/UPDATE.md`); class D and T not run | A17.2 |
+| U14, row G6.10 (not edited) | one step | the pointer below the table: steps a to c, then a release and the device evidence | A15.2, A17 |
 
 ## Evidence and test plan for the later implementation
 
