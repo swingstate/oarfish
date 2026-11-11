@@ -1321,7 +1321,7 @@ Each of these is a **proposal** in the sense of the evidence label.
 - **S4. The bound of F4** is 60 seconds after the later of the acceptance of `activate` and the last successful `status`, decided by the service (it has the times) and reported as `handing_over`; the page follows that member and adds no timer of its own. Only `unavailable` and `timeout` count; `internal` (an unusable answer) does not. A release that changes only `oarfish.service` has no hand-over and gets no tolerance. The wording of F4 was improved to "Die Bestandteile des Update Helpers werden ersetzt. Er startet dabei kurz neu.", because the page uses "Bestandteile" for these files everywhere else (text rule 4).
 - **S5. The socket sentence of the dialog** is shown when `oarfish-update-helper.socket` is among the names, which `stage` compares by bytes; D4 sets the flag only for a change of the normalised text. For a change of comments only the sentence is true but has no visible effect.
 - **S6. The reason groups of `components_rolled_back`:** the new helper failed its check at its first start (`helper_mismatch`, `key_changed`, `protocol_mismatch`); the operation was interrupted (`interrupted`); the saved state could not be read (`state_unreadable`); a step of the switch failed (`switch_failed`, `state_write_failed`, `reload_failed`). An unknown reason gets no sentence; the code stays under "Technische Einzelheiten".
-- **S7. A first-stage `apply` with `components_confirmed`** is unchanged: when no job waits, the service starts an ordinary apply and passes the flag on (G6.7, `TestApplySecondStageNeedsThePasswordAgain`). The page sends the flag only from the dialog, so this happens only when the staged release expired between the last read and the submit; the new job then stages the same signed release again and does not pause. Whether the service should answer `stage_expired` instead is left to the owner.
+- **S7 (replaced by the owner decision G1, remediation of step c).** The first version of this proposal let a first-stage `apply` with `components_confirmed` start an ordinary job that carried the flag on and did not pause, which skipped the separate dialog. That is withdrawn. See "A17.5 Remediation of step c".
 - **S8. The steps after `known_good_damaged`** in `docs/INSTALL.md` are derived from the code: no process of the helper clears this result (E5: kept until a person acts), the installer does not write `state.json`, and an uninstall without `--purge` keeps `/var/lib/oarfish-update`. The documented way out is an uninstall without `--purge`, the removal of `state.json` while no helper runs, and the installer of the installed release. It was not run anywhere; the owner confirms it or asks for a typed repair.
 
 ### A17.4 Not verified, and assumptions
@@ -1334,7 +1334,20 @@ Each of these is a **proposal** in the sense of the evidence label.
 
 1. The password at the second confirmation (C4, D7), the finishing audit entry (C3), the retention of failed releases, a release tooling check for the two-step rule, the wording of the U13 row F14 against U6, and du versus Sie (F5): open owner questions, unchanged.
 2. Specification 14.2 shows G6.10 as one step: not edited; for the owner.
-3. S7 and S8 are for the owner's review.
+3. S8 is for the owner's review (S7 is replaced by G1, A17.5).
+
+### A17.5 Remediation of step c (owner decisions G1 and G2)
+
+| # | Subject | Owner decision |
+|---|---|---|
+| G1 | The second confirmation cannot be skipped (U15 rule 7; replaces S7) | A first `apply` never carries the confirmation into the job. A job whose `stage` reports a difference always pauses at `awaiting_components_confirmation`, and only the second stage (`Resume`, with the password again, D7) lets it continue. |
+| G2 | CI stability, test only | The helper `settle()` of the update service tests waits for the condition the tests check, without fixed sleeps. No production code changes for this. |
+
+**Fact (before the remediation, `backend/internal/server/update.go`, `backend/internal/updater/apply.go`):** `apply` with `components_confirmed: true` while no job waited started an ordinary job with `ComponentsConfirmed` true, and `applyFlow` did not pause when `stage` reported a difference.
+
+**Proposal (the choice named for G1): refusal, not "treat as false".** With `components_confirmed: true` and no waiting job for that version the route answers `400 invalid_request`, before the slot is taken and before the password is checked; nothing starts and nothing is audited as `update_started`. Reason: the page sends the flag only from the dialog (`Update.svelte`, `lib/update.ts`; the page tests send it only with the job version), so a refusal changes no page flow, and it is the only answer that does not hide a client that asks for something the service will not do. Treating the flag as false would start a job the person did not ask for in that form. The one case that reaches the refusal from the page is a dialog whose staged release expired between the last read and the submit; the page then shows its general error and the failed job is read from the State. As defence in depth `ApplyRequest` no longer has a confirmation member, so no caller can pass one into a job; `applyFlow` starts unconfirmed and the pause sets it, after `Resume`. The audit entries are unchanged (`update_started` at the start, the entries of the helper).
+
+**G2 (fact):** `finishJob` sets `done` before `runApply` writes the finishing audit entry, so a test that waited for `done` could read the audit too early. `settle()` now also waits for the updater's wait group, which the job goroutine leaves only after that entry is written. Tests changed: `settle()`, `resumeAfterPause` (new), the tests that started a job confirmed up front. Not verified: nothing on a device.
 
 ### Changes made to the accepted text (A17)
 
@@ -1344,6 +1357,7 @@ The accepted text is not rewritten; U14 got a pointer below its table. For every
 |---|---|---|---|
 | U9, transitional rule; A12, "Transitional rule"; E1 | the installer instruction on `installer_required` | on `installer_required`, `key_changed`, `unit_rejected` and `requirements_not_met` from `stage`, each with its reason sentence; the instruction unchanged | F1, S1 |
 | U9, component confirmation; U15 rule 7; A12, "Second confirmation" | a dialog that names what will be replaced; A12: a generic sentence, the State does not name the components | the names of `job.differs` in plain words, the failure sentence per case, the socket sentence (D4), the password help (D7) | A17.2 |
+| U9, component confirmation; U15 rule 7 (the first apply) | the flag `components_confirmed` of a first apply could be passed into the job (S7 of the first review) | a first apply never carries the confirmation; with the flag and no waiting job it is refused with `invalid_request`; the job always pauses when `stage` reports a difference; only `Resume` continues it | G1, A17.5 |
 | A16, open point 4; U5, staged release | a refused `activate` leaves the release staged until it expires or is discarded | the service discards it after a refusal; the cooldown stays | F2, S2 |
 | A16, open point 5; U7, rebuild | the service refuses a last result without `to` | the closed rule of F3 | F3, S3 |
 | A16.2, "The service" | a status that fails during the hand-over is shown as a helper that is not reachable | progress within the bound of F4, the error after it | F4, S4 |
