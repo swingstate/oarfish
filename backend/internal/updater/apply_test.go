@@ -374,9 +374,16 @@ func TestHelperErrorsAreMappedToTypedErrors(t *testing.T) {
 			if got.Error() != string(c)+": "+Text(c) {
 				t.Errorf("error text %q", got.Error())
 			}
-			// Activate failed: the staged release is left for the administrator to discard.
-			if where == "activate" && e.helper.count("discard") != 0 {
-				t.Error("a failed activate discarded the staged release by itself")
+			// A refusal of activate discards the staged release (ADR 0010 A17, F2); a
+			// failed call does not, because the helper may have taken the request.
+			if where == "activate" {
+				want := 1
+				if c == CodeUnavailable || c == CodeTimeout {
+					want = 0
+				}
+				if n := e.helper.count("discard"); n != want {
+					t.Errorf("%s at activate: %d discards, want %d", c, n, want)
+				}
 			}
 		}
 	}
@@ -562,16 +569,16 @@ func TestComponentUpdatePausesForTheSecondConfirmation(t *testing.T) {
 		}
 		t.Fatalf("never reached %s", step)
 	}
-	start := func(e *env, confirmed bool) {
+	start := func(e *env) {
 		slot, _ := e.u.Reserve()
-		if err := slot.Start(ApplyRequest{Version: v9, User: "admin", CorrelationID: "0123456789abcdef", ComponentsConfirmed: confirmed}); err != nil {
+		if err := slot.Start(ApplyRequest{Version: v9, User: "admin", CorrelationID: "0123456789abcdef"}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Run("resume sends activate with components_confirmed", func(t *testing.T) {
 		e, _ := ready(t, relOpts{})
 		differ(e)
-		start(e, false)
+		start(e)
 		waitFor(e, "awaiting_components_confirmation")
 		if e.helper.count("activate") != 0 {
 			t.Fatal("activate ran before the second confirmation")
@@ -590,19 +597,34 @@ func TestComponentUpdatePausesForTheSecondConfirmation(t *testing.T) {
 			t.Fatalf("%v %v", e.jobErr(), e.helper.confirmed)
 		}
 	})
-	t.Run("confirmed up front does not pause", func(t *testing.T) {
+	t.Run("a job never starts confirmed", func(t *testing.T) {
+		// ADR 0010 A17, S7: ApplyRequest has no confirmation. A job whose stage
+		// reports a difference always pauses, and only Resume lets it go on.
 		e, _ := ready(t, relOpts{})
 		differ(e)
-		start(e, true)
+		start(e)
+		waitFor(e, "awaiting_components_confirmation")
+		if e.helper.count("activate") != 0 || len(e.helper.confirmed) != 0 {
+			t.Fatalf("activate reached before Resume: %v", e.helper.calls)
+		}
+		if evs := e.audits(); len(evs) != 1 || evs[0].Action != "update_started" {
+			t.Fatalf("%+v", evs)
+		}
+		if err := e.u.Resume(v9); err != nil {
+			t.Fatal(err)
+		}
 		e.settle()
-		if e.jobErr() != nil || !e.helper.confirmed[0] {
-			t.Fatalf("%v", e.jobErr())
+		if e.jobErr() != nil || len(e.helper.confirmed) != 1 || !e.helper.confirmed[0] {
+			t.Fatalf("%v %v", e.jobErr(), e.helper.confirmed)
+		}
+		if evs := e.audits(); len(evs) != 1 || evs[0].Action != "update_started" {
+			t.Fatalf("%+v", evs)
 		}
 	})
 	t.Run("discard ends the wait", func(t *testing.T) {
 		e, _ := ready(t, relOpts{})
 		differ(e)
-		start(e, false)
+		start(e)
 		waitFor(e, "awaiting_components_confirmation")
 		if err := e.u.Discard(context.Background(), v9, "fedcba9876543210"); err != nil {
 			t.Fatal(err)
@@ -628,7 +650,7 @@ func TestComponentUpdatePausesForTheSecondConfirmation(t *testing.T) {
 		e, _ := ready(t, relOpts{})
 		e.u.pause = 50 * time.Millisecond
 		differ(e)
-		start(e, false)
+		start(e)
 		e.settle()
 		if err := e.jobErr(); err == nil || err.Code != CodeStageExpired {
 			t.Fatalf("%v", err)

@@ -185,7 +185,7 @@ The order of a run: take the lock; create the directories; install the release a
 
 **What changes on an existing device.** An alpha-style installation (`/etc/systemd/system/oarfish.service` is a regular file, no helper) is migrated by running the installer of a release that carries the helper: the unit file becomes a link, the layout above is created, `current` is switched, and the service restarts if the version changed. The one-time step from a release without the helper is an installer run (ADR 0010 U11, the "bootstrap release"). After that, updates come from the GUI ([`UPDATE.md`](UPDATE.md)), observed on one device, not Verified.
 
-**Going back to a release without the helper is not supported.** A legacy-shape release is refused with a clear message on a device that already has the helper layout; use `--uninstall` first (this is the installer's reading of ADR 0010, which does not describe a downgrade to a release without a helper). Old release directories and old component sets are still kept; retention of old components is not implemented yet (ADR 0010 U5 puts it into the helper).
+**Going back to a release without the helper is not supported.** A legacy-shape release is refused with a clear message on a device that already has the helper layout; use `--uninstall` first (this is the installer's reading of ADR 0010, which does not describe a downgrade to a release without a helper). The installer keeps old release directories and old component sets. Since G6.10 step b the update helper removes old component sets itself after a component update from the GUI: it keeps the sets that `active` and `known-good` name and the one they replaced (ADR 0010 A16, P16; class C tests, not run on a device).
 
 **The installer overwrites `/etc/systemd/system/oarfish.service`** (a copy for a legacy release, a link into the active release for a components release). If the file exists and differs from the one in the release, it is replaced (the installer says so), also when you re-run it. Do not edit that file. Local changes belong in a drop-in directory, which the installer never touches:
 
@@ -201,12 +201,42 @@ Running the installer again is safe.
 - Another version: the new release is installed beside the old one, the `current` link is switched, the service restarts, and the health check runs. The installer keeps old release directories; remove old ones by hand if you want the space back. (After a successful GUI update the update helper keeps only the active and the previous release, ADR 0010 U5.)
 - A download or verification problem at any point: the existing installation stays exactly as it was.
 
-**Updating from the GUI** exists since `v0.1.0-alpha.7` (System > Update, [`UPDATE.md`](UPDATE.md)). It was observed as expected on one device in the G6.9 run (class D, [`UPDATE.md`](UPDATE.md#results-on-the-reference-device)); it is **not Verified**. The installer is still required in two cases:
+**Updating from the GUI** exists since `v0.1.0-alpha.7` (System > Update, [`UPDATE.md`](UPDATE.md)). It was observed as expected on one device in the G6.9 run (class D, [`UPDATE.md`](UPDATE.md#results-on-the-reference-device)); it is **not Verified**. Since G6.10 (implemented in the code, class C tests, **not yet in a release and not run on a device**) the update helper can also replace itself, its units and `oarfish.service` from the GUI, after a second confirmation ([`UPDATE.md`](UPDATE.md#the-steps-of-an-update-with-components)). The installer is still required:
 
-- **Once**, on a device that runs `v0.1.0-alpha.7` or earlier. Up to `v0.1.0-alpha.6` there is no update helper (the bootstrap, ADR 0010 U11). The helper of `v0.1.0-alpha.7` embeds its release version, so the next release differs in `oarfish-update-helper` (ADR 0010 A13). The update page then shows the installer instruction (`installer_required`).
-- For a release that **changes the update helper or one of its units, or `oarfish.service`** (until step G6.10 replaces them from the GUI). The release notes of such a release say so, and the update page shows the installer instruction.
+- **Once, to reach the first release that carries the helper of G6.10.** Every helper released before it (`v0.1.0-alpha.7` to `v0.1.0-alpha.10`) cannot replace itself and answers `installer_required` for the new helper; the update page shows the installer instruction. Up to `v0.1.0-alpha.6` there is no update helper at all (the bootstrap, ADR 0010 U11).
+- **After that, only in these cases**, each shown on the update page as "Installer nötig" with its reason ([`UPDATE.md`](UPDATE.md#when-the-installer-is-required)): the release changes the trust key of the helper (`key_changed`; key rotation is not available from the GUI); a unit file of the release does not match the rules of the installed helper (`unit_rejected`; the installer does not lint, so it installs such a release); the release has requirements that the device does not meet with the installed helper (`requirements_not_met`, for example a helper protocol two steps newer).
 
 Use the `install.sh` of the release you want, as in [Install](#install).
+
+**A changed socket unit takes effect after a reboot.** When an update from the GUI replaces the helper's socket unit, systemd keeps the socket it started with until the next boot; the update page shows a notice until then (ADR 0010 A15 D4). An installer run stops the helper service and restarts the socket, so the new socket text is in use after it; the notice of the page stays until the next boot. Nothing else is needed.
+
+### When the update helper needs a person
+
+The update page says "Wiederherstellung fehlgeschlagen" (rollback failed) and the helper reports that it needs attention. Updates from the GUI are blocked until a person acts. The cases differ:
+
+- **A release rollback failed** (`rollback_target_damaged`, `rollback_unhealthy`, `restart_failed`, `switch_failed`, `current_unknown`): the page says to run the installer again. Use the `install.sh` of the release that should run, as in [Install](#install). The G6.9 device run did this once from `rollback_target_damaged` (class T, [`UPDATE.md`](UPDATE.md#phase-3-class-t-v010-alpha10-throwaway-key)).
+- **The saved component set is damaged** (`known_good_damaged`, ADR 0010 E5): a component update failed, and the helper did not switch back, because the copy it would switch back to (`/opt/oarfish/components/known-good`) does not have the bytes it recorded, or cannot be read. Nothing else was changed: `current` still names the release that ran before, and the service keeps running. The helper keeps this state at every boot and start until a person acts; no helper process clears it, and the installer does not write the helper's state.
+
+**The steps for `known_good_damaged`. They are derived from the code of the helper and the installer, were not run on a device or anywhere else, and are for the owner's confirmation (ADR 0010 A17, S8).** Look first, then repair:
+
+```bash
+# 1. What the helper wrote (the journal lines name the phase and the reason, no secrets).
+sudo journalctl -u oarfish-update-helper -u oarfish-update-recover --since "-2 days" | grep -E 'phase=|known_good'
+# 2. Which component sets the links name, and their hashes.
+readlink /opt/oarfish/components/active /opt/oarfish/components/known-good /opt/oarfish/current
+sudo sha256sum /opt/oarfish/components/*/oarfish-update-helper /opt/oarfish/components/*/*.service /opt/oarfish/components/*/*.socket
+# Compare them with the "contents" of manifest.json of the release that delivered each set
+# (the directory name is that version). A file that differs from its release was changed on this device:
+# find out why before you go on.
+# 3. Repair: remove the program files (keeps your account, your settings and /var/lib/oarfish-update),
+#    remove the helper's state while no helper runs, and install the release that ran before.
+sudo sh install.sh --uninstall
+sudo rm /var/lib/oarfish-update/state.json
+sudo sh install.sh            # the install.sh of the installed release, as in "Install"
+```
+
+After step 3 the helper starts with a fresh state; the update page may show once that the helper rebuilt its state. Then try the update again from the GUI.
+
 
 ## Hardware test results
 
@@ -483,5 +513,5 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 - `releases/latest/download/install.sh` is checked with the first stable release; the release addressed by tag was downloaded anonymously and verified for `v0.1.0-alpha.2` (2026-10-26) and for `v0.1.0-alpha.6` (see [RELEASING.md](RELEASING.md)).
 - Key rotation and revocation are not designed (ADR 0005). The release key is inside the installer; if it ever changes, a new installer is needed.
 - **The update helper layout (G6.3b) was observed on one device only, with a test release.** At the G6.3 owner stop (device observation, 2026-11-03: one Raspberry Pi Zero 2 W, Debian 13 aarch64, systemd 257, one image, one moment) a test release `0.1.0-alpha.6.1` with a throwaway key and a test copy of `install.sh` was installed; it was never published. The links, the wants links after a removed release directory and a reboot, socket activation, the idle exit, the boot order of the recover unit, a re-run that changed nothing and uninstall without `--purge` came out as designed (details in [Results on the reference device (G6.3)](#results-on-the-reference-device-g63)). Not exercised there: the production key path with the real installer, `--purge`, a first installation without a previous release, the rollback after a failed health check, Ubuntu, other Pi models, a cold power cycle and a crash loop up to the start limit. Everything else about the layout is verified only against a fake root and a stub `systemctl`, in the arm64 containers (no systemd) and, for the unit text, by `systemd-analyze verify` of the installed link layout on the CI runner.
-- **The GUI update** (`v0.1.0-alpha.7` and later) was observed on one device in the G6.9 run (class D and T, rows F1 to F23 of the failure matrix in [`UPDATE.md`](UPDATE.md#failure-matrix-f1-to-f32) except F13; one image, one moment; not Verified). Not run: F13, the parts of rows marked "C only", F24 to F32 (G6.10), screen reader, other boards and models, Ubuntu, behaviour over many days, four simultaneous clients.
+- **The GUI update** (`v0.1.0-alpha.7` and later) was observed on one device in the G6.9 run (class D and T, rows F1 to F23 of the failure matrix in [`UPDATE.md`](UPDATE.md#failure-matrix-f1-to-f32) except F13; one image, one moment; not Verified). Not run: F13, the parts of rows marked "C only", F24 to F32 (G6.10: implemented with class C tests, not in a release, not run on a device; the device step follows), the steps of [When the update helper needs a person](#when-the-update-helper-needs-a-person) for `known_good_damaged`, screen reader, other boards and models, Ubuntu, behaviour over many days, four simultaneous clients.
 - Two installer runs are guarded against each other by the lock on `/var/lib/oarfish-update` for the components shape (and for the legacy shape when that directory exists); a legacy-shape installer on a device without the directory takes no lock. The helper takes the same lock for `stage`, `discard`, `activate` and its recovery (G6.5, G6.6); that side is tested in CI only. Two installer runs at the same time were tested only against the fake root, not on a device, and a helper holding the lock against an installer run has not been tried on a device.

@@ -164,8 +164,16 @@ func (a *updateAPI) apply(w http.ResponseWriter, r *http.Request, s *auth.Sessio
 	}
 	target := audit.UpdateTarget(body.Version)
 
+	// The second confirmation exists only for a job that waits for it (ADR 0010
+	// A17, S7). A first apply never carries it: with the flag and no waiting job
+	// the request is refused, before the slot and before the password.
+	if body.ComponentsConfirmed && !a.svc.Awaiting(body.Version) {
+		writeError(w, r, http.StatusBadRequest, apiError{Code: "invalid_request", Message: "The request could not be read.", Recovery: "Reload the page and try again."})
+		return
+	}
+
 	// Second stage: a job waits for the confirmation of the component update.
-	if body.ComponentsConfirmed && a.svc.Awaiting(body.Version) {
+	if body.ComponentsConfirmed {
 		if err := a.cfg.auth.ConfirmPassword(r.Context(), body.CurrentPassword); err != nil {
 			a.accountError(w, r, audit.UpdateStarted, target, s.Username, err)
 			return
@@ -193,7 +201,7 @@ func (a *updateAPI) apply(w http.ResponseWriter, r *http.Request, s *auth.Sessio
 		return
 	}
 	if e := slot.Start(updater.ApplyRequest{Version: body.Version, User: s.Username,
-		CorrelationID: correlationID(r), ComponentsConfirmed: body.ComponentsConfirmed}); e != nil {
+		CorrelationID: correlationID(r)}); e != nil {
 		updateError(w, r, e)
 		return
 	}

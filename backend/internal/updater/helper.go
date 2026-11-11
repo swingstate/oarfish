@@ -288,7 +288,7 @@ func (st *HelperStatus) valid() bool {
 	}
 	st.StagedDiffers = closedNames(st.StagedDiffers)
 	if r := st.LastResult; r != nil {
-		if !idPattern.MatchString(r.TransactionID) || !outcomeNames[r.Outcome] || !validVersion(r.To) || !okVer(r.From) ||
+		if !idPattern.MatchString(r.TransactionID) || !outcomeNames[r.Outcome] || !(validVersion(r.To) || rebuiltResult(r)) || !okVer(r.From) ||
 			!(r.ReasonCode == "" || reasonPattern.MatchString(r.ReasonCode)) || !(r.CorrelationID == "" || idPattern.MatchString(r.CorrelationID)) {
 			return false
 		}
@@ -297,6 +297,16 @@ func (st *HelperStatus) valid() bool {
 		}
 	}
 	return true
+}
+
+// rebuiltResult is the one last result without a target version: the result
+// that the helper writes when it rebuilds a missing or unreadable state.json
+// (ADR 0010 U7): outcome aborted, reason state_rebuilt, neither to nor from.
+// The other results of a rebuilt state (P11: components_rolled_back with
+// state_unreadable; E5: rollback_failed with known_good_damaged) name the
+// component set as to and pass the version rule (A17, F3).
+func rebuiltResult(r *HelperResult) bool {
+	return r.Outcome == "aborted" && r.ReasonCode == "state_rebuilt" && r.To == "" && r.From == ""
 }
 
 // Stage asks the helper to copy and verify the four cached files of version.

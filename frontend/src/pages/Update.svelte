@@ -22,7 +22,15 @@
     type UpdateFailure,
     type UpdateState,
   } from '../lib/update';
-  import { actionErrorText, durationText, updateErrorText, type UpdateErrorField } from '../lib/updateErrors';
+  import {
+    actionErrorText,
+    componentText,
+    componentsReasonText,
+    durationText,
+    installerReasonText,
+    updateErrorText,
+    type UpdateErrorField,
+  } from '../lib/updateErrors';
 
   // ADR 0010 U3, U9, A11.3. Polling runs only while a job runs or while the page
   // waits for the restart after "activating", every 2 s, and stops when the page
@@ -31,8 +39,10 @@
   const pollMs = 2000;
   const restartLimitMs = 3 * 60_000;
   const checkLockMs = 60_000;
-  // Phases of the helper in which a transaction is under way (U5, U6).
-  const transient = new Set(['staging', 'switching', 'verifying', 'rolling_back']);
+  // Phases of the helper in which a transaction is under way (U5, U6), and the
+  // component phases of U15 rule 4 among them (G6.10).
+  const componentPhases = new Set(['c_switching', 'c_switched', 'c_verified', 'c_committed', 'c_rolling_back']);
+  const transient = new Set(['staging', 'switching', 'verifying', 'rolling_back', ...componentPhases]);
   const applySteps: JobStep[] = ['fetching_metadata', 'downloading', 'staging', 'activating', 'done'];
 
   let phase = $state<'loading' | 'error' | 'ready'>('loading');
@@ -111,7 +121,8 @@
   /** Whether the update the page watches has come to an end that the State can show. */
   function settled(s: UpdateState): boolean {
     const j = s.job;
-    const underWay = s.helper.present && transient.has(s.helper.phase ?? '');
+    // The hand-over of the helper (ADR 0010 A17, F4) is under way as well; the service bounds it.
+    const underWay = s.helper.present ? transient.has(s.helper.phase ?? '') : !!s.helper.handing_over;
     if (j?.running) return false;
     if (j?.kind === 'apply' && j.step === 'failed') return true;
     // "done" in the old process: activate was accepted and the restart is still to come.
@@ -289,6 +300,12 @@
   const helper = $derived(st?.helper ?? null);
   const stagedVersion = $derived(helper?.staged_version ?? (helper?.phase === 'staged' ? (applyJob?.version ?? null) : null));
   const cooldownLeft = $derived(helper?.cooldown_remaining_s ?? 0);
+  // F4: the helper replaces its components, or is between its old and its new process.
+  const handingOver = $derived(!!helper && !helper.present && !!helper.handing_over);
+  const replacing = $derived(handingOver || (!!helper?.present && componentPhases.has(helper.phase ?? '')));
+  // The second confirmation names what is replaced (U15 rule 7, D6); oarfish.service alone has no component set.
+  const awaitingNames = $derived(awaiting?.differs ?? []);
+  const awaitingHelper = $derived(awaitingNames.some((n) => n !== 'oarfish.service'));
 
   function inCooldown(version: string): boolean {
     return cooldownLeft > 0 && (!helper?.cooldown_version || helper.cooldown_version === version);
@@ -322,6 +339,25 @@
     aborted: 'neutral',
   };
   const knownOutcome = (o: string): o is (typeof outcomes)[number] => (outcomes as readonly string[]).includes(o);
+
+  /** The main sentence of the last result; two shapes have their own (F3 the rebuilt state, E5 the damaged copy). */
+  function resultText(r: NonNullable<UpdateState['last_result']>): string {
+    if (!knownOutcome(r.outcome)) return t.updResultUnknown;
+    if (r.outcome === 'aborted' && r.reason_code === 'state_rebuilt') return t.updResultRebuilt;
+    if (r.outcome === 'rollback_failed' && r.reason_code === 'known_good_damaged') return t.updKnownGoodDamaged;
+    return fmt(`updResult.${r.outcome}`, { to: r.to, from: r.from });
+  }
+
+  /** The sentences that follow it: what happened to the components (F31), the reason group, the next step. */
+  function resultNotes(r: NonNullable<UpdateState['last_result']>): string[] {
+    const out: string[] = [];
+    if (r.components_updated) out.push(r.outcome === 'success' ? t.updResultComponentsUpdated : t.updResultComponentsStay);
+    if (r.outcome === 'components_rolled_back') {
+      const reason = componentsReasonText(r.reason_code);
+      if (reason) out.push(reason);
+    }
+    return out;
+  }
 </script>
 
 <svelte:window onkeydown={onConfirmKey} />
@@ -337,7 +373,7 @@
     </EmptyState>
   {:else}
     <div class="stack column">
-      {#if !st.helper.present}
+      {#if !st.helper.present && !handingOver}
         <Notice tone="warning" data-testid="upd-helper-missing">
           <p>{t.updHelperMissing}</p>
           <p class="secondary">{t.updHelperMissingHint}</p>
@@ -349,6 +385,12 @@
         <Notice tone="critical" data-testid="upd-needs-attention">
           <p>{t.updNeedsAttention}</p>
           <p class="secondary">{t.updRerunHint}</p>
+        </Notice>
+      {/if}
+
+      {#if st.helper.socket_restart_pending}
+        <Notice tone="information" data-testid="upd-socket-pending">
+          <p>{t.updSocketPending}</p>
         </Notice>
       {/if}
 
@@ -376,7 +418,7 @@
 
       {#if installer}
         <Notice tone="warning" data-testid="upd-installer">
-          <p><strong>{t.updInstallerTitle}.</strong> {t.updInstallerText}</p>
+          <p><strong>{t.updInstallerTitle}.</strong> {t.updInstallerText} <span data-testid="upd-installer-reason">{installerReasonText(installer.code)}</span></p>
           <p>{fmt('updInstallerSteps', { version: installer.version })}</p>
           <p><code>{t.updInstallerCommand}</code></p>
           <p>{t.updInstallerKept}</p>
@@ -440,6 +482,8 @@
             <p role="status" class="live" data-testid="upd-live">
               {#if restart === 'restarting'}
                 {lastStep === 'activating' || lastStep === 'done' ? t.updRestarting : t.updNoAnswer}
+              {:else if replacing}
+                {t.updComponentsReplacing}
               {:else}
                 {fmt('updCurrentStep', { step: stepText(currentStep) })}
               {/if}
@@ -464,8 +508,17 @@
         {#if awaiting}
           <Card id="components" title={t.updComponentsHeading} icon="lock" data-testid="upd-components">
             <p>{t.updComponentsText}</p>
+            {#if awaitingNames.length > 0}
+              <ul class="names" data-testid="upd-components-names">
+                {#each awaitingNames as name (name)}
+                  {@const words = componentText(name)}
+                  <li>{#if words}{words} (<code>{name}</code>){:else}<code>{name}</code>{/if}</li>
+                {/each}
+              </ul>
+            {/if}
             <p>{t.updConfirmRestart}</p>
-            <p>{t.updComponentsFail}</p>
+            <p data-testid="upd-components-fail">{awaitingHelper || awaitingNames.length === 0 ? t.updComponentsFail : t.updComponentsFailService}</p>
+            {#if awaitingNames.includes('oarfish-update-helper.socket')}<p data-testid="upd-components-socket">{t.updSocketPending}</p>{/if}
             {#key errorSeq}
               {#if formError}<FormMessage tone="critical" testid="form-error">{formError.text}</FormMessage>{/if}
             {/key}
@@ -475,6 +528,7 @@
                 type="password"
                 label={t.updPasswordLabel}
                 autocomplete="current-password"
+                help={t.updComponentsPasswordHelp}
                 bind:value={password}
                 bind:input={passwordInput}
                 error={formError?.field === 'password' ? formError.text : null}
@@ -492,8 +546,13 @@
           {@const r = st.last_result}
           <Card id="result" title={t.updResultHeading} icon="info" data-testid="upd-result">
             <div><Badge tone={outcomeTone[r.outcome] ?? 'neutral'} data-testid="upd-outcome">{knownOutcome(r.outcome) ? t[`updOutcome.${r.outcome}`] : t.unknownValue}</Badge></div>
-            <p data-testid="upd-result-text">{knownOutcome(r.outcome) ? fmt(`updResult.${r.outcome}`, { to: r.to, from: r.from }) : t.updResultUnknown}</p>
-            {#if r.outcome === 'rollback_failed'}<p class="secondary">{t.updRerunHint}</p>{/if}
+            <p data-testid="upd-result-text">{resultText(r)}</p>
+            {#each resultNotes(r) as note (note)}<p data-testid="upd-result-note">{note}</p>{/each}
+            {#if r.outcome === 'rollback_failed' && r.reason_code === 'known_good_damaged'}
+              <p class="secondary" data-testid="upd-shell-needed">{t.updShellNeeded}</p>
+            {:else if r.outcome === 'rollback_failed'}
+              <p class="secondary">{t.updRerunHint}</p>
+            {/if}
             <KeyValueList items={[{ label: t.updResultFinishedAt, value: formatDateTime(r.finished_at) }]} />
             {#if r.reason_code}
               <details>

@@ -190,7 +190,7 @@ func TestApplyOrderPasswordThenStart(t *testing.T) {
 		t.Fatalf("calls: %s", fake.list())
 	}
 	r := fake.started[0]
-	if r.Version != upd || r.User != testUser || r.ComponentsConfirmed || r.CorrelationID != rec.Header().Get("X-Correlation-ID") || len(r.CorrelationID) != 16 {
+	if r.Version != upd || r.User != testUser || r.CorrelationID != rec.Header().Get("X-Correlation-ID") || len(r.CorrelationID) != 16 {
 		t.Fatalf("%+v", r)
 	}
 	var out map[string]any
@@ -307,13 +307,17 @@ func TestApplySecondStageNeedsThePasswordAgain(t *testing.T) {
 	if up.list() != "resume "+upd {
 		t.Fatalf("%s", up.list())
 	}
-	// components_confirmed without a waiting job is an ordinary first apply.
+}
+
+// A first apply never carries the second confirmation (ADR 0010 A17, S7): with
+// components_confirmed and no waiting job the request is refused before the slot
+// and before the password, and nothing starts.
+func TestApplyFirstStageRefusesTheSecondConfirmation(t *testing.T) {
+	f, up, s := updateFixture(t, clock.System())
 	up.awaiting = false
-	up.mu.Lock()
-	up.calls = nil
-	up.mu.Unlock()
-	expect(t, f.do(req{method: http.MethodPost, path: "/api/v1/update/apply", session: &s, body: body(testPassword)}), http.StatusAccepted, "")
-	if !up.started[0].ComponentsConfirmed || !strings.HasPrefix(up.list(), "reserve") {
+	b, _ := json.Marshal(map[string]any{"version": upd, "current_password": testPassword, "components_confirmed": true})
+	expect(t, f.do(req{method: http.MethodPost, path: "/api/v1/update/apply", session: &s, body: string(b)}), http.StatusBadRequest, "invalid_request")
+	if len(up.started) != 0 || strings.Contains(up.list(), "reserve") || strings.Contains(up.list(), "resume") {
 		t.Fatalf("%s %+v", up.list(), up.started)
 	}
 }
