@@ -1,11 +1,11 @@
 # The update path
 
-How a device updates Oarfish from the GUI, what is checked, what happens when something fails, and how the evidence on the reference device is produced. The design is [ADR 0010](adr/0010-update-helper.md) (decisions U1 to U15, amendments A1 to A15). This document describes the code at gate G6.9 and, since step a of G6.10, the unit lint in `stage`; the replacement of components from the GUI is not implemented. **Device observations exist, each labelled with its evidence class (C, D or T); nothing is Verified.** Every device entry below means "observed as expected on one device" (one Raspberry Pi Zero 2 W, one image); class T is never production evidence. The section [Results on the reference device](#results-on-the-reference-device) holds the facts, what was not run and the open items.
+How a device updates Oarfish from the GUI, what is checked, what happens when something fails, and how the evidence on the reference device is produced. The design is [ADR 0010](adr/0010-update-helper.md) (decisions U1 to U15, amendments A1 to A16). This document describes the code at gate G6.9 and, since steps a and b of G6.10, the unit lint and the replacement of the helper and its units by the helper (the component transaction). The component transaction has class C tests only: it did not run on a device, no release carries it, and the page has no dialog that names the components yet (step c). **Device observations exist for the base update, each labelled with its evidence class (C, D or T); nothing is Verified.** Every device entry below means "observed as expected on one device" (one Raspberry Pi Zero 2 W, one image); class T is never production evidence. The section [Results on the reference device](#results-on-the-reference-device) holds the facts, what was not run and the open items.
 
 ## Contents
 
 1. [What exists](#what-exists)
-2. [The steps of one update](#the-steps-of-one-update)
+2. [The steps of one update](#the-steps-of-one-update), and [of an update with components](#the-steps-of-an-update-with-components)
 3. [What is checked, and in which order](#what-is-checked-and-in-which-order)
 4. [States, results and the rollback](#states-results-and-the-rollback)
 5. [Cooldown and expiry](#cooldown-and-expiry)
@@ -32,10 +32,40 @@ The service does all network traffic and verifies only so that the page can show
 1. **Check** (user action: opening the page, at most once per 60 minutes, or "Check now", at most once per 60 s per device). The service reads the release list from the GitHub API, picks the highest eligible version (prerelease rule Q7) and verifies the small files of that release (advisory).
 2. **Apply.** The administrator confirms with the fresh password (Q3). The password is checked before anything is downloaded. The service starts one job (a second request answers `busy`).
 3. **Download** into `/var/cache/oarfish/update/<version>/` (directory 0755, files 0644), streamed with size caps and time limits.
-4. **`stage`.** The helper takes the lock, writes the intent `staging`, copies the four files into `releases/.stage.<id>/` and hashes the bytes it writes, verifies them, extracts and checks the tree, lints the unit files of the release, compares the five component files with the installed ones, moves the tree to `releases/<version>` and writes `staged`.
+4. **`stage`.** The helper takes the lock, writes the intent `staging`, copies the four files into `releases/.stage.<id>/` and hashes the bytes it writes, verifies them, extracts and checks the tree, lints the unit files of the release, compares the five component files with the installed ones, moves the tree to `releases/<version>` and writes `staged`. Its answer says whether one of the five files differs, and which.
 5. **`activate`.** The helper checks that the installed version is healthy (pre-check), records the hash of the running binary, writes `switching`, switches `current` with one atomic rename, writes `verifying`, restarts `oarfish.service` and runs the health check.
 6. **Commit or rollback.** If the new version is healthy, the helper writes `committed`, keeps the previous version and removes older releases. Otherwise it rolls back (below). The service restarts in both cases, so everybody is signed out.
 7. **Finish.** At the next status read, the restarted service writes `update_finished` to the audit with the correlation ID of `update_started`, and then acknowledges the result (`ack`).
+
+### The steps of an update with components
+
+When `stage` finds that one of the five compared files differs, the update needs the second confirmation (U9, U15 rule 7, D6), and when one of the four helper files differs it is applied as one transaction in two processes of the helper (U15 rule 4, A16). Class C tests only; not run on a device.
+
+1. **`stage`** as above, with three more checks when the helper files differ and before anything is moved: the manifest's `components.key_id` equals the key embedded in the installed helper (`key_changed`), `components.protocol` is the helper's protocol P or P+1 (`requirements_not_met`), and the known-good set equals its reference hash when one is recorded (`components_damaged`; without one it is recorded now). The staged helper files are moved to `components/<version>`, then the release to `releases/<version>`. The answer has `components_differ: true` and `differs` with the names.
+2. **The pause.** The job of the service waits at `awaiting_components_confirmation` (at most 30 minutes, the life of a staged release) for the second confirmation.
+3. **`activate` with `components_confirmed`.** The helper lints the staged unit files again and compares them, the staged helper and the known-good set with the recorded hashes. It writes `c_switching` with everything the next process needs, answers "accepted", switches `components/active` to the new set, writes `c_switched`, runs `daemon-reload` and ends with exit code 75 after the answer was written and the connection is closed. It runs nothing of the new set.
+4. **The new helper starts** (systemd restarts the service; `RestartForceExitStatus=75`). Before it serves a request it proves itself: `active` names the new set, the helper file there and its own executable image have the recorded SHA-256, its embedded key id is the recorded one, its protocol range overlaps the old helper's. It writes `c_verified`, switches `components/known-good`, runs `daemon-reload`, writes `c_committed` with the new reference hash, and prunes older component sets.
+5. **The release phases** of the base update (`switching`, `verifying`, `committed`), by the new helper, without a client request.
+6. **If the new helper does not prove itself** it switches `active` back to `known-good`, runs `daemon-reload`, removes the staged release and the new set, writes the result `components_rolled_back` with a reason and ends with exit code 75; the old helper starts again. If it does not start at all, the recover unit does the same from the known-good binary. **If the release fails after `c_committed`**, only the release is rolled back; the new helper stays and the result is `rolled_back` with `components_updated`.
+
+When only `oarfish.service` differs there is no component phase: the second confirmation is needed, and the helper runs `daemon-reload` after the switch of `current` and before the restart, and again after a switch back.
+
+The journal of one successful component transaction (the lines of U8):
+
+```text
+phase=staging to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=staged to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=c_switching to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=c_switched to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=c_verified to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=c_committed to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=switching to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=verifying to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=committed to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+phase=idle to=1.1.0 from=1.0.0 cid=0123456789abcdef result=ok
+```
+
+The first four lines are written by the helper that received the requests, the others by the new helper.
 
 ## What is checked, and in which order
 
@@ -53,11 +83,12 @@ What the helper checks in `stage`, in this order (`backend/cmd/oarfish-update-he
 | j | strictly newer than installed, minimum installed version, helper protocol | `downgrade_refused`, `already_installed`, `requirements_not_met`, `helper_too_old` |
 | k | tarball inspection and extraction (allow-listed names, regular files, sizes, hashes, ELF) | `manifest_invalid`, `checksum_mismatch`, `requirements_not_met` |
 | k2 | the unit lint (ADR 0010 U4 step 9, U15 rule 3, A15.3): `oarfish.service` of every release and, when the release carries the components, the three helper units, each against the rule tables compiled into the helper | `unit_rejected` |
-| l | the bundle has components; the five compared files equal the installed ones | `requirements_not_met`, `installer_required` |
+| l | the bundle has components (the legacy shape is refused); the five files are compared with the installed ones, which must be readable | `requirements_not_met`, `components_damaged` |
+| l2 | only when one of the four helper files differs: the key rule (U15 rule 5), the protocol rule (D5), the reference hash of the known-good set (E2) | `key_changed`, `requirements_not_met`, `components_damaged` |
 
-The bundle hash (i) comes before the version rule (j). A changed or truncated copy of any real release therefore answers `checksum_mismatch` even when that version is installed or older. The version rule (j) comes before the component comparison (l). An older release with other helper bytes therefore answers `downgrade_refused`, not `installer_required`. The unit lint (k2) comes after the extraction and before the comparison (l). A release with a unit text that the rules refuse therefore answers `unit_rejected`, whether or not its files differ from the installed ones, and the staging tree is removed. The journal gets one line that names the unit and a reason from a closed set; no part of the unit text reaches the answer or the journal.
+The bundle hash (i) comes before the version rule (j). A changed or truncated copy of any real release therefore answers `checksum_mismatch` even when that version is installed or older. The version rule (j) comes before the component comparison (l). An older release with other helper bytes therefore answers `downgrade_refused`, not `installer_required`. The unit lint (k2) comes after the extraction and before the comparison (l). A release with a unit text that the rules refuse therefore answers `unit_rejected`, whether or not its files differ from the installed ones, and the staging tree is removed. The checks of l2 come before the component set or the release is moved into place, so a refusal leaves nothing behind. A difference that passes them is not an error: the release is staged, and the answer names the files (`differs`). The journal gets one line that names the unit and a reason from a closed set; no part of the unit text reaches the answer or the journal.
 
-**The unit lint in short** (the complete rules, the accepted forms and the table are in ADR 0010 A15.3). A unit file is at most 16 KiB of valid UTF-8 without NUL or other control characters, without a line continuation, a specifier (`%`) or a duplicate key, with only the sections of its unit type, and with nothing but the expected `WantedBy=` in `[Install]`. The three helper units must equal a compiled-in accepted form after their comments, blank lines and the values of `Description=` and `Documentation=` are removed; the order of the lines counts. `oarfish.service` must contain the required baseline (every directive of `install/oarfish.service` except the extras, each with exactly its value, and `ExecStart` with a literal loopback address and port) and may add only the listed extras: `Description`, `Documentation`, `Restart` (`on-failure`, `always`), `RestartSec` (1 to 10 s), `TimeoutStopSec` (5 to 30 s) and `ProtectProc` (`invisible`, `noaccess`). Every other directive is rejected. The lint checks the release, not the installed units, and it runs in `stage` only; the lint at `activate` belongs to step b of G6.10.
+**The unit lint in short** (the complete rules, the accepted forms and the table are in ADR 0010 A15.3). A unit file is at most 16 KiB of valid UTF-8 without NUL or other control characters, without a line continuation, a specifier (`%`) or a duplicate key, with only the sections of its unit type, and with nothing but the expected `WantedBy=` in `[Install]`. The three helper units must equal a compiled-in accepted form after their comments, blank lines and the values of `Description=` and `Documentation=` are removed; the order of the lines counts. `oarfish.service` must contain the required baseline (every directive of `install/oarfish.service` except the extras, each with exactly its value, and `ExecStart` with a literal loopback address and port) and may add only the listed extras: `Description`, `Documentation`, `Restart` (`on-failure`, `always`), `RestartSec` (1 to 10 s), `TimeoutStopSec` (5 to 30 s) and `ProtectProc` (`invisible`, `noaccess`). Every other directive is rejected. The lint checks the release, not the installed units. It runs in `stage` and again in `activate`, on the staged files: each unit is read once, the same bytes are linted and hashed, and the hash must equal the one `stage` recorded (`unit_rejected`, `checksum_mismatch`; the staged release is then removed).
 
 The health check (U6, A11.2): `ActiveState=active`, `SubState=running`, a new MainPID, `NRestarts` not increased, `/healthz` with the installed version and, from `strictHealthFrom` (`0.1.0-alpha.7`) on, `pid` equal to MainPID and `/readyz` 200. All of this must hold on 3 polls in a row and for at least 10 s. A failed unit or a higher `NRestarts` ends the wait at once (fail fast). Otherwise the deadline is 45 s.
 
@@ -73,23 +104,45 @@ The health check (U6, A11.2): `ActiveState=active`, `SubState=running`, a new Ma
 | `committed` | success durable | pruning finished |
 | `rolling_back` | rollback running | finished |
 | `rollback_failed` | rollback failed, `needs_attention` | a shell is needed (U6) |
+| `c_switching` | intent to switch `components/active` | `active` on the old set: the release is staged again (and removed at boot). On the new set: components rolled back |
+| `c_switched` | `active` on the new set, the old helper ends | the new helper's own first start: self-check, forward. Any other process (the recover unit): components rolled back, `interrupted` |
+| `c_verified` | the new helper proved itself | both links on the new set: committed. Otherwise as `c_switched` |
+| `c_committed` | the components are committed | a running helper continues with the release phases; at boot the release is `aborted` and the components stay |
+| `c_rolling_back` | rollback of the components running | finished; `rollback_failed` when the known-good set does not equal its reference hash |
 
-Results: `success`, `rolled_back` (reasons `start_failed`, `health_timeout`, `restart_failed`, `interrupted`), `aborted`, `rollback_failed` (`rollback_target_damaged`, `rollback_unhealthy`, …). The rollback first writes `rolling_back`. It then compares the hash of `releases/<from>/oarfish` with the hash recorded when `activate` started, switches `current` back, runs `reset-failed` and `restart`, and checks the old version with the same criteria. A damaged rollback target is never switched to. The recover unit runs the same rule at every boot, before `oarfish.service` starts. Rollback does not restore data, so releases must stay N-1 compatible ([`RELEASING.md`](RELEASING.md)).
+Results: `success`, `rolled_back` (reasons `start_failed`, `health_timeout`, `restart_failed`, `interrupted`), `aborted`, `rollback_failed` (`rollback_target_damaged`, `rollback_unhealthy`, `known_good_damaged`, …), and `components_rolled_back` with one of eight reasons: `helper_mismatch`, `key_changed`, `protocol_mismatch`, `state_unreadable`, `interrupted`, `switch_failed`, `state_write_failed`, `reload_failed`. A result whose transaction replaced the components carries `components_updated: true`, whatever the outcome of its release part. The rollback first writes `rolling_back`. It then compares the hash of `releases/<from>/oarfish` with the hash recorded when `activate` started, switches `current` back, runs `reset-failed` and `restart`, and checks the old version with the same criteria. A damaged rollback target is never switched to. The recover unit runs the same rule at every boot, before `oarfish.service` starts. Rollback does not restore data, so releases must stay N-1 compatible ([`RELEASING.md`](RELEASING.md)).
 
 ## Cooldown and expiry
 
-- After a rollback or a failure the same version is refused for 15 minutes (`cooldown`). Any `activate` within 60 s of the previous one is refused as well. Both markers are stored in `state.json` with the time since boot (`CLOCK_BOOTTIME`), never the wall clock. A marker is void when the uptime is smaller than the uptime at which it was set (a reboot happened). After a reboot the cooldown may therefore end early, and this is accepted (U6).
+- After a rollback or a failure, also after `components_rolled_back`, the same version is refused for 15 minutes (`cooldown`). Any `activate` within 60 s of the previous one is refused as well. Both markers are stored in `state.json` with the time since boot (`CLOCK_BOOTTIME`), never the wall clock. A marker is void when the uptime is smaller than the uptime at which it was set (a reboot happened). After a reboot the cooldown may therefore end early, and this is accepted (U6).
 - A staged release expires 30 minutes after `stage` (`stage_expired`). `status` and `activate` remove it, and so does every boot.
 
 ## When the installer is required
 
-`stage` compares the SHA-256 of `oarfish-update-helper`, its three units and `oarfish.service` with the installed files. When one differs it answers `installer_required` with the names. The page then shows the installer instruction instead of applying the update (U9). This applies until G6.10 replaces components from the GUI.
+A helper that has the component transaction (G6.10 step b) never answers `installer_required` for a difference of the five compared files (A16, E1): a difference of the helper files selects the component transaction, a difference of `oarfish.service` alone the second confirmation. **No such helper has been released**, so every device needs one installer run to reach the first release that carries it.
 
-- The bytes of the helper depend only on its code, the packages it links and the Go toolchain, never on the release version (A13, D-C80). A release that changes none of these and no unit text needs no installer.
-- A device on `v0.1.0-alpha.7` or earlier needs the installer once: up to alpha.6 there is no helper (bootstrap, U11), and the alpha.7 helper embeds its release version.
-- A release that changes the helper code, a package it links, the Go version or a unit text needs the installer. Its release notes say so ([`RELEASING.md`](RELEASING.md)).
-- A change of the trust key is never applied from the GUI (U15 rule 5).
-- Since step a of G6.10 the helper lints the units of a release. A helper unit that differs from the accepted form in more than comments, blank lines, `Description=` or `Documentation=`, or an `oarfish.service` outside its rules, answers `unit_rejected` and not `installer_required`; the page then shows the sentence of `unit_rejected`, which does not name the installer. The installer does not lint, so an installer run still installs such a release. How a release changes a helper unit on purpose (the two steps) is in [`RELEASING.md`](RELEASING.md#release-procedure). No helper with the lint has been released yet.
+- **Helpers before step b** (`v0.1.0-alpha.7` to `v0.1.0-alpha.10`) answer `installer_required` with the names for any difference, and the page shows the installer instruction (U9). The first release with the helper of step b differs from them in the helper's bytes, so no GUI update can reach it.
+- A device on `v0.1.0-alpha.6` or earlier has no helper (bootstrap, U11).
+- The bytes of the helper depend only on its code, the packages it links and the Go toolchain, never on the release version (A13, D-C80). A release that changes none of these and no unit text is a plain release update without a second confirmation.
+
+The cases in which a device with the helper of step b still needs the installer have their own codes:
+
+| Code | Case |
+|---|---|
+| `key_changed` | the release delivers a helper with another trust key (U15 rule 5); a change of the key is never applied from the GUI |
+| `unit_rejected` | a helper unit differs from the accepted forms of the installed helper in more than comments, blank lines, `Description=` or `Documentation=`, or `oarfish.service` is outside its rules. The installer does not lint, so an installer run still installs such a release. How a release changes a helper unit on purpose (the two steps) is in [`RELEASING.md`](RELEASING.md#release-procedure) |
+| `requirements_not_met` | the delivered helper implements a protocol other than P or P+1 (D5), or the release has the legacy bundle shape |
+
+The page shows the sentence of each code; none of them names the installer yet. The texts are step c.
+
+### What step c of G6.10 has to add
+
+Step b changed the helper and the minimum of the service. The page, its texts and three documents still describe the state before it; they are not changed here. This list is the input for step c.
+
+- **The page and its texts (German and English).** The second confirmation must name what is replaced, from `job.differs` of `GET /api/v1/update` (the closed list: the update helper, its socket unit, its service unit, the recover unit, the service definition of Oarfish), and say that the service restarts, that everybody is signed out, and what happens on a failure (rollback; a new helper stays when only the release fails). New to show: the outcome `components_rolled_back` with its eight reasons; `last_result.components_updated` beside `rolled_back` and `aborted` (F31); `helper.socket_restart_pending` (the new socket unit takes effect at the next boot); the phases `c_switching` to `c_rolling_back` while the page polls; a helper that is unreachable for a few seconds during the hand-over, which is progress and not an error. The sentences of `key_changed`, `unit_rejected` and `requirements_not_met` should name the installer (E1); the transitional installer text stays for a helper before step b. Open owner question: the password at the second confirmation (C4, D7).
+- **[`UI.md`](UI.md).** The row "Awaiting components confirmation" says that the State does not name the components; it does now. The states and screenshots of the update page, and its verification status.
+- **[`INSTALL.md`](INSTALL.md).** The sentence that a release which changes the helper, a unit or `oarfish.service` needs the installer "until step G6.10 replaces them from the GUI"; the cases of the table above; the one installer run that every device needs to reach the first release with the helper of step b; that the helper prunes component sets after a commit while the installer keeps them.
+- **[`RELEASING.md`](RELEASING.md).** The paragraph and the checklist item about the five compared files (a difference is no longer an installer release for a device with the helper of step b); the release notes of the first release that carries the helper of step b (one installer run) and of any release that changes the socket unit text (it takes effect at the next boot, A2); `components.protocol` must be the protocol of the helper before it or one more (D5); before that first release, the observation on the device that the helper can read its own executable image (D1), and the device evidence of F24 (class D) and F26 to F31 (class T) with `OARFISH_FAULT_PROC` in the device test kit.
 
 ## Evidence classes
 
@@ -103,7 +156,7 @@ The success row F19 and the genuine signed-release path must be class D.
 
 ## Failure matrix F1 to F32
 
-The Device column says what was observed as expected on one device and in which class (D or T); "C only" means that the row, or the named part of it, is not planned on the device, and "not run" means that the row belongs to G6.10. See [Results on the reference device](#results-on-the-reference-device). Test names refer to the packages `cmd/oarfish-update-helper` (H), `internal/relverify` (R), `internal/updater` (U) and `internal/server` (S) below `backend/`.
+The Device column says what was observed as expected on one device and in which class (D or T); "C only" means that the row, or the named part of it, is not planned on the device, and "not run" means that the row belongs to G6.10 and has not run on a device: its tests are class C (fake root, fake systemd), and its device evidence follows after step c. See [Results on the reference device](#results-on-the-reference-device). Test names refer to the packages `cmd/oarfish-update-helper` (H), `internal/relverify` (R), `internal/updater` (U) and `internal/server` (S) below `backend/`.
 
 | # | Case | Class (plan) | Covering CI tests | Device |
 |---|---|---|---|---|
@@ -118,7 +171,7 @@ The Device column says what was observed as expected on one device and in which 
 | F9 | Power loss in the verification window | T (and C) | H `TestCrashSweepRecoverFromVerifying`, `TestRecoverRows6To8RollBack` | T |
 | F10 | Replay of an old release | C, D | R `TestReplay`; U `TestAdvisoryDowngradeIsRefused` | D |
 | F11 | Same version | C, D | R `TestCheckNewer`; H `TestStageErrorCodes` | D |
-| F12 | Release changes the helper or a unit | C, D (from `v0.1.0-alpha.7` to `v0.1.0-alpha.8`, whose helpers differ, A13); T optional | H `TestComponentComparison`, `TestInstallerRequiredBodyCarriesOnlyDiffers`; U `TestInstallerRequiredCarriesTheFixedInstruction` | D (judged by hand, see [kit false stops](#kit-false-stops-and-observations)) |
+| F12 | Release changes the helper or a unit, before G6.10 | C, D (from `v0.1.0-alpha.7` to `v0.1.0-alpha.8`, whose helpers differ, A13); T optional | U `TestInstallerRequiredCarriesTheFixedInstruction` (the service, for a helper before step b). The helper of step b no longer gives this answer: H `TestComponentComparison`, `TestStageComponentRefusals` | D (judged by hand, see [kit false stops](#kit-false-stops-and-observations)) |
 | F13 | Hostile archive or sizes | C only | R `TestInspectRejectedEntryTypes`, `TestInspectRejectedPaths`, `TestInspectSizeMismatch`, `TestInspectDecompressionBomb`, `FuzzInspectTar` | C only |
 | F14 | Damaged rollback target | C, T; injected after `activate` is accepted and before the rollback compares (the hash is recorded when `activate` starts) | H `TestDamagedRollbackTarget`, `TestRecoverRow10RollbackHash` | T |
 | F15 | Wrong peer | C, D | H `TestPeerUIDMismatchClosesWithoutAnswer`, `TestRealPeerCheck` | D (judged by hand, see [kit false stops](#kit-false-stops-and-observations)) |
@@ -130,15 +183,15 @@ The Device column says what was observed as expected on one device and in which 
 | F21 | Cooldown across a reboot | C, T | H `TestCooldownVoidAfterAReboot` | T |
 | F22 | Staged release expires | C, D (the helper side); the GUI text "start again": C only (the GUI stages and activates in one job) | H `TestActivateStageExpired`, `TestStatusExpiresAStagedRelease` | D (the "start again" text stays C only) |
 | F23 | FIFO, link, directory, socket or growing file in the cache | C, D | H `TestCacheFileKinds`, `TestCacheFileGrowsDuringTheCopy`, `TestStageDeadline` | D (17 of 17 cases) |
-| F24 | Component replacement, success | D (G6.10) | not implemented (G6.10) | not run (G6.10) |
-| F25 | Unit lint reject | C, T (G6.10) | H `TestStageUnitRejected`, `TestStageUnitLintOrder`, `TestLintParsing`, `TestLintHelperUnits`, `TestLintServiceBaseline`, `TestLintServiceUnlistedDirectives`, `TestLintServiceExtras`, `TestInstallUnitsPassTheLint`, `TestInstallUnitsAreTheFirstForms`, `TestServiceRulesMatchTheInstallUnit`, `FuzzUnitLint` (the lint at `stage`, G6.10 step a; the lint at `activate` is step b) | not run |
-| F26 | Key rule | C, T (G6.10) | not implemented (G6.10) | not run (G6.10) |
-| F27 | New helper does not start | C, T (G6.10) | not implemented (G6.10) | not run (G6.10) |
-| F28 | New helper answers a wrong protocol | C, T (G6.10) | not implemented (G6.10) | not run (G6.10) |
-| F29 | Power loss in each component phase | T (and C) (G6.10) | H `TestRecoverLeavesComponentPhasesAlone` (component phases are left alone today) | not run (G6.10) |
-| F30 | Damaged previous component copy | C, T (G6.10) | H `TestComponentsDamaged` (the comparison side) | not run (G6.10) |
-| F31 | Components first, release then fails | T (G6.10) | not implemented (G6.10) | not run (G6.10) |
-| F32 | Missing component confirmation | C (G6.10) | H `TestComponentsConfirmedRule`; U `TestComponentUpdatePausesForTheSecondConfirmation` (the interlock exists; a difference cannot be staged before G6.10) | not run (G6.10) |
+| F24 | Component replacement, success | D (G6.10); the logic: C | H `TestComponentTransactionSuccess`, `TestComponentWriteAheadOrder`, `TestComponentRetention`, `TestHandOverExitsAfterTheAnswer`, `TestFirstStartHoldsTheLock`, `TestHelperRestartsAtMostTwice`, `TestCrashSweepComponentTransaction`; U `TestComponentUpdateFlowWithTheFakeHelper` | not run |
+| F25 | Unit lint reject | C, T (G6.10) | H `TestStageUnitRejected`, `TestStageUnitLintOrder`, `TestLintParsing`, `TestLintHelperUnits`, `TestLintServiceBaseline`, `TestLintServiceUnlistedDirectives`, `TestLintServiceExtras`, `TestInstallUnitsPassTheLint`, `TestInstallUnitsAreTheFirstForms`, `TestServiceRulesMatchTheInstallUnit`, `FuzzUnitLint` (the lint at `stage`); `TestActivateChecksTheStagedFilesAgain` (the lint at `activate`) | not run |
+| F26 | Key rule | C, T (G6.10) | H `TestKeyRule`, `TestStageComponentRefusals`, `TestSelfCheck`, `TestCrashSweepComponentRollback`; U `TestComponentsRolledBackFlowWithTheFakeHelper` | not run |
+| F27 | New helper does not start | C, T (G6.10) | H `TestNewHelperDoesNotStart`, `TestResetFailedOnlyWhenStartedByOnFailure`, `TestCrashSweepNewHelperDoesNotStart` | not run |
+| F28 | New helper answers a wrong protocol | C, T (G6.10) | H `TestNewHelperWithAWrongProtocol`, `TestNewHelperWithOtherBytes`, `TestSelfCheck`, `TestStatusIsAnsweredForEveryVersion` | not run |
+| F29 | Power loss in each component phase | T (and C) (G6.10) | H `TestPowerLossInEachComponentPhase`, `TestCrashSweepComponentTransaction`, `TestCrashSweepRecoverComponentPhases`, `TestCrashSweepStageWithAComponentSet`, and one test per row: `TestComponentRowC1UnreferencedSet`, `TestComponentRowC2IntentBeforeTheSwitch`, `TestComponentRowsC3C4ActiveSwitched`, `TestComponentRowC5VerifiedNotCommitted`, `TestComponentRowC6CommittedBeforeTheRelease`, `TestSocketRestartPending` (c7), `TestComponentRowC8RollingBack`, `TestComponentRowC9Leftovers` | not run |
+| F30 | Damaged previous component copy | C, T (G6.10) | H `TestDamagedKnownGoodSet`, `TestKnownGoodRecord`, `TestKnownGoodDigestEncoding`, `TestComponentsDamaged` (the comparison side) | not run |
+| F31 | Components first, release then fails | T (G6.10); the logic: C | H `TestReleaseFailsAfterTheComponentsCommitted`, `TestCrashSweepComponentsThenReleaseFails`; U `TestReleaseRolledBackAfterTheComponentsFlowWithTheFakeHelper` | not run |
+| F32 | Missing component confirmation | C (G6.10) | H `TestMissingComponentConfirmation`, `TestComponentsConfirmedRule`, `TestServiceUnitDifferenceAlone`; U `TestComponentUpdatePausesForTheSecondConfirmation` | not run |
 
 ## Closeout evidence
 
@@ -154,7 +207,7 @@ What the G6 closeout must contain for the base update (U13, U12), in addition to
 - when the finishing audit entry is written (open condition C3);
 - a list of what was not run.
 
-The replacement of components (F24 to F32) belongs to G6.10. Step a of G6.10 added the unit lint with class C tests (F25); nothing of it ran on a device.
+The replacement of components (F24 to F32) belongs to G6.10. Step a added the unit lint and step b the component transaction, both with class C tests; nothing of them ran on a device. Before the first release that carries the code, the assumption of D1 must be observed on the device: the helper can read its own executable image under its sandbox (A15, A16.4).
 
 ## How the device evidence is produced
 
@@ -261,6 +314,6 @@ The device test kit stopped several times on its own checks. These are the "ABWE
 ### What was not run, and what is not verified
 
 - F13 and the parts marked "C only" in the matrix: the audit entry of F1, the cut download and the `.part` file of F4, the fake `403` with a reset header of F18, and the GUI text "start again" of F22.
-- F24 to F32 belong to G6.10. The unit lint of step a (F25) has class C tests only; it did not run on a device.
+- F24 to F32 belong to G6.10. The unit lint of step a and the component transaction of step b have class C tests only; they did not run on a device. Not verified in particular: the read of the helper's own executable image under the unit sandbox, the restart of the real units after exit code 75, `daemon-reload` from the helper and from the recover unit, and the effect of a changed recover unit at the next boot.
 - Not verified: screen reader use, other boards and models, Ubuntu, behaviour over many days, four simultaneous clients.
 - Nothing is Verified for this device or for any feature. G6 stays open until G6.10.

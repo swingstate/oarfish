@@ -228,6 +228,20 @@ The unit lint (ADR 0010 U15 rule 3 and amendment A15, [`UPDATE.md`](UPDATE.md#wh
 - Fuzz: `go test -run '^$' -fuzz '^FuzzUnitLint$' -fuzztime 60s ./cmd/oarfish-update-helper`. The seeds are the units of `install/` and one mutation per rule; the target checks that the lint does not panic, is deterministic, gives only reasons of the closed set, and that an accepted text has the properties the rules promise. It is in the helper list of `make fuzz` and of the CI fuzz step.
 - A new reason goes into the constants and into `lintReasons` in `unitlint.go` and into ADR 0010 A15.3. No reason and no part of a unit text may reach an answer.
 
+## The component transaction and its tests (Gate G6, step G6.10b)
+
+The component transaction (ADR 0010 U15 rule 4 and amendment A16, [`ARCHITECTURE.md`](ARCHITECTURE.md#the-component-transaction-gate-g6-step-g610b), [`UPDATE.md`](UPDATE.md#the-steps-of-an-update-with-components)) is `components.go` (the links, the set digest, the hand-over, the self-check, the rollback and the recovery of the component phases) plus the changes in `stage.go`, `compare.go`, `txn.go`, `recover.go`, `cleanup.go` and `main.go`. It is privileged code. **None of it has run on a device; the tests use the fake root and a fake systemd, and what they prove is the order of the writes and calls and the invariant of U7, not the behaviour of systemd.** From `backend/`:
+
+- `go test -race -count=1 ./cmd/oarfish-update-helper` runs everything; with the sweeps of this step it takes about two minutes under `-race` on a Mac. For a higher `-count`, raise `-timeout` above the default of 10 minutes.
+- **The process boundary.** The transaction runs in two processes of the helper: the one that receives `activate` ends with exit code 75, and systemd starts the binary that `components/active` names. `componentenv_test.go` has `supervisor`, which plays that part of systemd: `process(link)` is a new `handler` whose own executable image (`handler.selfImage`, the seam for `/proc/self/exe`) is the helper file that the link names at that instant; `settle` starts the service again while the last process ended with 75; `serveStart` runs the recover unit (`recover(true)`, the known-good image, `onFailure` set) when the active image is one of `crash`; `reboot` is the recover unit and then the first start of `serve`; `mutate` changes a new process (another key id, another protocol range, another image). `countRestart` fails a test at the third restart within 10 s of the fake uptime, the start limit of the helper service (A1). `tenv.newHandler` builds a process; the fakes, the fault gate and the file system wrapper are copied from the last process, so a fault outlives the process that hit it.
+- `fakeSystemd` (`txnenv_test.go`) answers `daemon-reload` and `reset-failed oarfish-update-helper.service`; both are numbered calls of the fault gate, and `reloadFail` fails the n-th reload. `acting()` lists the calls without `show`.
+- `components_test.go`: the success path with the exact order of the `systemctl` calls and of the journal lines (`TestComponentTransactionSuccess`), the write-ahead order and the write targets (`TestComponentWriteAheadOrder`), the retention, the confirmation (D6), `oarfish.service` alone, `stage` with a set and its refusals, the second lint at `activate`, the reference hash (E2), the self-check with one case per reason, the failed first start with its two restarts, a helper that does not start, the release that fails behind committed components, the socket flag (D4), one test per row c1 to c9, the hand-over on a real socket (`TestHandOverExitsAfterTheAnswer`) and the retry of a start-up recovery that found the lock held. [`UPDATE.md`](UPDATE.md#failure-matrix-f1-to-f32) maps the rows F24 and F26 to F32 to the test names.
+- `componentsweep_test.go` is the crash sweep across the process boundary. A scenario runs once to count the numbered calls of every process that takes part; then, for every k, once with "error at k" and once with "stop at k". After each run `checkComponentDisk` checks the invariant of U7 with the component part (`current` names a complete release, both component links name complete sets, no release or component directory under a version name is incomplete). Then the next start runs (a reboot after "stop", the next start of `serve` after "error") and `checkSettled` requires a final state: both links on one set, `current` on the new version only after a committed update, the reference hash of the set that is known-good, nothing left behind; and a second recovery that changes nothing. Scenarios: the whole transaction, the rollback by the new helper, a release that fails behind committed components, a new helper that does not start, the recover unit from each component phase, and `stage` with a component set (through `sweepCrashes` of `crash_test.go`).
+- `compat_test.go`: `status` for every `v`, and the state round trip. `oldDecodeState` is the decoder of the code before this step, with a **copy** of its member lists; it must read a state of this step, and this decoder must read `oldStateFile`. A new state member is added to `fullState` (`state_test.go`), to the list in `TestStateRoundTripWithThePreviousDecoder` and to ADR 0010; it must be additive, and it must not differ from an old name only in letter case.
+- The service: `internal/updater/components_test.go` runs the whole flow against the fake helper (stage with components, the pause, the second confirmation, activate, the restart of the helper, the restart of the service, the finished result), the flow that ends in `components_rolled_back`, the one of F31, and a request that waits on the socket while no process accepts.
+- A new reason of `components_rolled_back` goes into `componentRollbackReasons` (`state.go`) and into ADR 0010 A16.2; the set is closed.
+- A change to this code should be tried against the tests by hand first: break it on purpose (skip the write of `c_switched`, switch `known-good` before `c_verified`, skip a directory `fsync`, hand over before the reload, drop one condition of the self-check, do not hand back) and check that a test fails. The two defects that the sweep found while this step was written (a release continued after its directory was removed by an interrupted abort; a staged set left behind by the staging recovery) are covered by `TestCrashSweepRecoverComponentPhases` and `TestCrashSweepStageWithAComponentSet`.
+
 ## The test build of the update helper (class T, Gate G6, step G6.9)
 
 The evidence class T of ADR 0010 U13 (D-C56) uses a test build of the helper on the reference device. It differs from the release build in two ways only: the embedded public key (`backend/internal/trustkey/oarfish-release.pub` replaced by a throwaway key, in a copy of the tree, never in the repository) and the build tag `faulthooks`:
@@ -236,16 +250,52 @@ The evidence class T of ADR 0010 U13 (D-C56) uses a test build of the helper on 
 cd backend && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -buildvcs=false -tags faulthooks -ldflags "-s -w" -o ../bin/test-helper ./cmd/oarfish-update-helper
 ```
 
-With the tag, `faults_on.go` numbers every mutating file system call (write, `fsync`, directory sync, link, rename, removal, mkdir, chmod) and every `systemctl` call of the process, counted from its start. Two environment variables select a fault; without `OARFISH_FAULT_AT` nothing happens:
+With the tag, `faults_on.go` numbers every mutating file system call (write, `fsync`, directory sync, link, rename, removal, mkdir, chmod) and every `systemctl` call of the process, counted from its start. Three environment variables select a fault; without `OARFISH_FAULT_AT` nothing happens:
 
 | Variable | Meaning |
 |---|---|
 | `OARFISH_FAULT_AT` | the number of the call (from 1) |
 | `OARFISH_FAULT_MODE` | `error`: the call fails and does nothing, every other call runs (also any unknown value). `stop`: the process kills itself with `SIGKILL` before the call, which is what a power loss looks like to the files. `hold`: the call never returns; one line on standard error (the journal) names the call (`fault hook: holding at call N (kind)`), the rest of the process keeps running, and power can be removed at a known point. A held helper keeps its transaction, so it does not exit on its idle timer; `RuntimeMaxSec=900` of the unit ends it after 15 minutes. |
+| `OARFISH_FAULT_PROC` | (since G6.10 step b) the process the fault applies to, as `<subcommand>:<phase>`: the subcommand is `serve` or `recover`, the phase is the one `state.json` named when the process started (any phase name; `invalid` for an unusable file; for `serve` also `locked` when the lock was held at its start, and `unknown`). Every process counts its own calls from 1; a process that is not named counts and is left alone. Without the variable the fault applies to every process, as before. |
 
-On the device the variables are given to the helper service by a runtime drop-in below `/run/systemd/system/oarfish-update-helper.service.d/`, which is gone after a reboot or a power loss. The device session reads the helper's journal line and `state.json` to confirm the phase that was hit before power is removed.
+**The processes of a component transaction, and their call numbers.** A component transaction runs in two processes of the helper, and a failed one in a third:
 
-**Why a release build must not contain the hooks.** An environment variable must never be able to make the production helper fail, stop or hang in the middle of a transaction, and the release helper's bytes are compared on every device (A13). `faults_off.go` (the default, no tag) turns every hook into a no-op that the compiler removes. `TestReleaseBuildHasNoFaultHooks` and `scripts/check-helper-hooks.sh` (part of `make check-helper` and CI) build the helper without and with the tag. They fail unless the release binary contains none of the hook strings (`OARFISH_FAULT_AT`, `OARFISH_FAULT_MODE`, `injected fault`) and the hooked binary contains all of them, so that the check itself can fail. Test releases for class T are signed with a throwaway key and never published; a test copy of `install.sh` (`scripts/make-test-installer.sh` plus the device session's own changes) installs them. Class T is never presented as evidence about the production key path.
+| `OARFISH_FAULT_PROC` | The process |
+|---|---|
+| `serve:staged` | the helper that receives `activate`, when it was started for that request (the helper has exited on its 30 s idle timer since `stage`). A helper that received `stage` and `activate` in one process is `serve:idle`, and its counter includes the calls of `stage` |
+| `serve:c_switched` | the new helper at its first start (the self-check, the commit of the components, the release phases) |
+| `recover:c_switched` | the recover unit that finds the new set active: at boot after a power loss, or started by `OnFailure=` when the new helper failed |
+
+A journal line `phase=<name>` is written when the state write of that phase is complete (five calls: create, write, `fsync`, rename, directory `fsync`), so the action that the phase announces starts with the next call. The numbers below are the calls of a process that started in the named phase, for a release whose helper binary differs, with a service that is healthy at every poll (each `systemctl show` is a numbered call, so a slow service moves the numbers after the first poll), without an older component set to prune and without a difference of `oarfish.service`. `TestFaultHooksCallNumbersOfTheComponentTransaction` (test build) fails when they change.
+
+| Process | Calls | What they are |
+|---|---|---|
+| `serve:staged` | 1 to 2 | the pre-check (`systemctl show`, two polls) |
+| | 3 to 7 | the write of `c_switching` (the journal line follows call 7) |
+| | 8 to 10 | the switch of `components/active`: link, rename, directory `fsync` (`hold` or `stop` at 8: F29 "at `c_switching`"; at 10 or 11: "after the link switch") |
+| | 11 to 15 | the write of `c_switched` |
+| | 16 | `daemon-reload`; the process then ends with exit code 75 |
+| `serve:c_switched` | (none) | the self-check reads only |
+| | 1 to 5 | the write of `c_verified` (`hold` or `stop` at 1: F29 "in the new helper's first start") |
+| | 6 to 8 | the switch of `components/known-good` (at 6: before it; at 9: after it, F29 "around the known-good switch") |
+| | 9 | `daemon-reload` (D2) |
+| | 10 to 14 | the write of `c_committed` |
+| | 15 | `systemctl show` (MainPID and NRestarts, E3) |
+| | 16 to 20 | the write of `switching` |
+| | 21 to 23 | the switch of `current` |
+| | 24 to 28 | the write of `verifying` |
+| | 29 | `systemctl restart oarfish.service` |
+| | 30 to 40 | the health polls |
+| | 41 to 45 | the write of `committed`; 46 to 50 the write of `idle` |
+| `recover:c_switched` | 1 to 5 | the write of `c_rolling_back` |
+| | 6 to 8 | the switch of `components/active` back to the known-good set |
+| | 9 | `daemon-reload`; when `OnFailure=` started the unit, 10 is `reset-failed oarfish-update-helper.service` and the following numbers are one higher |
+| | 10 to 13 | the removal of the staged release and of the failed set (two calls each) |
+| | 14 to 18 | the write of the result `components_rolled_back` |
+
+On the device the variables are given to the helper service by a runtime drop-in below `/run/systemd/system/oarfish-update-helper.service.d/`, which is gone after a reboot or a power loss. A fault in the recover unit needs the same drop-in for `oarfish-update-recover.service`. The device session reads the helper's journal line and `state.json` to confirm the phase that was hit before power is removed.
+
+**Why a release build must not contain the hooks.** An environment variable must never be able to make the production helper fail, stop or hang in the middle of a transaction, and the release helper's bytes are compared on every device (A13). `faults_off.go` (the default, no tag) turns every hook into a no-op that the compiler removes. `TestReleaseBuildHasNoFaultHooks` and `scripts/check-helper-hooks.sh` (part of `make check-helper` and CI) build the helper without and with the tag. They fail unless the release binary contains none of the hook strings (`OARFISH_FAULT_AT`, `OARFISH_FAULT_MODE`, `OARFISH_FAULT_PROC`, `injected fault`) and the hooked binary contains all of them, so that the check itself can fail. Test releases for class T are signed with a throwaway key and never published; a test copy of `install.sh` (`scripts/make-test-installer.sh` plus the device session's own changes) installs them. Class T is never presented as evidence about the production key path.
 
 ## Update page and its scenario mode (Gate G6, step G6.8)
 
