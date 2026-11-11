@@ -11,7 +11,9 @@ import (
 // it at boot, before oarfish.service starts (modeBoot, only a link switch);
 // serve runs it at start when it finds a transaction that nobody owns (modeLive,
 // the full procedure of U6). Both hold the lock on the state directory. The
-// component phases follow the table of U15 rule 4 (components.go).
+// component phases follow the table of U15 rule 4 (components.go). When
+// OnFailure= of the helper service started the recover subcommand, the service
+// may be running, so the release phases are left to the next serve start (E6).
 
 // recoverBoot is the recover subcommand. Exit status: 0 when the disk is
 // consistent after it (also after a rollback), 1 when it could not finish or
@@ -39,7 +41,7 @@ func (h *handler) recoverBoot(stderr io.Writer) int {
 		fmt.Fprintln(stderr, "oarfish-update-helper: recovery did not finish: "+errorTexts[code])
 		return 1
 	}
-	if r.st != nil && r.st.Txn.Phase == phaseRollbackFailed {
+	if r.st != nil && r.st.Txn.Phase == phaseRollbackFailed && !r.deferred {
 		fmt.Fprintln(stderr, "oarfish-update-helper: a rollback failed; the installed version needs attention")
 		return 1
 	}
@@ -159,6 +161,13 @@ func (r *txnRun) recoverAll() errorCode {
 	return ""
 }
 
+// releasePhases are the phases of a release transaction that the recover unit
+// leaves to the next serve start when OnFailure= started it (E6).
+var releasePhases = map[string]bool{
+	phaseSwitching: true, phaseVerifying: true, phaseCommitted: true,
+	phaseRollingBack: true, phaseRollbackFailed: true, phaseRolledBack: true,
+}
+
 func (r *txnRun) recoverPhase() errorCode {
 	e := r.e
 	st, err := e.loadState()
@@ -168,6 +177,15 @@ func (r *txnRun) recoverPhase() errorCode {
 	r.st = st
 	installed := installedVersion(r.h.root)
 	t := st.Txn
+	if r.h.onFailure && releasePhases[t.Phase] {
+		// E6: started by OnFailure=, while oarfish.service may be running. A
+		// switch of current without a restart would leave a service whose
+		// binary current no longer names, and this unit cannot restart it (it
+		// is ordered before the service). The next serve start recovers the
+		// release with the full procedure of U6.
+		r.deferred = true
+		return ""
+	}
 	switch t.Phase {
 	case phaseIdle:
 		if err := e.sweep(); err != nil {
@@ -292,9 +310,13 @@ func (r *txnRun) afterRollback() errorCode {
 // needs a person. At boot it is looked at again: when current names from and
 // the old binary still has the recorded hash, the transaction ends (the
 // attention flag stays until the result is acknowledged); a running helper
-// leaves it alone.
+// leaves it alone. A component rollback that found known-good damaged (E5)
+// left an unproven set active, so it stays in either mode until a person acts.
 func (r *txnRun) recoverRollbackFailed(installed string) errorCode {
 	t := r.st.Txn
+	if r.st.Last != nil && r.st.Last.ReasonCode == reasonKnownGoodDamaged {
+		return ""
+	}
 	if r.st.Last != nil && (r.st.Last.ReasonCode == reasonSwitchFailed || r.st.Last.ReasonCode == reasonRestartFailed) &&
 		(installed == t.From || installed == t.To) {
 		reason := r.st.Last.ReasonCode
@@ -339,9 +361,22 @@ func (r *txnRun) rebuild() errorCode {
 	installed := installedVersion(r.h.root)
 	// An unproven component set that is active without a readable state goes
 	// back to known-good (U15 rule 4: only a set that proved itself stays).
-	unproven, code := r.rollbackUnprovenSet()
+	unproven, damaged, code := r.rollbackUnprovenSet()
 	if code != "" {
 		return code
+	}
+	if damaged {
+		// E5: active stays where it is. The rebuilt state holds the failed
+		// rollback as a transaction, so that it stays until a person acts.
+		st.Txn.ID, st.Txn.Phase, st.Txn.To, st.Txn.From = id, phaseRollbackFailed, unproven, installed
+		st.Last.Outcome, st.Last.ReasonCode, st.Last.To, st.Last.From = outcomeRollbackFailed, reasonKnownGoodDamaged, unproven, installed
+		r.st = st
+		r.setCooldown()
+		if err := e.saveState(st); err != nil {
+			return codeIOError
+		}
+		r.h.log(phaseRollbackFailed, unproven, installed, "", reasonKnownGoodDamaged)
+		return ""
 	}
 	if unproven != "" {
 		st.Last.Outcome, st.Last.ReasonCode, st.Last.To, st.Last.From = outcomeComponentsRolledBack, reasonStateUnreadable, unproven, installed

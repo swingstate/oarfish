@@ -53,6 +53,9 @@ type txnRun struct {
 	// activated: the new version may have been started. It decides between the
 	// results rolled_back and aborted.
 	activated bool
+	// deferred: the recover unit started by OnFailure= left a release phase to
+	// the next serve start (E6).
+	deferred bool
 }
 
 func (r *txnRun) log(phase, result string) {

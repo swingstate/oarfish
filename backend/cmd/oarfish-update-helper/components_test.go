@@ -688,32 +688,101 @@ func TestDamagedKnownGoodSet(t *testing.T) {
 		wantErrCode(t, v.stage(newVersion), codeComponentsDamaged)
 		v.wantClean()
 	})
-	t.Run("at recovery: rollback_failed and needs_attention (row c8)", func(t *testing.T) {
-		v, s := newComponentEnv(t)
-		wantOK(t, v.confirm(newVersion))
-		damage(v) // after c_switching, before the rollback compares
-		if code := s.recover(false); code != 1 {
-			t.Fatalf("exit %d, want 1", code)
+	// E5: a damaged rollback target is never switched to. The set differs from
+	// its reference (damage) or cannot be read (unreadable).
+	unreadable := func(v *tenv) {
+		if err := os.Remove(filepath.Join(v.root, "components", "1.0.0", unitRecover)); err != nil {
+			v.t.Fatal(err)
 		}
-		st, _ := v.readState()
-		if st.Txn.Phase != phaseRollbackFailed || !st.NeedsAttention || st.Last.Outcome != outcomeRollbackFailed || st.Last.ReasonCode != reasonKnownGoodDamaged {
-			t.Fatalf("state %+v last %+v", st.Txn, st.Last)
-		}
-		if v.link(linkActive) != "1.0.0" || v.current() != "1.0.0" {
-			t.Fatalf("active %s current %s", v.link(linkActive), v.current())
-		}
-		if s := v.status(); !s.NeedsAttention {
-			t.Fatal("status does not report needs_attention")
-		}
-		// The next boot ends the transaction; the attention flag stays.
-		if code := s.recover(false); code != 0 {
-			t.Fatalf("second recovery: exit %d", code)
-		}
-		st, _ = v.readState()
-		if st.Txn.Phase != phaseIdle || !st.NeedsAttention {
-			t.Fatalf("after the next boot: %+v", st)
-		}
-	})
+	}
+	for name, spoil := range map[string]func(v *tenv){"differs": damage, "cannot be read": unreadable} {
+		t.Run("row c8, the set "+name+": active stays, rollback_failed, nothing else", func(t *testing.T) {
+			for _, onFailure := range []bool{false, true} {
+				v, s := atPhase(t, phaseCRollingBack, newVersion, "1.0.0")
+				spoil(v)
+				v.sd.calls = nil
+				before := snapshot(t, v.root)
+				if code := s.recover(onFailure); code != 1 {
+					t.Fatalf("exit %d, want 1", code)
+				}
+				wantKnownGoodDamaged(t, v, s, before)
+			}
+		})
+		t.Run("the self-check fails, the set "+name, func(t *testing.T) {
+			v, s := newComponentEnv(t)
+			s.mutate = func(h *handler, image string) {
+				if isNewImage(image) {
+					h.keyID = otherKeyID
+				}
+			}
+			wantOK(t, v.confirm(newVersion)) // the old helper hands over
+			spoil(v)
+			v.sd.calls = nil
+			before := snapshot(t, v.root)
+			s.settle()
+			// The new helper is the binary active names: no hand-back.
+			if len(s.restartAt) != 1 || v.h.exit.Load() != 0 {
+				t.Fatalf("restarts %v exit %d", s.restartAt, v.h.exit.Load())
+			}
+			wantKnownGoodDamaged(t, v, s, before)
+		})
+		t.Run("P11, state.json unreadable, the set "+name, func(t *testing.T) {
+			v, s := atPhase(t, phaseCSwitched, newVersion, "1.0.0")
+			spoil(v)
+			os.WriteFile(filepath.Join(v.stateDir, stateFile), []byte("{ not json"), 0o600)
+			v.sd.calls = nil
+			before := snapshot(t, v.root)
+			code := s.recover(false)
+			if name == "differs" {
+				// The reference was in the lost state: nothing to compare with
+				// (P1), so the readable set is switched to, as before.
+				if code != 0 || v.link(linkActive) != "1.0.0" {
+					t.Fatalf("exit %d active %s", code, v.link(linkActive))
+				}
+				return
+			}
+			if code != 1 {
+				t.Fatalf("exit %d, want 1", code)
+			}
+			st, _ := v.readState()
+			if st.Txn.To != newVersion || st.Txn.From != "1.0.0" || st.Last.To != newVersion || st.Cool.RefuseVersion != newVersion {
+				t.Fatalf("rebuilt state %+v last %+v", st.Txn, st.Last)
+			}
+			wantKnownGoodDamaged(t, v, s, before)
+		})
+	}
+}
+
+// wantKnownGoodDamaged: the rollback of the components found known-good
+// damaged (E5). active was not switched, no systemctl call ran, nothing below
+// the tree changed, and the transaction is rollback_failed with
+// needs_attention. The next boot and the next serve start keep it.
+func wantKnownGoodDamaged(t *testing.T, v *tenv, s *supervisor, before map[string]string) {
+	t.Helper()
+	st, _ := v.readState()
+	if st.Txn.Phase != phaseRollbackFailed || !st.NeedsAttention || st.Last.Outcome != outcomeRollbackFailed || st.Last.ReasonCode != reasonKnownGoodDamaged {
+		t.Fatalf("state %+v last %+v", st.Txn, st.Last)
+	}
+	if d := diffSnapshots(before, snapshot(t, v.root)); len(d) != 0 || v.link(linkActive) != newVersion || v.current() != "1.0.0" {
+		t.Fatalf("active %s current %s, changed %v", v.link(linkActive), v.current(), d)
+	}
+	if got := v.sd.acting(); len(got) != 0 {
+		t.Fatalf("systemctl calls %v, want none", got)
+	}
+	if sr := v.status(); !sr.NeedsAttention || sr.Phase != phaseRollbackFailed {
+		t.Fatalf("status %+v", sr)
+	}
+	if line := journalLines(v); line[len(line)-1] != "phase=rollback_failed to=1.1.0 from=1.0.0 cid="+st.Txn.CorrelationID+" result=known_good_damaged" {
+		t.Fatalf("journal:\n%s", strings.Join(line, "\n"))
+	}
+	saved, _ := os.ReadFile(filepath.Join(v.stateDir, stateFile))
+	if code := s.recover(false); code != 1 {
+		t.Fatalf("next boot: exit %d, want 1", code)
+	}
+	s.nextStart()
+	if after, _ := os.ReadFile(filepath.Join(v.stateDir, stateFile)); string(after) != string(saved) || v.link(linkActive) != newVersion {
+		t.Fatalf("the next boot or serve start changed the failed rollback:\n%s\n%s", saved, after)
+	}
 }
 
 // The self-check of the new helper (D1, rules 5 and 6): each failed condition

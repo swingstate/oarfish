@@ -379,11 +379,14 @@ func (r *txnRun) releasePhases() {
 // ---- rollback and recovery -----------------------------------------------------
 
 // rollbackComponents is the rollback of the components (U15 rule 4, failure
-// handling and row c8): write the intent, make active name what known-good
-// names, daemon-reload, compare known-good with the reference hash, and end the
-// transaction with components_rolled_back. The release was never activated, so
-// its directory and the new set are removed. In a serve process the helper then
-// hands back when it is not the binary that active names.
+// handling and row c8): write the intent, compare known-good with the reference
+// hash, make active name what known-good names, daemon-reload, and end the
+// transaction with components_rolled_back. A damaged rollback target is never
+// switched to (E5): when the set differs or cannot be read, the transaction
+// ends in rollback_failed and nothing else is touched, not even daemon-reload.
+// The release was never activated, so its directory and the new set are
+// removed. In a serve process the helper then hands back when it is not the
+// binary that active names.
 func (r *txnRun) rollbackComponents(reason string) errorCode {
 	h, e := r.h, r.e
 	if r.st.Txn.Phase == phaseCRollingBack {
@@ -400,8 +403,11 @@ func (r *txnRun) rollbackComponents(reason string) errorCode {
 		r.log(phaseCRollingBack, "ok")
 	}
 	t := r.st.Txn
+	// E5: the target is compared before active may name it (P1: only when the
+	// reference names the set that known-good names; an unreadable link or set
+	// counts as damaged).
 	k := e.linkID(linkKnownGood)
-	if k == "" {
+	if ok, _ := e.knownGood(r.st, false); k == "" || !ok {
 		r.rollbackFailed(reasonKnownGoodDamaged)
 		return ""
 	}
@@ -413,10 +419,6 @@ func (r *txnRun) rollbackComponents(reason string) errorCode {
 	h.systemctl(sysDaemonReload...)
 	if h.onFailure {
 		h.systemctl(sysResetFailedHelper...)
-	}
-	if ok, _ := e.knownGood(r.st, false); !ok {
-		r.rollbackFailed(reasonKnownGoodDamaged)
-		return ""
 	}
 	// The release was never activated and its set failed: both go. Nothing else
 	// is pruned after a rollback (U5).
@@ -545,18 +547,24 @@ func (r *txnRun) abortRelease(installed string) errorCode {
 // concerns the components: when active and known-good name different sets, an
 // unproven set is active and nothing says why, so active goes back to
 // known-good (U7: the disk is the truth). It returns the set that was active.
-func (r *txnRun) rollbackUnprovenSet() (string, errorCode) {
+// The reference hash was in the state that is lost, so only a known-good set
+// that cannot be read stops the switch (E5): then damaged is true and nothing
+// is touched, not even daemon-reload.
+func (r *txnRun) rollbackUnprovenSet() (unproven string, damaged bool, code errorCode) {
 	e := r.e
 	a, k := e.linkID(linkActive), e.linkID(linkKnownGood)
 	if a == "" || k == "" || a == k {
-		return "", ""
+		return "", false, ""
+	}
+	if _, err := e.setDigests(componentPath(k)); err != nil {
+		return a, true, ""
 	}
 	if err := e.switchComponentLink(linkActive, k); err != nil {
-		return "", codeIOError
+		return "", false, codeIOError
 	}
 	r.h.systemctl(sysDaemonReload...)
 	if r.h.onFailure {
 		r.h.systemctl(sysResetFailedHelper...)
 	}
-	return a, ""
+	return a, false, ""
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -323,6 +324,119 @@ func TestRecoverRollbackFailed(t *testing.T) {
 		v.recoverLive()
 		if v.phase() != phaseRollbackFailed {
 			t.Fatal("a running helper cleared a failed rollback")
+		}
+	})
+}
+
+// E6: the recover unit started by OnFailure= (MONITOR_UNIT) leaves every
+// release phase as it is and exits 0, because oarfish.service may be running
+// and a switch of current without a restart would leave it running a binary
+// that current no longer names. The next serve start rolls back with a
+// restart; at boot (no MONITOR_UNIT) the link-only rule is unchanged.
+func TestRecoverStartedByOnFailureLeavesReleasePhases(t *testing.T) {
+	type tc struct {
+		phase   string
+		current string
+		last    *lastResult
+		// after the next serve start
+		wantPhase, wantOutcome, wantCurrent string
+		wantRestarts                        int
+	}
+	failed := &lastResult{TransactionID: "00000000000000c1", To: "1.1.0", From: "1.0.0", Outcome: outcomeRollbackFailed, ReasonCode: reasonSwitchFailed}
+	success := &lastResult{TransactionID: "00000000000000c1", To: "1.1.0", From: "1.0.0", Outcome: outcomeSuccess}
+	for _, c := range []tc{
+		{phaseSwitching, "1.1.0", nil, phaseIdle, outcomeRolledBack, "1.0.0", 1},
+		{phaseVerifying, "1.1.0", nil, phaseIdle, outcomeRolledBack, "1.0.0", 1},
+		{phaseRollingBack, "1.1.0", nil, phaseIdle, outcomeRolledBack, "1.0.0", 1},
+		{phaseRollbackFailed, "1.1.0", failed, phaseIdle, outcomeRolledBack, "1.0.0", 1},
+		{phaseCommitted, "1.1.0", success, phaseIdle, outcomeSuccess, "1.1.0", 0},
+		{phaseRolledBack, "1.0.0", nil, phaseIdle, "", "1.0.0", 0},
+	} {
+		t.Run(c.phase, func(t *testing.T) {
+			v := newActiveEnv(t)
+			v.sd.running = c.current
+			v.crashedAt(c.phase)
+			if c.last != nil {
+				st, _ := v.readState()
+				st.Last = c.last
+				v.writeState(st)
+			}
+			v.pointCurrent(c.current)
+			v.sd.calls = nil
+			beforeTree, beforeState := snapshot(t, v.root), snapshot(t, v.stateDir)
+
+			v.h.onFailure = true
+			if code := v.recoverBoot(); code != 0 {
+				t.Fatalf("exit %d, want 0", code)
+			}
+			if d := diffSnapshots(beforeTree, snapshot(t, v.root)); len(d) != 0 {
+				t.Fatalf("the tree changed: %v", d)
+			}
+			if d := diffSnapshots(beforeState, snapshot(t, v.stateDir)); len(d) != 0 {
+				t.Fatalf("the state changed: %v", d)
+			}
+			if len(v.sd.Calls()) != 0 || v.current() != c.current {
+				t.Fatalf("systemctl %v current %s", v.sd.Calls(), v.current())
+			}
+
+			// The next serve start: the full procedure of U6.
+			old := v.h
+			v.h = v.newHandler(linkActive)
+			v.h.sysrun, v.h.healthGet, v.h.sleep = old.sysrun, old.healthGet, old.sleep
+			v.recoverLive()
+			st, _ := v.readState()
+			if st.Txn.Phase != c.wantPhase || v.current() != c.wantCurrent || v.sd.count("restart") != c.wantRestarts {
+				t.Fatalf("after serve: phase %s current %s restarts %d", st.Txn.Phase, v.current(), v.sd.count("restart"))
+			}
+			if c.wantOutcome != "" && (st.Last == nil || st.Last.Outcome != c.wantOutcome) {
+				t.Fatalf("after serve: last %+v", st.Last)
+			}
+		})
+	}
+	t.Run("a component phase is handled as before", func(t *testing.T) {
+		v := newActiveEnv(t)
+		v.crashedAt(phaseCRollingBack)
+		st, _ := v.readState()
+		st.Txn.ComponentsTo, st.Txn.ComponentsFrom = "1.0.0", "1.0.0"
+		v.writeState(st)
+		v.h.onFailure = true
+		if code := v.recoverBoot(); code != 0 {
+			t.Fatalf("exit %d", code)
+		}
+		v.wantIdleWith(outcomeComponentsRolledBack, reasonInterrupted)
+	})
+	t.Run("without MONITOR_UNIT the boot rule is unchanged", func(t *testing.T) {
+		v := newActiveEnv(t)
+		v.sd.running = "1.1.0"
+		v.crashedAt(phaseVerifying)
+		v.pointCurrent("1.1.0")
+		v.sd.calls = nil
+		if code := v.recoverBoot(); code != 0 {
+			t.Fatalf("exit %d", code)
+		}
+		v.wantIdleWith(outcomeRolledBack, reasonInterrupted)
+		if v.current() != "1.0.0" || v.sd.count("restart") != 0 {
+			t.Fatalf("current %s restarts %d", v.current(), v.sd.count("restart"))
+		}
+	})
+	t.Run("recoverMain reads MONITOR_UNIT", func(t *testing.T) {
+		v := newActiveEnv(t)
+		v.crashedAt(phaseVerifying)
+		v.pointCurrent("1.1.0")
+		before := snapshot(t, v.stateDir)
+		o := testOptions(v.root)
+		o.stateDir, o.cacheDir, o.journal = v.stateDir, v.cacheDir, v.journal
+		o.getenv = func(k string) string {
+			if k == monitorUnitVar {
+				return helperUnit
+			}
+			return ""
+		}
+		if code := recoverMain(io.Discard, o); code != 0 || v.current() != "1.1.0" {
+			t.Fatalf("exit %d current %s", code, v.current())
+		}
+		if d := diffSnapshots(before, snapshot(t, v.stateDir)); len(d) != 0 {
+			t.Fatalf("the state changed: %v", d)
 		}
 	})
 }
