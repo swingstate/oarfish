@@ -5,12 +5,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"time"
 )
 
 // The release transaction of ADR 0010 U5, U6 and U7: switching, verifying,
-// committed, rolling_back and the results rolled_back and rollback_failed.
+// committed, rolling_back and the results rolled_back and rollback_failed. The
+// component phases that may sit in front of it are in components.go.
 //
 // Every phase is written to state.json (atomic replace, fsync) before the
 // action it announces, so that a crash always leaves a state that names what
@@ -67,8 +69,9 @@ func (r *txnRun) release() {
 // ---- activate ---------------------------------------------------------------
 
 // activate answers the request `activate` (U2): it checks everything that can
-// be refused synchronously, writes the intent `switching` and answers
-// "accepted"; the transaction then continues in the helper without the caller.
+// be refused synchronously, writes the intent (`switching`, or `c_switching`
+// when a component set is staged) and answers "accepted"; the transaction then
+// continues in the helper without the caller.
 func (h *handler) activate(req request) []byte {
 	lk, code := h.lockState()
 	if code != "" {
@@ -91,7 +94,11 @@ func (h *handler) activate(req request) []byte {
 	}
 	handed = true
 	id := r.st.Txn.ID // the transaction may be over before launch returns
-	h.launch(r.run)
+	if r.st.Txn.Phase == phaseCSwitching {
+		h.launch(r.runComponents)
+	} else {
+		h.launch(r.run)
+	}
 	return encode(activateResponse{V: protocolMax, OK: true, Status: "accepted", TransactionID: id})
 }
 
@@ -130,10 +137,10 @@ func (r *txnRun) admit(req request) errorCode {
 		}
 		return codeStageExpired
 	}
-	// components_confirmed (gap decision): no component difference can be
-	// staged before G6.10, so the flag must be false; a true flag when none
-	// exists is a confused client. When a difference exists it must be true.
-	differs := st.Txn.ComponentsTo != ""
+	// components_confirmed (U2, D6): the second confirmation is required for
+	// any difference, a component set or oarfish.service alone. A true flag
+	// when nothing differs is a confused client.
+	differs := len(st.Txn.Differs) > 0 || st.Txn.ComponentsTo != ""
 	switch {
 	case differs && !req.Confirmed:
 		return codeConfirmationRequired
@@ -146,6 +153,17 @@ func (r *txnRun) admit(req request) errorCode {
 	if st.Cool.LastActivateSetAtUptimeS > 0 &&
 		(cooldownMarker{SetAtUptimeS: st.Cool.LastActivateSetAtUptimeS, UntilUptimeS: st.Cool.LastActivateUptimeS + cooldownAnyS}).active(now) {
 		return codeCooldown
+	}
+	// The unit lint again, and the staged files against what stage recorded.
+	socketChanged, code := r.checkStaged(installed)
+	if code != "" {
+		return code
+	}
+	if st.Txn.ComponentsTo != "" {
+		// E2: the known-good set must be the one that was recorded.
+		if ok, _ := e.knownGood(st, true); !ok {
+			return codeComponentsDamaged
+		}
 	}
 	// The pre-check: the installed version must be healthy now (U6).
 	res, props := h.waitHealthy(healthParams{version: installed, prevPID: -1, baseRestarts: -1,
@@ -169,19 +187,119 @@ func (r *txnRun) admit(req request) errorCode {
 			return codeIOError
 		}
 	}
-	st.Txn = txn{ID: id, Phase: phaseSwitching, To: req.Version, From: installed, FromBinarySHA256: sum,
-		CorrelationID: req.CorrelationID, StagedAtUptimeS: st.Txn.StagedAtUptimeS, SocketRestartPending: st.Txn.SocketRestartPending}
+	// The intent. What stage recorded stays; with a component set the phase is
+	// c_switching and the state gets everything the next process needs (E3):
+	// nothing is carried across the hand-over in memory.
+	t := &st.Txn
+	t.ID, t.Phase, t.From, t.FromBinarySHA256, t.CorrelationID = id, phaseSwitching, installed, sum, req.CorrelationID
+	if t.ComponentsTo != "" {
+		t.Phase = phaseCSwitching
+		t.ComponentsKeyID = h.keyID
+		t.ComponentsProtocolMin, t.ComponentsProtocolMax = int64(h.protoMin), int64(h.protoMax)
+		t.SocketTextChanged = socketChanged
+	}
 	st.Cool.LastActivateUptimeS, st.Cool.LastActivateSetAtUptimeS = max(now, 1), max(now, 1)
 	if err := e.saveState(st); err != nil {
 		return codeIOError
 	}
-	r.log(phaseSwitching, "ok")
+	r.log(t.Phase, "ok")
 	return ""
 }
 
-// run is the transaction after "accepted".
+// checkStaged lints the staged unit files again (U15 rule 3: at stage and
+// again at activate) and compares the staged files with the hashes that stage
+// recorded. Each unit file is read once, and the same bytes are linted and
+// hashed. A rejected or changed file ends the staged release. It reports
+// whether the normalised text of the socket unit changes (D4).
+func (r *txnRun) checkStaged(installed string) (socketChanged bool, code errorCode) {
+	e, t := r.e, r.st.Txn
+	end := func(reason string, code errorCode) (bool, errorCode) {
+		if c := e.endStaged(r.st, installed, reason); c != "" {
+			return false, c
+		}
+		return false, code
+	}
+	lint := func(name, path string) ([]byte, [sha256.Size]byte, errorCode) {
+		text, tooLarge, err := readUnit(e.opt, path)
+		if err != nil {
+			return nil, [sha256.Size]byte{}, codeIOError
+		}
+		res := rejected(lintTooLarge)
+		if !tooLarge {
+			res = lintUnit(name, text)
+		}
+		if !res.Accepted {
+			r.h.logLint(t.To, installed, t.CorrelationID, name, res.Reason)
+			return nil, [sha256.Size]byte{}, codeUnitRejected
+		}
+		return text, sha256.Sum256(text), ""
+	}
+	_, sum, code := lint(unitService, releasePath(t.To)+"/"+unitService)
+	switch {
+	case code == codeUnitRejected:
+		return end(reasonUnitRejected, code)
+	case code != "":
+		return false, code
+	case t.ServiceUnitSHA256 != "" && hex.EncodeToString(sum[:]) != t.ServiceUnitSHA256:
+		return end(reasonStagedChanged, codeChecksumMismatch)
+	}
+	if t.ComponentsTo == "" {
+		return false, ""
+	}
+	if e.linkID(linkActive) != t.ComponentsFrom {
+		// Staged against another active set: as good as expired.
+		return end(reasonStageExpired, codeStageExpired)
+	}
+	dir := componentPath(t.ComponentsTo)
+	var d [4][sha256.Size]byte
+	var socketText []byte
+	var err error
+	if d[0], err = fileDigest(e.opt, dir+"/"+componentNames[0]); err != nil {
+		return false, codeIOError
+	}
+	for i := 1; i < len(d); i++ {
+		text, sum, code := lint(componentNames[i], dir+"/"+componentNames[i])
+		switch {
+		case code == codeUnitRejected:
+			return end(reasonUnitRejected, code)
+		case code != "":
+			return false, code
+		}
+		d[i] = sum
+		if componentNames[i] == unitHelperSocket {
+			socketText = text
+		}
+	}
+	if setDigest(d) != t.ComponentsSetSHA256 || hex.EncodeToString(d[0][:]) != t.ComponentsHelperSHA256 {
+		return end(reasonStagedChanged, codeChecksumMismatch)
+	}
+	old, tooLarge, err := readUnit(e.opt, "components/"+linkActive+"/"+unitHelperSocket)
+	return err != nil || tooLarge || socketTextDiffers(old, socketText), ""
+}
+
+// socketTextDiffers compares the normalised texts of two socket units, the
+// texts the lint compares with the accepted forms (D4): comments, blank lines
+// and the values of Description= and Documentation= do not count. A text that
+// can not be parsed counts as different.
+func socketTextDiffers(a, b []byte) bool {
+	kind := unitKinds[unitHelperSocket]
+	la, ra := parseUnit(kind, a)
+	lb, rb := parseUnit(kind, b)
+	return ra != "" || rb != "" || normalisedUnit(la) != normalisedUnit(lb)
+}
+
+// serviceDiffers: the oarfish.service of the new release differs from the
+// installed one, so systemd must read it again after each switch of current (U6).
+func (r *txnRun) serviceDiffers() bool { return slices.Contains(r.st.Txn.Differs, unitService) }
+
+// run is the transaction after "accepted" when no component set is staged.
 func (r *txnRun) run() {
 	defer r.release()
+	r.runRelease()
+}
+
+// runRelease is the release part of a transaction: the state says switching.
+func (r *txnRun) runRelease() {
 	h, t := r.h, r.st.Txn
 	if err := r.e.switchLink(releasePath(t.To)); err != nil {
 		r.rollback(reasonSwitchFailed)
@@ -196,6 +314,13 @@ func (r *txnRun) run() {
 		return
 	}
 	r.log(phaseVerifying, "ok")
+	if r.serviceDiffers() {
+		// The unit is a link into current: systemd reads the new text (U6).
+		if _, err := h.systemctl(sysDaemonReload...); err != nil {
+			r.rollback(reasonReloadFailed)
+			return
+		}
+	}
 	r.activated = true // the restart may take effect even when it reports an error
 	if _, err := h.systemctl(sysRestart...); err != nil {
 		r.rollback(reasonRestartFailed)
@@ -251,7 +376,7 @@ func (r *txnRun) finishCommitted() errorCode {
 func (r *txnRun) result(outcome, reason string) *lastResult {
 	t := r.st.Txn
 	return &lastResult{TransactionID: t.ID, To: t.To, From: t.From, Outcome: outcome, ReasonCode: reason,
-		CorrelationID: t.CorrelationID, FinishedAt: r.h.wall().UTC().Format(time.RFC3339)}
+		CorrelationID: t.CorrelationID, FinishedAt: r.h.wall().UTC().Format(time.RFC3339), ComponentsUpdated: t.ComponentsUpdated}
 }
 
 // setCooldown refuses the same version for 15 minutes (U6, R1).
@@ -289,6 +414,11 @@ func (r *txnRun) rollback(reason string) {
 	if err := e.switchLink(releasePath(t.From)); err != nil {
 		r.rollbackFailed(reasonSwitchFailed)
 		return
+	}
+	if r.serviceDiffers() {
+		// Again after the switch back (U6), also at boot: the unit that systemd
+		// loaded is the one current named. A failure leaves the loaded text.
+		h.systemctl(sysDaemonReload...)
 	}
 	if r.activated && r.mode == modeLive {
 		h.systemctl(sysResetFailed...) // a failure here does not stop the restart

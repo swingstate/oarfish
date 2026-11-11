@@ -104,6 +104,7 @@ func (e *env) abortedResult(t txn, reason string) *lastResult {
 	return &lastResult{
 		TransactionID: t.ID, To: t.To, From: t.From, Outcome: outcomeAborted, ReasonCode: reason,
 		CorrelationID: t.CorrelationID, FinishedAt: e.h.wall().UTC().Format(time.RFC3339),
+		ComponentsUpdated: t.ComponentsUpdated,
 	}
 }
 
@@ -120,6 +121,16 @@ func (e *env) recoverStaging(st *state, installed string) errorCode {
 	if err := e.removeRelease(st.Txn.To, installed, st.Previous); err != nil {
 		return codeIOError
 	}
+	// A component set that was moved into place before the crash is named by
+	// neither link nor the state (U15 rule 4 row c1); one that the state names
+	// goes with the release.
+	if err := e.removeStagedSet(st); err != nil {
+		return codeIOError
+	}
+	st.Txn.ComponentsFrom, st.Txn.ComponentsTo = "", ""
+	if err := e.sweepComponents(st); err != nil {
+		return codeIOError
+	}
 	old := st.Txn
 	st.Last = e.abortedResult(old, reasonInterrupted)
 	st.resetTxn()
@@ -133,21 +144,31 @@ func (e *env) recoverStaging(st *state, installed string) errorCode {
 // expireStaged removes a staged release that has expired and sets idle, last
 // result aborted, reason stage_expired (U5, U7 row 4).
 func (e *env) expireStaged(st *state, installed string) errorCode {
+	return e.endStaged(st, installed, reasonStageExpired)
+}
+
+// endStaged ends a staged release that will not be activated: it removes the
+// release directory and a staged component set that no link names, and sets
+// idle with the last result aborted and the reason.
+func (e *env) endStaged(st *state, installed, reason string) errorCode {
 	if err := e.removeRelease(st.Txn.To, installed, st.Previous); err != nil {
 		return codeIOError
 	}
+	if err := e.removeStagedSet(st); err != nil {
+		return codeIOError
+	}
 	old := st.Txn
-	st.Last = e.abortedResult(old, reasonStageExpired)
+	st.Last = e.abortedResult(old, reason)
 	st.resetTxn()
 	if err := e.saveState(st); err != nil {
 		return codeIOError
 	}
-	e.h.log(phaseIdle, old.To, old.From, old.CorrelationID, reasonStageExpired)
+	e.h.log(phaseIdle, old.To, old.From, old.CorrelationID, reason)
 	return ""
 }
 
-// discard removes the staged release of exactly that version and sets idle. No
-// last result is written. It answers not_found when nothing is staged for the
+// discard removes the staged release of exactly that version, and its staged
+// component set when no link names it, and sets idle. No last result is written. It answers not_found when nothing is staged for the
 // version, and never touches the installed or the recorded previous version.
 func (h *handler) discard(req request) []byte {
 	lk, code := h.lockState()
@@ -175,6 +196,9 @@ func (h *handler) discard(req request) []byte {
 		return errorBody(codeNotFound)
 	}
 	if err := e.removeRelease(req.Version, installed, st.Previous); err != nil {
+		return errorBody(codeIOError)
+	}
+	if err := e.removeStagedSet(st); err != nil {
 		return errorBody(codeIOError)
 	}
 	old := st.Txn

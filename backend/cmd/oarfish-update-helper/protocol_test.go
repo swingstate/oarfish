@@ -45,8 +45,9 @@ func TestProtocol(t *testing.T) {
 		{name: "partial object, input ends", in: []byte(`{"v":1,"op":"sta`), closeWrite: true, want: codeBadRequest},
 
 		{name: "v 0", in: []byte(`{"v":0,"op":"status"}` + "\n"), want: codeBadRequest},
-		{name: "v 2", in: []byte(`{"v":2,"op":"status"}` + "\n"), want: codeBadRequest},
-		{name: "v 99", in: []byte(`{"v":99,"op":"status"}` + "\n"), want: codeBadRequest},
+		// status is answered for every positive v (U15 rule 6, D5).
+		{name: "v 2", in: []byte(`{"v":2,"op":"status"}` + "\n")},
+		{name: "v 99", in: []byte(`{"v":99,"op":"status"}` + "\n")},
 		{name: "v negative", in: []byte(`{"v":-1,"op":"status"}` + "\n"), want: codeBadRequest},
 		{name: "v fraction", in: []byte(`{"v":1.5,"op":"status"}` + "\n"), want: codeBadRequest},
 		{name: "v written as 1.0", in: []byte(`{"v":1.0,"op":"status"}` + "\n"), want: codeBadRequest},
@@ -174,8 +175,8 @@ func TestResponseSizeBound(t *testing.T) {
 			t.Errorf("error answer %s is %d bytes", c, n)
 		}
 	}
-	if n := len(differsBody(componentNames)); n > 512 {
-		t.Errorf("installer_required answer is %d bytes", n)
+	if n := len(encode(stageResponse{V: 1, OK: true, Version: long, Commit: testCommit, ComponentsDiffer: true, Differs: componentNames})); n > 512 {
+		t.Errorf("stage answer with all five names is %d bytes", n)
 	}
 
 	// A status answer above the bound is replaced by an error, not truncated.
@@ -199,15 +200,15 @@ func TestStatusAnswer(t *testing.T) {
 		`"key_id":"11f1c52777090bfc","installed_version":"1.0.0","phase":"idle","staged_version":"",` +
 		`"previous_version":"","last_result":null,"needs_attention":false,"free_bytes":`
 	if got := string(body); !strings.HasPrefix(got, want) ||
-		!regexp.MustCompile(`^\d+,"cooldown_version":"","cooldown_remaining_s":0\}\n$`).MatchString(got[len(want):]) {
+		!regexp.MustCompile(`^\d+,"cooldown_version":"","cooldown_remaining_s":0,"staged_differs":\[\],"socket_restart_pending":false\}\n$`).MatchString(got[len(want):]) {
 		t.Fatalf("status answer:\n got %s\nwant %s<digits>}", got, want)
 	}
 	var m map[string]any
 	if err := json.Unmarshal(body, &m); err != nil {
 		t.Fatal(err)
 	}
-	if len(m) != 15 {
-		t.Fatalf("%d members, want 15", len(m))
+	if len(m) != 17 {
+		t.Fatalf("%d members, want 17", len(m))
 	}
 	if m["free_bytes"].(float64) <= 0 || free == 0 {
 		t.Fatalf("free_bytes %v", m["free_bytes"])
@@ -372,7 +373,7 @@ func FuzzDecodeRequest(f *testing.F) {
 			}
 			return
 		}
-		if req.V != 1 || (req.Op != opStatus && req.Op != opStage && req.Op != opDiscard && req.Op != opActivate && req.Op != opAck) {
+		if req.V < 1 || (req.V != 1 && req.Op != opStatus) || (req.Op != opStatus && req.Op != opStage && req.Op != opDiscard && req.Op != opActivate && req.Op != opAck) {
 			t.Fatalf("accepted a request without a valid v and op: %q", data)
 		}
 		hasVersion := req.Op == opStage || req.Op == opDiscard || req.Op == opActivate
@@ -540,16 +541,20 @@ func TestErrorAnswersDoNotEchoTheRequest(t *testing.T) {
 	}
 }
 
-// installer_required may carry one extra member, the differing names, taken
-// from the closed list.
-func TestInstallerRequiredBodyCarriesOnlyDiffers(t *testing.T) {
-	raw := differsBody([]string{"oarfish-update-helper", "oarfish.service"})
-	want := `{"v":1,"ok":false,"error":"installer_required","message":"This release must be installed with the installer.","differs":["oarfish-update-helper","oarfish.service"]}` + "\n"
-	if string(raw) != want {
-		t.Fatalf("got %s", raw)
+// Since G6.10 step b no answer of the helper is installer_required (A16, E1):
+// the names of the differing files are in the answer of a successful stage,
+// and an error answer has exactly four members.
+func TestErrorAnswersCarryNoNames(t *testing.T) {
+	for c := range errorTexts {
+		var m map[string]any
+		if err := json.Unmarshal(errorBody(c), &m); err != nil || len(m) != 4 {
+			t.Fatalf("%s: %v %v", c, m, err)
+		}
 	}
-	if got := string(errorBody(codeBusy)); strings.Contains(got, "differs") {
-		t.Fatalf("other errors carry no differs: %s", got)
+	raw := string(encode(stageResponse{V: 1, OK: true, Version: "1.2.3", Commit: testCommit, ComponentsDiffer: true, Differs: []string{"oarfish-update-helper", "oarfish.service"}}))
+	want := `{"v":1,"ok":true,"version":"1.2.3","commit":"` + testCommit + `","components_differ":true,"differs":["oarfish-update-helper","oarfish.service"]}` + "\n"
+	if raw != want {
+		t.Fatalf("got %s", raw)
 	}
 }
 

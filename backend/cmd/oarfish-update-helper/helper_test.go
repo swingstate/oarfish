@@ -163,10 +163,12 @@ type reply struct {
 	NeedsAttention   bool         `json:"needs_attention"`
 	FreeBytes        uint64       `json:"free_bytes"`
 
-	CooldownVersion    string `json:"cooldown_version"`
-	CooldownRemainingS int64  `json:"cooldown_remaining_s"`
-	TransactionID      string `json:"transaction_id"`
-	Status             string `json:"status"`
+	CooldownVersion      string   `json:"cooldown_version"`
+	CooldownRemainingS   int64    `json:"cooldown_remaining_s"`
+	StagedDiffers        []string `json:"staged_differs"`
+	SocketRestartPending bool     `json:"socket_restart_pending"`
+	TransactionID        string   `json:"transaction_id"`
+	Status               string   `json:"status"`
 }
 
 type lastResult2 struct {
@@ -178,6 +180,8 @@ type lastResult2 struct {
 	TransactionID string `json:"transaction_id"`
 	Acknowledged  bool   `json:"acknowledged"`
 	FinishedAt    string `json:"finished_at"`
+
+	ComponentsUpdated bool `json:"components_updated"`
 }
 
 // parseReply requires exactly one newline-terminated JSON object.

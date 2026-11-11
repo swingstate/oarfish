@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -144,8 +145,9 @@ func (l *opLog) take() []fsOp {
 // A full stage and a full discard (and the expiry and the recovery) mutate
 // only the paths of the closed write-target table of ADR 0010 U2: below
 // /opt/oarfish releases/<version>, releases/.stage.<id>, releases/.trash.<id>,
-// and /var/lib/oarfish-update. In this gate nothing under components/ and not
-// current is ever mutated.
+// and /var/lib/oarfish-update. A release without a component difference never
+// mutates anything under components/ and not current
+// (TestComponentWriteAheadOrder covers the component transaction).
 func TestWriteTargetsAreTheClosedTable(t *testing.T) {
 	v := newTenv(t)
 	log := collectOps(v)
@@ -161,7 +163,7 @@ func TestWriteTargetsAreTheClosedTable(t *testing.T) {
 			}
 			for _, p := range []string{op.Path, op.Path2} {
 				if strings.HasPrefix(p, "components") || p == "current" || strings.HasPrefix(p, ".current") || strings.HasPrefix(p, "releases/1.0.0") {
-					t.Errorf("%s: %s touches a path that G6.5 never mutates", what, op)
+					t.Errorf("%s: %s touches a path that a stage without a component difference never mutates", what, op)
 				}
 			}
 		}
@@ -182,10 +184,10 @@ func TestWriteTargetsAreTheClosedTable(t *testing.T) {
 
 	// a failing stage and the cleanup
 	r := v.release("1.2.0")
-	r.setFile("oarfish-update-helper", elfStub("changed"))
+	r.setFile(unitService, bytes.Replace(baseServiceUnit, []byte("User=oarfish"), []byte("User=root"), 1))
 	v.place("1.2.0", r.build())
-	wantErrCode(t, v.stage("1.2.0"), codeInstallerRequired)
-	check("installer_required cleanup")
+	wantErrCode(t, v.stage("1.2.0"), codeUnitRejected)
+	check("unit_rejected cleanup")
 
 	// a stale newer release moved aside
 	os.MkdirAll(filepath.Join(v.root, "releases", "1.3.0"), 0o755)
@@ -289,8 +291,9 @@ func TestDurabilityOrder(t *testing.T) {
 }
 
 // The write-target table in the code is the table of the ADR (U2, "Write
-// targets"): the paths this gate may mutate are the first, third and fourth
-// kind of that row, and the state directory.
+// targets"): the paths the helper may mutate are the kinds of that row and the
+// state directory. Since G6.10 step b the predicate accepts the component
+// targets that the row has listed since the ADR was accepted.
 func TestWriteTargetTableMatchesTheADR(t *testing.T) {
 	adr, err := os.ReadFile("../../../docs/adr/0010-update-helper.md")
 	if err != nil {
@@ -302,17 +305,21 @@ func TestWriteTargetTableMatchesTheADR(t *testing.T) {
 			row = l
 		}
 	}
-	for _, want := range []string{"releases/<version>", "releases/.stage.<id>", "releases/.trash.<id>", "/var/lib/oarfish-update/"} {
+	for _, want := range []string{"releases/<version>", "releases/.stage.<id>", "releases/.trash.<id>", "`current`", "`.current.new.<id>`",
+		"`components/<id>`", "`components/active`", "`components/known-good`", "`.new.<id>` temporaries", "/var/lib/oarfish-update/"} {
 		if !strings.Contains(row, want) {
 			t.Errorf("the ADR row does not list %s", want)
 		}
 	}
-	// And the predicate accepts these and refuses the rest of the row (G6.6's targets).
+	// And the predicate accepts these and nothing else.
 	for p, want := range map[string]bool{
 		"releases/1.2.3": true, "releases/.stage.0123456789abcdef/release/oarfish": true, "releases/.trash.0123456789abcdef": true,
 		"releases/1.2.3/oarfish": false, "releases/.stage.xyz": false, "releases/.stage.": false, "releases/..": false,
-		"current": true, ".current.new.0123456789abcdef": true, ".current.new.xyz": false, "components/1.0.0": false, "components/active": false,
-		"components/.new.0123456789abcdef": false, "releases/v1.2.3": false, "": false, "/etc/passwd": false, "../x": false,
+		"current": true, ".current.new.0123456789abcdef": true, ".current.new.xyz": false,
+		"components/1.0.0": true, "components/active": true, "components/known-good": true, "components/.new.0123456789abcdef": true,
+		"components/1.0.0/oarfish-update-helper": false, "components/.new.xyz": false, "components/other": false, "components/..": false,
+		"components/.trash.0123456789abcdef": false,
+		"releases/v1.2.3":                    false, "": false, "/etc/passwd": false, "../x": false,
 	} {
 		if got := allowedTarget(treeOpt, p); got != want {
 			t.Errorf("allowedTarget(opt, %q) = %v, want %v", p, got, want)

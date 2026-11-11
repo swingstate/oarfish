@@ -54,7 +54,26 @@ type handler struct {
 	running atomic.Int32
 	wg      sync.WaitGroup
 
+	// The protocol range this helper reports and proves (U15 rule 6); the
+	// constants in production.
+	protoMin, protoMax int
+	// onFailure: this is the recover subcommand started by OnFailure= of the
+	// helper service, not by the boot (U15 rule 4, failure handling).
+	onFailure bool
+	// The hand-over (U15 rule 4 step 2): exit holds the exit status that serve
+	// returns once the accept loop has stopped, and stop stops that loop.
+	exit atomic.Int32
+	stop func()
+	// recoveryPending: the start-up recovery could not take the lock; the next
+	// request tries again.
+	recoveryPending atomic.Bool
+	// The SHA-256 of the process's own executable image, read once (D1).
+	ownOnce sync.Once
+	ownSum  string
+	ownErr  error
+
 	// Test seams. They are nil (or false) in production.
+	selfImage func() (io.ReadCloser, error) // the executable image of this process
 	wrapFS    func(fsops) fsops
 	onChunk   func(file string, copied int64) // between two chunks of a copy
 	sysrun    func(args []string) ([]byte, error)
@@ -68,6 +87,7 @@ func newHandler(o options, key trustkey.Key) *handler {
 		helperVersion: o.helperVersion, keyID: key.ID(), key: key,
 		root: o.root, stateDir: o.stateDir, cacheDir: o.cacheDir, arch: o.arch,
 		maxResponse: o.maxResponse, deadline: stageDeadline,
+		protoMin: protocolMin, protoMax: protocolMax,
 		uptime: bootSeconds, wall: time.Now, newID: randomID, freeBytes: fstatfsFree, journal: o.journal,
 	}
 	start := time.Now()
@@ -171,6 +191,9 @@ func (h *handler) respond(line []byte) []byte {
 	if err != nil {
 		return errorBody(codeBadRequest)
 	}
+	if h.recoveryPending.Load() {
+		h.startupRecovery() // the lock was held when serve started
+	}
 	var out []byte
 	switch req.Op {
 	case opStatus:
@@ -207,16 +230,30 @@ func (h *handler) status() []byte {
 	defer e.close()
 	st, needs := h.statusState(e)
 	resp := statusResponse{
-		V: protocolMax, OK: true, ProtocolMin: protocolMin, ProtocolMax: protocolMax,
+		V: protocolMax, OK: true, ProtocolMin: h.protoMin, ProtocolMax: h.protoMax,
 		HelperVersion: h.helperVersion, KeyID: h.keyID, InstalledVersion: installedVersion(h.root),
 		Phase: st.Txn.Phase, PreviousVersion: st.Previous, LastResult: toJSONLast(st.Last),
 		NeedsAttention: needs || st.NeedsAttention || st.Txn.Phase == phaseRollbackFailed, FreeBytes: free,
 	}
 	resp.CooldownVersion, resp.CooldownRemainingS = h.cooldownView(st)
+	resp.StagedDiffers = []string{}
 	if st.Txn.Phase == phaseStaged {
 		resp.StagedVersion = st.Txn.To
+		resp.StagedDiffers = append(resp.StagedDiffers, st.Txn.Differs...)
 	}
+	resp.SocketRestartPending = h.socketRestartPending(st)
 	return encode(resp)
+}
+
+// socketRestartPending reports the flag of D4. It is void when the uptime is
+// smaller than the uptime at which it was set: a reboot happened, and the
+// socket was created from the new text.
+func (h *handler) socketRestartPending(st *state) bool {
+	if !st.Txn.SocketRestartPending {
+		return false
+	}
+	now, err := h.uptime()
+	return err != nil || now >= st.Txn.SocketRestartSetAtUptimeS
 }
 
 // cooldownView reports the version that is refused and the seconds left of the

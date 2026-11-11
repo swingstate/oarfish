@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -82,22 +83,38 @@ func newTenv(t *testing.T) *tenv {
 	must(os.Chmod(v.stateDir, 0o700))
 	must(os.MkdirAll(filepath.Join(v.cacheDir, "update"), 0o755))
 
-	o := testOptions(v.root)
-	o.stateDir, o.cacheDir, o.arch, o.journal = v.stateDir, v.cacheDir, "arm64", v.journal
-	v.h = newHandler(o, v.key.key)
-	v.h.keyID = testKeyID
 	v.uptime.Store(1000)
-	v.h.uptime = func() (int64, error) { return v.uptime.Load(), nil }
-	v.h.monotonic = func() time.Duration { return time.Duration(v.mono.Load()) }
-	v.h.wall = func() time.Time { return time.Unix(1_700_000_000, 0) }
-	v.h.newID = func() (string, error) { return fmt.Sprintf("%016x", 0xa0000+v.ids.Add(1)), nil }
-	v.h.freeBytes = func(*os.File) (uint64, error) { return freeSpaceForTests, nil }
+	v.h = v.newHandler(linkActive)
 	v.fs = nil
 	v.h.wrapFS = func(inner fsops) fsops {
 		v.fs = newTestFS(inner)
 		return v.fs
 	}
 	return v
+}
+
+// newHandler is one process of the helper in this environment: the fake clocks
+// and ids, and as its own executable image the bytes of the helper that the
+// given component link names now (what an exec of that path would run).
+func (v *tenv) newHandler(link string) *handler {
+	v.t.Helper()
+	o := testOptions(v.root)
+	o.stateDir, o.cacheDir, o.arch, o.journal = v.stateDir, v.cacheDir, "arm64", v.journal
+	h := newHandler(o, v.key.key)
+	h.keyID = testKeyID
+	h.uptime = func() (int64, error) { return v.uptime.Load(), nil }
+	h.monotonic = func() time.Duration { return time.Duration(v.mono.Load()) }
+	h.wall = func() time.Time { return time.Unix(1_700_000_000, 0) }
+	h.newID = func() (string, error) { return fmt.Sprintf("%016x", 0xa0000+v.ids.Add(1)), nil }
+	h.freeBytes = func(*os.File) (uint64, error) { return freeSpaceForTests, nil }
+	image, err := os.ReadFile(filepath.Join(v.root, "components", link, "oarfish-update-helper"))
+	h.selfImage = func() (io.ReadCloser, error) {
+		if err != nil {
+			return nil, err
+		}
+		return io.NopCloser(bytes.NewReader(image)), nil
+	}
+	return h
 }
 
 // release builds a signed components-shape release of a version.

@@ -376,15 +376,16 @@ func TestRecoverStateFile(t *testing.T) {
 	})
 }
 
-// The component phases are not implemented: nothing is touched.
-func TestRecoverLeavesComponentPhasesAlone(t *testing.T) {
+// A component phase whose state names no component set can not be matched with
+// the table of U15 rule 4: nothing is touched and a person has to look.
+func TestRecoverLeavesAComponentPhaseWithoutASetAlone(t *testing.T) {
 	v := newActiveEnv(t)
-	v.crashedAt("c_switched")
+	v.crashedAt(phaseCSwitched)
 	if code := v.recoverBoot(); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	st, _ := v.readState()
-	if st.Txn.Phase != "c_switched" || !st.NeedsAttention || !releaseComplete(v.root, "1.1.0") {
+	if st.Txn.Phase != phaseCSwitched || !st.NeedsAttention || !releaseComplete(v.root, "1.1.0") {
 		t.Fatalf("state %+v", st)
 	}
 }

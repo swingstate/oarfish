@@ -13,10 +13,15 @@ func fullState() *state {
 		HelperVersion: helperID, Previous: "0.9.0",
 		Txn: txn{ID: "00000000000000aa", Phase: "verifying", To: "1.1.0", From: "1.0.0",
 			FromBinarySHA256: strings.Repeat("ab", 32), CorrelationID: testCID, StagedAtUptimeS: 1234,
-			ComponentsFrom: "0.9.0", ComponentsTo: "1.0.0", KnownGoodSHA256: strings.Repeat("cd", 32), SocketRestartPending: true},
-		Cool: cooldown{RefuseVersion: "1.1.0", RefuseUntilUptimeS: 2000, RefuseSetAtUptimeS: 1100, LastActivateUptimeS: 1100, LastActivateSetAtUptimeS: 1100},
+			ComponentsFrom: "0.9.0", ComponentsTo: "1.0.0", KnownGoodSHA256: strings.Repeat("cd", 32), SocketRestartPending: true,
+			Differs: []string{"oarfish-update-helper", "oarfish.service"}, ServiceUnitSHA256: strings.Repeat("0a", 32),
+			ComponentsSetSHA256: strings.Repeat("0b", 32), ComponentsHelperSHA256: strings.Repeat("0c", 32),
+			ComponentsKeyID: "11f1c52777090bfc", ComponentsProtocolMin: 1, ComponentsProtocolMax: 2, SocketTextChanged: true,
+			ComponentsUpdated: true, RollbackReason: "helper_mismatch", KnownGoodID: "0.9.0", SocketRestartSetAtUptimeS: 77},
+		ComponentsPrevious: "0.8.0",
+		Cool:               cooldown{RefuseVersion: "1.1.0", RefuseUntilUptimeS: 2000, RefuseSetAtUptimeS: 1100, LastActivateUptimeS: 1100, LastActivateSetAtUptimeS: 1100},
 		Last: &lastResult{TransactionID: "00000000000000bb", To: "1.0.0", From: "0.9.0", Outcome: "success", ReasonCode: "",
-			CorrelationID: "fedcba9876543210", FinishedAt: "2023-11-14T22:13:20Z", Acknowledged: true},
+			CorrelationID: "fedcba9876543210", FinishedAt: "2023-11-14T22:13:20Z", Acknowledged: true, ComponentsUpdated: true},
 	}
 }
 
@@ -45,16 +50,16 @@ func TestStateFieldSet(t *testing.T) {
 		}
 		return strings.Join(sortStrings(ks), ",")
 	}
-	if got, want := keys(m), "cooldown,helper_version,last_result,needs_attention,previous_version,schema_version,transaction"; got != want {
+	if got, want := keys(m), "components_previous,cooldown,helper_version,last_result,needs_attention,previous_version,schema_version,transaction"; got != want {
 		t.Fatalf("top-level members %s, want %s", got, want)
 	}
-	if got, want := keys(m["transaction"]), "components_from,components_to,correlation_id,from,from_binary_sha256,id,known_good_sha256,phase,socket_restart_pending,staged_at_uptime_s,to"; got != want {
+	if got, want := keys(m["transaction"]), "components_from,components_helper_sha256,components_key_id,components_protocol_max,components_protocol_min,components_set_sha256,components_to,components_updated,correlation_id,differs,from,from_binary_sha256,id,known_good_id,known_good_sha256,phase,rollback_reason,service_unit_sha256,socket_restart_pending,socket_restart_set_at_uptime_s,socket_text_changed,staged_at_uptime_s,to"; got != want {
 		t.Fatalf("transaction members %s", got)
 	}
 	if got, want := keys(m["cooldown"]), "last_activate_set_at_uptime_s,last_activate_uptime_s,refuse_set_at_uptime_s,refuse_until_uptime_s,refuse_version"; got != want {
 		t.Fatalf("cooldown members %s", got)
 	}
-	if got, want := keys(m["last_result"]), "acknowledged,correlation_id,finished_at,from,outcome,reason_code,to,transaction_id"; got != want {
+	if got, want := keys(m["last_result"]), "acknowledged,components_updated,correlation_id,finished_at,from,outcome,reason_code,to,transaction_id"; got != want {
 		t.Fatalf("last_result members %s", got)
 	}
 	host, _ := os.Hostname()

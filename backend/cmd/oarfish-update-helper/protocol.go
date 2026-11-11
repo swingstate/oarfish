@@ -7,7 +7,10 @@ import (
 	"io"
 )
 
-// Protocol P is 1 and the accepted range is {1} (U2, U15 rule 6).
+// Protocol P is 1 and the accepted range is {1} (U2, U15 rule 6). `status` is
+// the one request that is answered for every positive `v` (D5): the answer
+// carries the helper's own `v` and the accepted range, so that a service learns
+// the range first.
 const (
 	protocolMin = 1
 	protocolMax = 1
@@ -80,7 +83,8 @@ var opKeys = map[string][]string{
 // anything that is not one JSON object, a member that is not one of the four
 // names (also a name in another letter case), a repeated member, trailing data
 // after the object, null, a member of the wrong type, a `v` that is not an
-// integer in the accepted range, an op that is unknown, a member set that is
+// integer in the accepted range (for `status`: not a positive integer, U15
+// rule 6 and D5), an op that is unknown, a member set that is
 // not exactly the op's, a version that does not match the pattern of U2, a
 // correlation_id or transaction_id that is not 16 lowercase hexadecimal digits
 // and a components_confirmed that is not a JSON boolean.
@@ -95,10 +99,13 @@ func decodeRequest(line []byte) (request, error) {
 	var r request
 	var v *int
 	var op *string
-	if json.Unmarshal(m["v"], &v) != nil || v == nil || *v < protocolMin || *v > protocolMax {
+	if json.Unmarshal(m["v"], &v) != nil || v == nil || *v < 1 {
 		return request{}, errMalformed
 	}
 	if json.Unmarshal(m["op"], &op) != nil || op == nil {
+		return request{}, errMalformed
+	}
+	if *op != opStatus && (*v < protocolMin || *v > protocolMax) {
 		return request{}, errMalformed
 	}
 	r.V, r.Op = *v, *op
@@ -243,15 +250,12 @@ var errorTexts = map[errorCode]string{
 	codeInternal:             "An internal error occurred.",
 }
 
-// errorResponse is the answer to a request that failed. Differs is set only
-// for installer_required: the names, from the closed list of U2, of the
-// components of the release that differ from the installed ones.
+// errorResponse is the answer to a request that failed.
 type errorResponse struct {
 	V       int       `json:"v"`
 	OK      bool      `json:"ok"`
 	Error   errorCode `json:"error"`
 	Message string    `json:"message"`
-	Differs []string  `json:"differs,omitempty"`
 }
 
 // statusResponse is the answer to `status`: the members of the stub and the
@@ -276,17 +280,26 @@ type statusResponse struct {
 	// longer of the two markers; 0 when no marker holds.
 	CooldownVersion    string `json:"cooldown_version"`
 	CooldownRemainingS int64  `json:"cooldown_remaining_s"`
+	// G6.10 step b, additive. StagedDiffers names the files of the staged
+	// release that differ from the installed ones (the record of D6), from the
+	// closed list of U2. SocketRestartPending: a committed component update
+	// changed the socket unit text, which takes effect at the next boot; the
+	// flag is void after a reboot (D4).
+	StagedDiffers        []string `json:"staged_differs"`
+	SocketRestartPending bool     `json:"socket_restart_pending"`
 }
 
-// stageResponse is the answer to a successful `stage`. ComponentsDiffer is
-// always false in G6.5: a difference is installer_required. The member exists
-// for G6.10.
+// stageResponse is the answer to a successful `stage`. ComponentsDiffer is true
+// when any of the five compared files differs from the installed one, and
+// Differs names them, from the closed list of U2 in its fixed order (D6). Both
+// say that `activate` needs components_confirmed.
 type stageResponse struct {
-	V                int    `json:"v"`
-	OK               bool   `json:"ok"`
-	Version          string `json:"version"`
-	Commit           string `json:"commit"`
-	ComponentsDiffer bool   `json:"components_differ"`
+	V                int      `json:"v"`
+	OK               bool     `json:"ok"`
+	Version          string   `json:"version"`
+	Commit           string   `json:"commit"`
+	ComponentsDiffer bool     `json:"components_differ"`
+	Differs          []string `json:"differs"`
 }
 
 // activateResponse is the answer to an accepted `activate`: the transaction
@@ -316,9 +329,4 @@ func encode(v any) []byte {
 
 func errorBody(c errorCode) []byte {
 	return encode(errorResponse{V: protocolMax, OK: false, Error: c, Message: errorTexts[c]})
-}
-
-// differsBody is the installer_required answer with the differing names.
-func differsBody(names []string) []byte {
-	return encode(errorResponse{V: protocolMax, OK: false, Error: codeInstallerRequired, Message: errorTexts[codeInstallerRequired], Differs: names})
 }

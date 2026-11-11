@@ -7,10 +7,12 @@ import (
 )
 
 // The component comparison (ADR 0010 U5 "releases that change the helper or a
-// unit", U2 closed list). In G6.5 a release whose helper files or
-// oarfish.service differ from the installed ones is not applied: stage answers
-// installer_required with the names. The staged file is read from the staging
-// tree; the installed helper files are read through components/active and the
+// unit", U2 closed list). A release whose helper files differ from the
+// installed ones brings a component set and is applied by the component
+// transaction of U15; a difference of oarfish.service alone needs the second
+// confirmation and no component set (D6). Since G6.10 step b stage no longer
+// answers installer_required for a difference (A16, E1). The staged file is
+// read from the staging tree; the installed helper files are read through components/active and the
 // installed oarfish.service through current/oarfish.service.
 
 // componentNames is the closed, ordered list of U2: the four replaceable
@@ -47,11 +49,25 @@ func fileDigest(root *os.Root, name string) ([sha256.Size]byte, error) {
 	return sum, nil
 }
 
+// comparison is the result of compareComponents.
+type comparison struct {
+	// differs are the differing names, in the fixed order of the closed list.
+	differs []string
+	// set: one of the four helper files differs, so the release brings a
+	// component set (U15 rule 2); oarfish.service alone is not one (D6).
+	set bool
+	// staged are the digests of the four staged helper files in the order of
+	// U2, service the digest of the staged oarfish.service.
+	staged  [4][sha256.Size]byte
+	service [sha256.Size]byte
+}
+
 // compareComponents compares the five files. It returns the differing names in
 // the fixed order, or components_damaged when an installed file can not be
 // read (the active set is unreadable or incomplete). Reading the installed
 // side first means a damaged set is reported before a difference.
-func (r *stageRun) compareComponents(stageDir string) ([]string, errorCode) {
+func (r *stageRun) compareComponents(stageDir string) (comparison, errorCode) {
+	var c comparison
 	installed := make([][sha256.Size]byte, len(componentNames))
 	for i, n := range componentNames {
 		path := "components/active/" + n
@@ -60,11 +76,10 @@ func (r *stageRun) compareComponents(stageDir string) ([]string, errorCode) {
 		}
 		sum, err := fileDigest(r.e.opt, path)
 		if err != nil {
-			return nil, codeComponentsDamaged
+			return c, codeComponentsDamaged
 		}
 		installed[i] = sum
 	}
-	var differs []string
 	for i, n := range componentNames {
 		path := stageDir + "/" + dirComponents + "/" + n
 		if n == "oarfish.service" {
@@ -72,11 +87,17 @@ func (r *stageRun) compareComponents(stageDir string) ([]string, errorCode) {
 		}
 		sum, err := fileDigest(r.e.opt, path)
 		if err != nil {
-			return nil, codeIOError
+			return c, codeIOError
+		}
+		if i < len(c.staged) {
+			c.staged[i] = sum
+		} else {
+			c.service = sum
 		}
 		if sum != installed[i] {
-			differs = append(differs, n)
+			c.differs = append(c.differs, n)
+			c.set = c.set || i < len(c.staged)
 		}
 	}
-	return differs, ""
+	return c, ""
 }

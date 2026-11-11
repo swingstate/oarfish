@@ -25,13 +25,19 @@ func TestUsage(t *testing.T) {
 	}
 }
 
-// recover needs no environment, no user lookup and no socket; on a state
+// recover needs no user lookup and no socket, and reads nothing from the
+// environment but the name of the unit whose failure started it; on a state
 // directory that does not exist it fails with a fixed message and creates
 // nothing.
 func TestRecoverWithoutAStateDirectory(t *testing.T) {
 	dir := shortDir(t)
 	o := testOptions(dir)
-	o.getenv = func(string) string { t.Fatal("read the environment"); return "" }
+	o.getenv = func(name string) string {
+		if name != monitorUnitVar {
+			t.Fatalf("read %s from the environment", name)
+		}
+		return ""
+	}
 	o.lookupUID = func(string) (uint32, error) { t.Fatal("looked up a user"); return 0, nil }
 	o.peerUID = nil
 	var stderr bytes.Buffer
