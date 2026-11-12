@@ -276,30 +276,75 @@ func TestComponentRetention(t *testing.T) {
 	}
 }
 
-// F32: without components_confirmed nothing happens, for a component set and
-// for a difference of oarfish.service alone (D6).
+// newOneFileEnv stages a 1.1.0 in which exactly one file of the closed list
+// differs from the installed one: a unit gets another comment line (a
+// difference the unit lint accepts), the helper other bytes. The stage answer
+// must name that file and nothing else.
+func newOneFileEnv(t *testing.T, name string) *tenv {
+	t.Helper()
+	v := newTenv(t)
+	v.installOarfish()
+	v.fakeSystemd()
+	v.h.wrapFS = withoutSync
+	r := v.release(newVersion)
+	if name == "oarfish-update-helper" {
+		r.setFile(name, elfStub("helper "+newVersion))
+	} else {
+		r.setFile(name, changedUnit(name))
+	}
+	v.place(newVersion, r.build())
+	if got := wantOK(t, v.stage(newVersion)); !got.ComponentsDiffer || !slices.Equal(got.Differs, []string{name}) {
+		t.Fatalf("stage answer %+v, want a difference of %s alone", got, name)
+	}
+	return v
+}
+
+// F32 (class C): activate with components_confirmed false, when stage recorded
+// a difference, answers confirmation_required and changes nothing: not the
+// trees and links below the root, not state.json, not the cache, not the
+// journal; no systemctl call and no exit of the helper. One case for each name
+// of the closed list alone (four of them bring a component set, oarfish.service
+// alone does not, D6) and one for a set with a new helper and changed units.
+// The member itself is required: an activate without it is bad_request
+// (TestDecodeRequestPerOp).
 func TestMissingComponentConfirmation(t *testing.T) {
-	t.Run("a component set", func(t *testing.T) {
-		v, _ := newComponentEnv(t)
-		before := snapshot(t, v.root)
-		wantErrCode(t, v.activate(newVersion), codeConfirmationRequired)
-		if d := diffSnapshots(before, snapshot(t, v.root)); len(d) != 0 || v.phase() != phaseStaged || len(v.sd.Calls()) != 0 || v.h.exit.Load() != 0 {
-			t.Fatalf("acted without the confirmation: %v", d)
-		}
-	})
-	t.Run("oarfish.service alone", func(t *testing.T) {
-		v := newTenv(t)
-		v.installOarfish()
-		v.fakeSystemd()
-		r := v.release(newVersion)
-		r.setFile(unitService, changedUnit(unitService))
-		v.place(newVersion, r.build())
-		wantOK(t, v.stage(newVersion))
-		wantErrCode(t, v.activate(newVersion), codeConfirmationRequired)
-		if v.phase() != phaseStaged || len(v.sd.Calls()) != 0 {
-			t.Fatal("acted without the confirmation")
-		}
-	})
+	cases := map[string]func(t *testing.T) *tenv{
+		"a component set with a new helper and changed units": func(t *testing.T) *tenv {
+			v, _ := newComponentEnv(t, unitHelperSocket, unitHelperService, unitRecover, unitService)
+			return v
+		},
+	}
+	for _, n := range []string{"oarfish-update-helper", unitHelperSocket, unitHelperService, unitRecover, unitService} {
+		cases[n+" alone"] = func(t *testing.T) *tenv { return newOneFileEnv(t, n) }
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			v := setup(t)
+			dirs := []string{v.root, v.stateDir, v.cacheDir}
+			var before []map[string]string
+			for _, d := range dirs {
+				before = append(before, snapshot(t, d))
+			}
+			journal, calls := v.journal.String(), len(v.sd.Calls())
+
+			wantErrCode(t, v.activate(newVersion), codeConfirmationRequired)
+
+			for i, d := range dirs {
+				if diff := diffSnapshots(before[i], snapshot(t, d)); len(diff) != 0 {
+					t.Errorf("acted without the confirmation, %s: %v", []string{"root", "state", "cache"}[i], diff)
+				}
+			}
+			if v.journal.String() != journal {
+				t.Errorf("journal written without the confirmation:\n%s", strings.TrimPrefix(v.journal.String(), journal))
+			}
+			if got := v.sd.Calls(); len(got) != calls {
+				t.Errorf("systemctl called without the confirmation: %v", got[calls:])
+			}
+			if v.h.exit.Load() != 0 || v.phase() != phaseStaged {
+				t.Errorf("exit %d, phase %s", v.h.exit.Load(), v.phase())
+			}
+		})
+	}
 }
 
 // D6 and U6: a difference of oarfish.service alone needs the confirmation but
