@@ -1,0 +1,68 @@
+# Oarfish update recovery (ADR 0010, U1 and U10, amendment A9). Installed by
+# install.sh (G6.3b) as a link into the known-good component set. Runs `recover`
+# at every boot before the helper socket and the main service, from the
+# known-good component set, and is started by OnFailure= of the helper service.
+#
+# Not Requires= of anything, so a failing recovery never keeps Oarfish from
+# starting. The only mention of oarfish.service is the ordering below. A oneshot
+# unit has no start timeout by default, so TimeoutStartSec=120 ends a hanging
+# recovery; systemd then marks the unit failed and oarfish.service still starts,
+# because Before= is an ordering and not a requirement (A9).
+# No socket. Same sandbox as the helper service.
+#
+# DefaultDependencies=no: a service gets After=basic.target by default, and
+# basic.target is ordered after sockets.target, which is ordered after the helper
+# socket. With Before=oarfish-update-helper.socket that is an ordering cycle, and
+# systemd drops the socket job at boot (A14). The unit needs only the local file
+# systems (/opt/oarfish and /var/lib/oarfish-update).
+
+[Unit]
+Description=Oarfish update recovery
+Documentation=https://github.com/swingstate/oarfish
+DefaultDependencies=no
+After=local-fs.target
+Before=oarfish-update-helper.socket oarfish.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=120
+ExecStart=/opt/oarfish/components/known-good/oarfish-update-helper recover
+User=root
+Group=root
+UMask=0077
+StateDirectory=oarfish-update
+StateDirectoryMode=0700
+ReadWritePaths=/opt/oarfish
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+MemoryMax=64M
+TasksMax=16
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
