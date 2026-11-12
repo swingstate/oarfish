@@ -131,7 +131,7 @@ func serve(stderr io.Writer, o options) int {
 	defer ln.Close()
 	uid, err := o.lookupUID(serviceUser)
 	if err != nil {
-		fmt.Fprintln(stderr, "oarfish-update-helper: cannot determine the uid of the service user")
+		fmt.Fprintln(stderr, "oarfish-update-helper: cannot determine the uid of the service user "+serviceUser)
 		return 1
 	}
 	key, err := trustkey.Release()

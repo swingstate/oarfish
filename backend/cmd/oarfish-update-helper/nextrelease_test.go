@@ -3,21 +3,26 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
 	"testing"
 )
 
-// The release content after v0.1.0-alpha.11 (G6.10 closeout, row F24 of U13).
-// The release after v0.1.0-alpha.11 is meant to differ from it in exactly one
-// of the five files of the closed list: the value of Description= in the
-// recover unit. The helper bytes stay the same. A GUI update to that release
-// runs the component transaction with the production key, but it does not
-// prove a new helper binary (U13 F24 asks for both). Class C only: nothing here
-// ran on a device.
+// The release content after v0.1.0-alpha.11 (G6.10 closeout, row F24 of U13,
+// owner decision D-C85). The release after v0.1.0-alpha.11 is meant to differ
+// from it in exactly two of the five files of the closed list: the helper
+// binary (new bytes from a behaviour-neutral change of one start-up message)
+// and the recover unit (another value of Description=). The other three files
+// stay byte-identical. A GUI update to that release runs the component
+// transaction with a new helper and a new unit text, as U13 F24 asks. Class C
+// only: nothing here ran on a device.
 //
-// The test fails when another unit of install/ differs from v0.1.0-alpha.11.
-// Then the release plan has changed, and this file is changed with it.
+// The test fails when a third file differs from v0.1.0-alpha.11, or when the
+// helper or the recover unit no longer differs. Then the release plan has
+// changed, and this file is changed with it.
 
 const alpha11UnitDir = "testdata/units-v0.1.0-alpha.11/"
 
@@ -30,11 +35,60 @@ var alpha11UnitSHA256 = map[string]string{
 	unitRecover:       "735d1339758b355b9a38dbd05f4ebe58f4e4df6bf770c3c1bd6061b48cb4460e",
 }
 
-func TestReleaseAfterAlpha11ChangesOnlyTheRecoverUnit(t *testing.T) {
-	names := []string{unitHelperSocket, unitHelperService, unitRecover, unitService}
+// The SHA-256 of oarfish-update-helper in the published manifest of
+// v0.1.0-alpha.11 (built by scripts/build-helper.sh at the tag commit).
+const alpha11HelperSHA256 = "f0b21c6176b97d03c4703c9b6bc40bceed2b80c05e39cd614de1e2e46cb35362"
+
+// The text of the change that gives the helper new bytes (main.go, serve).
+const alpha11HelperChange = "cannot determine the uid of the service user oarfish"
+
+// releaseHelperBuild builds the helper of this tree as scripts/build-helper.sh
+// does for a release, and checks that the script still uses these flags.
+func releaseHelperBuild(t *testing.T) []byte {
+	t.Helper()
+	script, err := os.ReadFile("../../../scripts/build-helper.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []string{
+		`LDFLAGS="-s -w"`,
+		`CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOFLAGS=-mod=readonly`,
+		`go build -trimpath -buildvcs=false -ldflags "$LDFLAGS" -o "$1" ./cmd/oarfish-update-helper`,
+	} {
+		if !bytes.Contains(script, []byte(s)) {
+			t.Fatalf("scripts/build-helper.sh no longer contains %q; adapt releaseHelperBuild", s)
+		}
+	}
+	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
+	if _, err := os.Stat(goTool); err != nil {
+		goTool = "go"
+	}
+	out := filepath.Join(t.TempDir(), "oarfish-update-helper")
+	cmd := exec.Command(goTool, "build", "-trimpath", "-buildvcs=false", "-ldflags", "-s -w", "-o", out, ".")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=linux", "GOARCH=arm64", "GOFLAGS=-mod=readonly")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, b)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestReleaseAfterAlpha11ChangesTheHelperAndTheRecoverUnit(t *testing.T) {
+	units := []string{unitHelperSocket, unitHelperService, unitRecover, unitService}
 	old, repo := map[string][]byte{}, map[string][]byte{}
 	var differ []string
-	for _, n := range names {
+
+	// The helper binary: built from this tree with the release flags.
+	helper := releaseHelperBuild(t)
+	if sumHex(helper) != alpha11HelperSHA256 {
+		differ = append(differ, "oarfish-update-helper")
+	}
+
+	// The four units: install/ against the copies of the tag.
+	for _, n := range units {
 		data, err := os.ReadFile(alpha11UnitDir + n)
 		if err != nil {
 			t.Fatal(err)
@@ -47,8 +101,12 @@ func TestReleaseAfterAlpha11ChangesOnlyTheRecoverUnit(t *testing.T) {
 			differ = append(differ, n)
 		}
 	}
-	if !slices.Equal(differ, []string{unitRecover}) {
-		t.Fatalf("install/ differs from v0.1.0-alpha.11 in %v, want %s alone", differ, unitRecover)
+	wantDiffer := []string{"oarfish-update-helper", unitRecover}
+	if !slices.Equal(differ, wantDiffer) {
+		t.Fatalf("this tree differs from v0.1.0-alpha.11 in %v, want %v", differ, wantDiffer)
+	}
+	if !bytes.Contains(helper, []byte(alpha11HelperChange)) {
+		t.Fatalf("the helper of this tree lacks %q: its bytes differ for another reason than D-C85", alpha11HelperChange)
 	}
 
 	t.Run("the lint of the installed helper accepts the change", func(t *testing.T) {
@@ -66,11 +124,13 @@ func TestReleaseAfterAlpha11ChangesOnlyTheRecoverUnit(t *testing.T) {
 		}
 	})
 
-	t.Run("stage reports one file and the transaction replaces it", func(t *testing.T) {
+	t.Run("stage reports two files and the transaction replaces them", func(t *testing.T) {
 		v := newTenv(t)
 		// The installed tree: the units of v0.1.0-alpha.11 and the fixture
-		// helper. The release: the units of install/ and the same helper bytes.
-		for _, n := range names {
+		// helper. The release: the units of install/ and other helper bytes.
+		// The fixture cannot run the real helper (it embeds the release key),
+		// so a stand-in with other bytes plays the new helper.
+		for _, n := range units {
 			p := filepath.Join(v.root, "components", v.installed, n)
 			if n == unitService {
 				p = filepath.Join(v.root, "releases", v.installed, n)
@@ -82,18 +142,21 @@ func TestReleaseAfterAlpha11ChangesOnlyTheRecoverUnit(t *testing.T) {
 		v.installOarfish()
 		v.fakeSystemd()
 		v.h.wrapFS = withoutSync
+		newHelper := elfStub("helper " + newVersion)
 		r := v.release(newVersion)
-		for _, n := range names {
+		r.setFile("oarfish-update-helper", newHelper)
+		for _, n := range units {
 			r.setFile(n, repo[n])
 		}
 		v.place(newVersion, r.build())
 
 		got := wantOK(t, v.stage(newVersion))
-		if !got.ComponentsDiffer || !slices.Equal(got.Differs, []string{unitRecover}) {
-			t.Fatalf("stage answer: components_differ %v, differs %v; want true and [%s]", got.ComponentsDiffer, got.Differs, unitRecover)
+		if !got.ComponentsDiffer || !slices.Equal(got.Differs, wantDiffer) {
+			t.Fatalf("stage answer: components_differ %v, differs %v; want true and %v", got.ComponentsDiffer, got.Differs, wantDiffer)
 		}
-		if st, _ := v.readState(); st.Txn.ComponentsTo != newVersion || st.Txn.ComponentsHelperSHA256 != sumHex(baseComponents["oarfish-update-helper"]) {
-			t.Fatalf("no component set with the unchanged helper was staged: %+v", st.Txn)
+		st, _ := v.readState()
+		if st.Txn.ComponentsTo != newVersion || st.Txn.ComponentsHelperSHA256 != sumHex(newHelper) || !slices.Equal(st.Txn.Differs, wantDiffer) {
+			t.Fatalf("no component set with the new helper was staged: %+v", st.Txn)
 		}
 		// F32 for this release: without the second confirmation nothing happens.
 		wantErrCode(t, v.activate(newVersion), codeConfirmationRequired)
@@ -104,28 +167,37 @@ func TestReleaseAfterAlpha11ChangesOnlyTheRecoverUnit(t *testing.T) {
 		if len(s.restartAt) != 1 || s.recovers != 0 {
 			t.Fatalf("restarts %v, recover runs %d", s.restartAt, s.recovers)
 		}
-		// checkSettled assumes that a new set has new helper bytes, so the
-		// invariant is checked here with the parts that apply.
-		checkDisk(t, v)
-		fin, _ := v.readState()
-		if fin.Txn.Phase != phaseIdle || v.current() != newVersion || v.link(linkActive) != newVersion || v.link(linkKnownGood) != newVersion ||
-			fin.Last == nil || fin.Last.Outcome != outcomeSuccess || !fin.Last.ComponentsUpdated ||
-			fin.Txn.KnownGoodID != newVersion || fin.Txn.KnownGoodSHA256 != diskSetDigest(t, v, newVersion) || fin.ComponentsPrevious != v.installed {
+		fin := checkSettled(t, v, false)
+		if v.current() != newVersion || v.link(linkActive) != newVersion || v.link(linkKnownGood) != newVersion ||
+			fin.Last == nil || fin.Last.Outcome != outcomeSuccess {
 			t.Fatalf("current %s active %s known-good %s state %+v", v.current(), v.link(linkActive), v.link(linkKnownGood), fin)
 		}
-		// The recover unit that known-good serves is the new text (D2); the
-		// helper is the same bytes; the socket flag of D4 is not set.
-		for n, want := range map[string][]byte{
-			unitRecover:             repo[unitRecover],
-			"oarfish-update-helper": baseComponents["oarfish-update-helper"],
-		} {
-			data, err := os.ReadFile(filepath.Join(v.root, "components", linkKnownGood, n))
-			if err != nil || !bytes.Equal(data, want) {
-				t.Fatalf("known-good %s is not the release's (%v)", n, err)
+		// The set that known-good serves has the new helper and the new recover
+		// unit (D2); the three other files are those of v0.1.0-alpha.11; the
+		// socket flag of D4 is not set.
+		want := map[string][]byte{"oarfish-update-helper": newHelper}
+		for _, n := range units {
+			want[n] = old[n]
+		}
+		want[unitRecover] = repo[unitRecover]
+		for n, w := range want {
+			p := filepath.Join(v.root, "components", linkKnownGood, n)
+			if n == unitService {
+				p = filepath.Join(v.root, "current", n)
+			}
+			data, err := os.ReadFile(p)
+			if err != nil || !bytes.Equal(data, w) {
+				t.Fatalf("after the update %s is not the expected text (%v)", n, err)
 			}
 		}
 		if sr := v.status(); sr.SocketRestartPending {
-			t.Fatal("socket_restart_pending set for a change of the recover unit")
+			t.Fatal("socket_restart_pending set for a change of the helper and the recover unit")
+		}
+		// The two systemd calls of a component set without oarfish.service:
+		// reload by the old helper, reload after the known-good switch (D2),
+		// then the restart of the service for the new release.
+		if got := strings.Join(v.sd.acting(), ","); got != "daemon-reload,daemon-reload,restart oarfish.service" {
+			t.Fatalf("systemctl calls %s", got)
 		}
 	})
 }

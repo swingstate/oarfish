@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"os"
 	"os/exec"
@@ -26,6 +27,9 @@ func TestMain(m *testing.M) {
 func childMain(mode string) int {
 	o := productionOptions()
 	o.lookupUID = func(string) (uint32, error) { return uint32(os.Getuid()), nil }
+	if os.Getenv("OARFISH_TEST_NO_USER") != "" {
+		o.lookupUID = func(string) (uint32, error) { return 0, errors.New("unknown user") }
+	}
 	o.root = os.Getenv("OARFISH_TEST_ROOT")
 	if d := os.Getenv("OARFISH_TEST_STATE"); d != "" {
 		o.stateDir = d
@@ -188,6 +192,32 @@ func TestActivationInChildProcess(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Activated, but the service user cannot be looked up: exit 1 with a fixed
+// message that names the user and carries no text of the lookup error. The
+// wording of this message changed after v0.1.0-alpha.11 so that the next
+// release carries new helper bytes (D-C85); nothing else about the path did.
+func TestServeWithoutServiceUserExitsNonZero(t *testing.T) {
+	ln, f, path := listenerFile(t)
+	c := startChild(t, "serve", []string{"LISTEN_FDS=1", "OARFISH_TEST_LISTEN_PID=self", "OARFISH_TEST_NO_USER=1"}, f)
+	if code := c.wait(t); code != 1 {
+		t.Fatalf("exit %d, want 1 (stderr %q)", code, c.stderr.String())
+	}
+	if got, want := c.stderr.String(), "oarfish-update-helper: cannot determine the uid of the service user oarfish\n"; got != want {
+		t.Fatalf("stderr %q, want %q", got, want)
+	}
+	if c.stdout.Len() != 0 {
+		t.Fatalf("stdout %q", c.stdout.String())
+	}
+	if entries, _ := os.ReadDir(c.dir); len(entries) != 0 {
+		t.Fatalf("the helper created %d entries in its working directory", len(entries))
+	}
+	// The socket belongs to systemd and stays.
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the helper removed the socket: %v", err)
+	}
+	ln.Close()
 }
 
 // Started as systemd starts it, the helper serves a status request on the
