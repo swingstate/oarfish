@@ -1,6 +1,6 @@
 # The update path
 
-How a device updates Oarfish from the GUI, what is checked, what happens when something fails, and how the evidence on the reference device is produced. The design is [ADR 0010](adr/0010-update-helper.md) (decisions U1 to U15, amendments A1 to A17). This document describes the code at gate G6.9 and, since the steps a to c of G6.10, the unit lint, the replacement of the helper and its units by the helper (the component transaction), the second confirmation on the update page and its texts. **G6.10 is implemented with class C tests only (fake root, fake systemd, the fake helper, jsdom): it did not run on a device, and no release carries it yet.** The release that carries the helper of step b and the device evidence of F24 to F32 are later steps. **Device observations exist for the base update, each labelled with its evidence class (C, D or T); nothing is Verified.** Every device entry below means "observed as expected on one device" (one Raspberry Pi Zero 2 W, one image); class T is never production evidence. The section [Results on the reference device](#results-on-the-reference-device) holds the facts, what was not run and the open items.
+How a device updates Oarfish from the GUI, what is checked, what happens when something fails, and how the evidence on the reference device is produced. The design is [ADR 0010](adr/0010-update-helper.md) (decisions U1 to U15, amendments A1 to A17). This document describes the code at gate G6.9 and, since the steps a to c of G6.10, the unit lint, the replacement of the helper and its units by the helper (the component transaction), the second confirmation on the update page and its texts. **G6.10 has class C tests (fake root, fake systemd, the fake helper, jsdom), is released since `v0.1.0-alpha.11` (the first release with the helper of step b), and has device observations on one device since the G6.10 closeout: the GUI update to `v0.1.0-alpha.12` (class D, F24 and D2) and the rows F25 to F31 with a test build (class T).** **Device observations exist for the base update and for the component update, each labelled with its evidence class (C, D or T); nothing is Verified.** Every device entry below means "observed as expected on one device" (one Raspberry Pi Zero 2 W, one image); class T is never production evidence. The section [Results on the reference device](#results-on-the-reference-device) holds the facts, what was not run and the open items.
 
 ## Contents
 
@@ -39,7 +39,7 @@ The service does all network traffic and verifies only so that the page can show
 
 ### The steps of an update with components
 
-When `stage` finds that one of the five compared files differs, the update needs the second confirmation (U9, U15 rule 7, D6), and when one of the four helper files differs it is applied as one transaction in two processes of the helper (U15 rule 4, A16). Class C tests only; not run on a device.
+When `stage` finds that one of the five compared files differs, the update needs the second confirmation (U9, U15 rule 7, D6), and when one of the four helper files differs it is applied as one transaction in two processes of the helper (U15 rule 4, A16). Class C tests; on the reference device the success path was observed in class T ([D1, Phase 5](#d1-class-t-phase-5)) and in class D ([`v0.1.0-alpha.12`](#v010-alpha12-class-d)), and the failure rows F25 to F31 in class T ([Phase 6](#phase-6-class-t)); one device, not Verified.
 
 1. **`stage`** as above, with three more checks when the helper files differ and before anything is moved: the manifest's `components.key_id` equals the key embedded in the installed helper (`key_changed`), `components.protocol` is the helper's protocol P or P+1 (`requirements_not_met`), and the known-good set equals its reference hash when one is recorded (`components_damaged`; without one it is recorded now). The staged helper files are moved to `components/<version>`, then the release to `releases/<version>`. The answer has `components_differ: true` and `differs` with the names.
 2. **The pause and the second confirmation** (U9, U15 rule 7, A17). The job of the service waits at `awaiting_components_confirmation` (at most 30 minutes, the life of a staged release). The page shows the dialog "Neue Bestandteile bestätigen": the names of `job.differs` in plain words with their file names, that privileged components are replaced, that the service restarts and everybody is signed out, what happens on a failure (the release is rolled back; a new helper that passed its check stays), that a changed socket unit takes effect after the next restart of the device (D4), and the password again (D7). "Verwerfen" sends `discard`. When the staged release expires meanwhile, the job ends with `stage_expired` and the page says to check again and start once more. A first `apply` never carries the confirmation: with `components_confirmed` and no waiting job it is refused with `invalid_request`, and the job always pauses (A17.5, G1).
@@ -134,7 +134,7 @@ The reason code is always shown as text under "Technische Einzelheiten".
 
 ## When the installer is required
 
-A helper that has the component transaction (G6.10 step b) never answers `installer_required` for a difference of the five compared files (A16, E1): a difference of the helper files selects the component transaction, a difference of `oarfish.service` alone the second confirmation. **No such helper has been released.** Every helper released so far (`v0.1.0-alpha.7` to `v0.1.0-alpha.10`) answers `installer_required` for the new bytes of the helper of step b, so **every device needs one installer run** to reach the first release that carries it ([`RELEASING.md`](RELEASING.md#release-notes-for-g610)).
+A helper that has the component transaction (G6.10 step b) never answers `installer_required` for a difference of the five compared files (A16, E1): a difference of the helper files selects the component transaction, a difference of `oarfish.service` alone the second confirmation. **The first release with such a helper is `v0.1.0-alpha.11`.** Every helper released before it (`v0.1.0-alpha.7` to `v0.1.0-alpha.10`) answers `installer_required` for the new bytes of the helper of step b, so **every device needs one installer run** to reach `v0.1.0-alpha.11` or a later release ([`RELEASING.md`](RELEASING.md#release-notes-for-g610)).
 
 After that, the installer is needed in these cases. The page shows the installer view for each of them: "Installer nötig", the sentence that this version cannot be installed from this page, a reason sentence of its own, and the fixed instruction of A12 (download `install.sh` from the release page of the version, read it, run it with `sudo sh install.sh`; settings and account are kept). No command is built from data of the API (F1, A17).
 
@@ -152,13 +152,21 @@ The same codes from `activate` do not show the installer view: `unit_rejected` o
 
 ### What G6.10 still needs before G6 can close
 
-Steps a to c are implemented; nothing of G6.10 ran on a device. Before the owner can decide whether G6 passes (U14):
+Steps a to c are implemented and released (`v0.1.0-alpha.11`, `v0.1.0-alpha.12`). Their device evidence is the owner's observation on one device and is not Verified. Before the owner can decide whether G6 passes (U14):
 
-1. **The first release with the helper of step b.** Its release notes say that every device needs one installer run ([`RELEASING.md`](RELEASING.md#release-notes-for-g610)). Before it is tagged: the observation on the device that the helper can read its own executable image under its sandbox (the assumption of D1, A15.1).
-2. **Class D, F24:** a later real signed release that changes the helper bytes and a unit text within what the installed helper's lint accepts (A15.2 statement 2), applied from the GUI with both confirmations, with the timings, the journal and the audit entries.
-3. **Class T, F25 to F31** with the test build and `OARFISH_FAULT_PROC` in the device test kit (not part of this repository), each row labelled as class T.
-4. **The closeout list of U13** (below) for the component update: `write_bytes` and peak `VmHWM` of the service and of both helper processes, `systemd-analyze security` after the update, the redaction counts, the boot after a component update (D2: a changed recover unit takes effect at the next boot; D4: the socket flag is void after the reboot), and what the page showed during the hand-over (F4, its 60-second bound against the real gap).
-5. **The owner's open questions:** C3 (the finishing audit entry), C4 (the password at the second confirmation, D7), the retention of failed releases, a release tooling check for the two-step rule, the wording of the U13 row F14 against U6, du versus Sie, specification 14.2 (G6.10 as one step), S8 (the steps after `known_good_damaged`).
+**Done (observed on one device, not Verified):**
+
+1. **The first release with the helper of step b:** `v0.1.0-alpha.11`, installed on the reference device with the official installer (class D, [`v0.1.0-alpha.11`, class D](#v010-alpha11-class-d)). The assumption of D1 (the helper can read its own executable image under its sandbox) is inferred from `c_verified` and the result `success`: in class T ([D1, Phase 5](#d1-class-t-phase-5)) and in class D with the production key ([`v0.1.0-alpha.12`, class D](#v010-alpha12-class-d)).
+2. **Class D, F24:** the GUI update from `v0.1.0-alpha.11` to `v0.1.0-alpha.12`, a real signed release that changes the helper bytes and the text of the recover unit within what the installed helper's lint accepts (A15.2 statement 2), with the second confirmation as reported by the owner, the journal, the timings and the audit entries ([`v0.1.0-alpha.12`, class D](#v010-alpha12-class-d)).
+3. **Class T, F25 to F31** with the test build and `OARFISH_FAULT_PROC` in the device test kit (not part of this repository), F29 with four real power cuts ([Phase 6, class T](#phase-6-class-t)).
+4. **The closeout list of U13** for the component update, as far as measured: the timings, `systemd-analyze security` after the update, the redaction counts, `pid` against `MainPID`, and the boot after the component update (D2, observed for a change of `Description=` only) ([the closeout list](#the-closeout-list-for-the-component-update)).
+
+**Not done:**
+
+5. **Not measured:** `write_bytes` before and after the component update, and the peak `VmHWM` of the service and of both helper processes during it.
+6. **Not observed:** F4 (what the page shows during the hand-over, and its 60-second bound against the real gap), the wording of the dialog of the second confirmation, and D4 (the socket flag is void after the reboot; no release changed the socket unit). Also not shown: that a changed ordering of the recover unit takes effect at the next boot.
+7. **The owner's open questions:** C3 (the finishing audit entry), C4 (the password at the second confirmation, D7), the retention of failed releases, a release tooling check for the two-step rule, the wording of the U13 row F14 against U6, du versus Sie, specification 14.2 (G6.10 as one step), S8 (the steps after `known_good_damaged`); and two points from Phase 6: the ADR text of the U13 row F28 against A16.3 P24, and the reason `interrupted` for F27, which the kit requires and the ADR does not name.
+8. **The owner's decision whether G6 passes.** G6 stays open until then.
 
 ## Evidence classes
 
@@ -172,7 +180,7 @@ The success row F19 and the genuine signed-release path must be class D.
 
 ## Failure matrix F1 to F32
 
-The Device column says what was observed as expected on one device and in which class (D or T); "C only" means that the row, or the named part of it, is not planned on the device, and "not run, device step follows" means that the row belongs to G6.10 and has not run on a device: its tests are class C (fake root, fake systemd, the fake helper, jsdom), and its device evidence follows with the release after step c ([What G6.10 still needs](#what-g610-still-needs-before-g6-can-close)). See [Results on the reference device](#results-on-the-reference-device). Test names refer to the packages `cmd/oarfish-update-helper` (H), `internal/relverify` (R), `internal/updater` (U) and `internal/server` (S) below `backend/`, and the jsdom tests of the update page `frontend/src/pages/Update.test.ts` (P), cited by the start of their names.
+The Device column says what was observed as expected on one device and in which class (D or T); "C only" means that the row, or the named part of it, is not planned on the device. The rows F24 to F31 belong to G6.10; their device evidence comes from the G6.10 closeout ([What G6.10 still needs](#what-g610-still-needs-before-g6-can-close)). See [Results on the reference device](#results-on-the-reference-device). Test names refer to the packages `cmd/oarfish-update-helper` (H), `internal/relverify` (R), `internal/updater` (U) and `internal/server` (S) below `backend/`, and the jsdom tests of the update page `frontend/src/pages/Update.test.ts` (P), cited by the start of their names.
 
 | # | Case | Class (plan) | Covering CI tests | Device |
 |---|---|---|---|---|
@@ -199,15 +207,15 @@ The Device column says what was observed as expected on one device and in which 
 | F21 | Cooldown across a reboot | C, T | H `TestCooldownVoidAfterAReboot` | T |
 | F22 | Staged release expires | C, D (the helper side); the GUI text "start again": C only (the GUI stages and activates in one job, except while the second confirmation waits, which step c covers in jsdom) | H `TestActivateStageExpired`, `TestStatusExpiresAStagedRelease`; U `TestActivateRefusalDiscardsTheStagedRelease` (F2, a refusal no longer leaves the release staged); P "the staged release expires while the dialog waits" | D (the "start again" text stays C only) |
 | F23 | FIFO, link, directory, socket or growing file in the cache | C, D | H `TestCacheFileKinds`, `TestCacheFileGrowsDuringTheCopy`, `TestStageDeadline` | D (17 of 17 cases) |
-| F24 | Component replacement, success | D (G6.10); the logic: C | H `TestComponentTransactionSuccess`, `TestComponentWriteAheadOrder`, `TestComponentRetention`, `TestHandOverExitsAfterTheAnswer`, `TestFirstStartHoldsTheLock`, `TestHelperRestartsAtMostTwice`, `TestCrashSweepComponentTransaction`; U `TestComponentUpdateFlowWithTheFakeHelper`; U `TestHandOverToleranceBound`, `TestNoHandOverWithoutAComponentSet` (F4); P "the second confirmation names every staged component", "F4: the course after the second confirmation", "success with components_updated" | not run, device step follows |
-| F25 | Unit lint reject | C, T (G6.10) | H `TestStageUnitRejected`, `TestStageUnitLintOrder`, `TestLintParsing`, `TestLintHelperUnits`, `TestLintServiceBaseline`, `TestLintServiceUnlistedDirectives`, `TestLintServiceExtras`, `TestInstallUnitsPassTheLint`, `TestInstallUnitsAreTheFirstForms`, `TestServiceRulesMatchTheInstallUnit`, `FuzzUnitLint` (the lint at `stage`); `TestActivateChecksTheStagedFilesAgain` (the lint at `activate`); U `TestInstallerViewForEachInstallerCase` (F1); P "F1, unit_rejected" | not run, device step follows |
-| F26 | Key rule | C, T (G6.10) | H `TestKeyRule`, `TestStageComponentRefusals`, `TestSelfCheck`, `TestCrashSweepComponentRollback`; U `TestComponentsRolledBackFlowWithTheFakeHelper`; U `TestInstallerViewForEachInstallerCase` (F1, the pre-check); P "F1, key_changed", "components_rolled_back, key_changed" (the post-check) | not run, device step follows |
-| F27 | New helper does not start | C, T (G6.10) | H `TestNewHelperDoesNotStart`, `TestResetFailedOnlyWhenStartedByOnFailure`, `TestRecoverStartedByOnFailureLeavesReleasePhases` (E6), `TestCrashSweepNewHelperDoesNotStart`; P "components_rolled_back, interrupted" | not run, device step follows |
-| F28 | New helper answers a wrong protocol | C, T (G6.10) | H `TestNewHelperWithAWrongProtocol`, `TestNewHelperWithOtherBytes`, `TestSelfCheck`, `TestStatusIsAnsweredForEveryVersion`; P "components_rolled_back, protocol_mismatch", "F1, requirements_not_met" (D5 at `stage`) | not run, device step follows |
-| F29 | Power loss in each component phase | T (and C) (G6.10) | H `TestPowerLossInEachComponentPhase`, `TestCrashSweepComponentTransaction`, `TestCrashSweepRecoverComponentPhases`, `TestCrashSweepStageWithAComponentSet`, and one test per row: `TestComponentRowC1UnreferencedSet`, `TestComponentRowC2IntentBeforeTheSwitch`, `TestComponentRowsC3C4ActiveSwitched`, `TestComponentRowC5VerifiedNotCommitted`, `TestComponentRowC6CommittedBeforeTheRelease`, `TestSocketRestartPending` (c7), `TestComponentRowC8RollingBack`, `TestComponentRowC9Leftovers`; U `TestRebuiltStateResultsAreAccepted`, `TestRebuiltStateIsShownByTheService` (F3, P11); P "F3: a rebuilt state", "components_rolled_back, state_unreadable" | not run, device step follows |
-| F30 | Damaged previous component copy | C, T (G6.10) | H `TestDamagedKnownGoodSet` (E5: the self-check, row c8, P11), `TestKnownGoodRecord`, `TestKnownGoodDigestEncoding`, `TestComponentsDamaged` (the comparison side); U `TestRebuiltStateResultsAreAccepted` (F3, E5); P "rollback_failed with known_good_damaged" | not run, device step follows |
-| F31 | Components first, release then fails | T (G6.10); the logic: C | H `TestReleaseFailsAfterTheComponentsCommitted`, `TestCrashSweepComponentsThenReleaseFails`; U `TestReleaseRolledBackAfterTheComponentsFlowWithTheFakeHelper`; P "F31: rolled_back with components_updated", "aborted with components_updated" | not run, device step follows |
-| F32 | Missing component confirmation | C (G6.10) | H `TestMissingComponentConfirmation` (each of the five names alone and a set with a new helper; the trees, `state.json`, the cache and the journal unchanged, no `systemctl` call, no exit), `TestComponentsConfirmedRule`, `TestServiceUnitDifferenceAlone`, `TestReleaseAfterAlpha11ChangesTheHelperAndTheRecoverUnit` (the release after `v0.1.0-alpha.11`), `TestDecodeRequestPerOp` (the member is required); U `TestComponentUpdatePausesForTheSecondConfirmation`; U `TestActivateRefusalDiscardsTheStagedRelease` (`confirmation_required`, F2); P "the second confirmation sends components_confirmed", "oarfish.service alone (D6)", "\"Verwerfen\" in the second confirmation" | C only |
+| F24 | Component replacement, success | D (G6.10); the logic: C | H `TestComponentTransactionSuccess`, `TestComponentWriteAheadOrder`, `TestComponentRetention`, `TestHandOverExitsAfterTheAnswer`, `TestFirstStartHoldsTheLock`, `TestHelperRestartsAtMostTwice`, `TestCrashSweepComponentTransaction`; U `TestComponentUpdateFlowWithTheFakeHelper`; U `TestHandOverToleranceBound`, `TestNoHandOverWithoutAComponentSet` (F4); P "the second confirmation names every staged component", "F4: the course after the second confirmation", "success with components_updated" | D (the GUI update from `v0.1.0-alpha.11` to `v0.1.0-alpha.12`, see [`v0.1.0-alpha.12`, class D](#v010-alpha12-class-d); D4 not observed: the socket unit did not change) |
+| F25 | Unit lint reject | C, T (G6.10) | H `TestStageUnitRejected`, `TestStageUnitLintOrder`, `TestLintParsing`, `TestLintHelperUnits`, `TestLintServiceBaseline`, `TestLintServiceUnlistedDirectives`, `TestLintServiceExtras`, `TestInstallUnitsPassTheLint`, `TestInstallUnitsAreTheFirstForms`, `TestServiceRulesMatchTheInstallUnit`, `FuzzUnitLint` (the lint at `stage`); `TestActivateChecksTheStagedFilesAgain` (the lint at `activate`); U `TestInstallerViewForEachInstallerCase` (F1); P "F1, unit_rejected" | T (12 bundles, see [Phase 6](#phase-6-class-t)) |
+| F26 | Key rule | C, T (G6.10) | H `TestKeyRule`, `TestStageComponentRefusals`, `TestSelfCheck`, `TestCrashSweepComponentRollback`; U `TestComponentsRolledBackFlowWithTheFakeHelper`; U `TestInstallerViewForEachInstallerCase` (F1, the pre-check); P "F1, key_changed", "components_rolled_back, key_changed" (the post-check) | T (F26a at `stage`, F26b at the self-check, see [Phase 6](#phase-6-class-t)) |
+| F27 | New helper does not start | C, T (G6.10) | H `TestNewHelperDoesNotStart`, `TestResetFailedOnlyWhenStartedByOnFailure`, `TestRecoverStartedByOnFailureLeavesReleasePhases` (E6), `TestCrashSweepNewHelperDoesNotStart`; P "components_rolled_back, interrupted" | T (see [Phase 6](#phase-6-class-t)) |
+| F28 | New helper answers a wrong protocol | C, T (G6.10) | H `TestNewHelperWithAWrongProtocol`, `TestNewHelperWithOtherBytes`, `TestSelfCheck`, `TestStatusIsAnsweredForEveryVersion`; P "components_rolled_back, protocol_mismatch", "F1, requirements_not_met" (D5 at `stage`) | T (see [Phase 6](#phase-6-class-t)) |
+| F29 | Power loss in each component phase | T (and C) (G6.10) | H `TestPowerLossInEachComponentPhase`, `TestCrashSweepComponentTransaction`, `TestCrashSweepRecoverComponentPhases`, `TestCrashSweepStageWithAComponentSet`, and one test per row: `TestComponentRowC1UnreferencedSet`, `TestComponentRowC2IntentBeforeTheSwitch`, `TestComponentRowsC3C4ActiveSwitched`, `TestComponentRowC5VerifiedNotCommitted`, `TestComponentRowC6CommittedBeforeTheRelease`, `TestSocketRestartPending` (c7), `TestComponentRowC8RollingBack`, `TestComponentRowC9Leftovers`; U `TestRebuiltStateResultsAreAccepted`, `TestRebuiltStateIsShownByTheService` (F3, P11); P "F3: a rebuilt state", "components_rolled_back, state_unreadable" | T (four phases with process kills and one real power cut each, so four real power cuts, see [Phase 6](#phase-6-class-t)) |
+| F30 | Damaged previous component copy | C, T (G6.10) | H `TestDamagedKnownGoodSet` (E5: the self-check, row c8, P11), `TestKnownGoodRecord`, `TestKnownGoodDigestEncoding`, `TestComponentsDamaged` (the comparison side); U `TestRebuiltStateResultsAreAccepted` (F3, E5); P "rollback_failed with known_good_damaged" | T (F30a and F30b, see [Phase 6](#phase-6-class-t)) |
+| F31 | Components first, release then fails | T (G6.10); the logic: C | H `TestReleaseFailsAfterTheComponentsCommitted`, `TestCrashSweepComponentsThenReleaseFails`; U `TestReleaseRolledBackAfterTheComponentsFlowWithTheFakeHelper`; P "F31: rolled_back with components_updated", "aborted with components_updated" | T (see [Phase 6](#phase-6-class-t)) |
+| F32 | Missing component confirmation | C (G6.10) | H `TestMissingComponentConfirmation` (each of the five names alone and a set with a new helper; the trees, `state.json`, the cache and the journal unchanged, no `systemctl` call, no exit), `TestComponentsConfirmedRule`, `TestServiceUnitDifferenceAlone`, `TestDecodeRequestPerOp` (the member is required); U `TestComponentUpdatePausesForTheSecondConfirmation`; U `TestActivateRefusalDiscardsTheStagedRelease` (`confirmation_required`, F2); P "the second confirmation sends components_confirmed", "oarfish.service alone (D6)", "\"Verwerfen\" in the second confirmation" | C only |
 
 ## Closeout evidence
 
@@ -223,7 +231,7 @@ What the G6 closeout must contain for the base update (U13, U12), in addition to
 - when the finishing audit entry is written (open condition C3);
 - a list of what was not run.
 
-The replacement of components (F24 to F32) belongs to G6.10. Step a added the unit lint, step b the component transaction and step c the dialog, the texts and the follow-ups F1 to F4 of the service, all with class C tests; nothing of them ran on a device. What the G6.10 closeout adds to this list is in [What G6.10 still needs before G6 can close](#what-g610-still-needs-before-g6-can-close). Before the first release that carries the code, the assumption of D1 must be observed on the device: the helper can read its own executable image under its sandbox (A15, A16.4).
+The replacement of components (F24 to F32) belongs to G6.10. Step a added the unit lint, step b the component transaction and step c the dialog, the texts and the follow-ups F1 to F4 of the service, all with class C tests. The values of this list for the component update, or "not measured", are in [the closeout list for the component update](#the-closeout-list-for-the-component-update); what is still open is in [What G6.10 still needs before G6 can close](#what-g610-still-needs-before-g6-can-close). The assumption of D1 (the helper can read its own executable image under its sandbox, A15, A16.4) is inferred from `c_verified` on the device, in class T and in class D.
 
 ## How the device evidence is produced
 
@@ -238,7 +246,7 @@ No device values (host names, addresses, user names, serial numbers) are written
 
 ## Results on the reference device
 
-**Observed on one device, not Verified.** One Raspberry Pi Zero 2 W Rev 1.0, Debian 13 (trixie) arm64, kernel 6.18.50+rpt-rpi-v8, systemd 257, one image. The support status stays Compatible. The values come from the owner's observations of the G6.9 device run with the device test kit, not part of this repository; the repository holds no device logs. The classes are those of [Evidence classes](#evidence-classes): D is the production binaries and the production release key (key id `11f1c52777090bfc`), T is a test build with a throwaway key and the build tag `faulthooks` and is never production evidence. No host names, addresses, user names or serial numbers are recorded here.
+**Observed on one device, not Verified.** One Raspberry Pi Zero 2 W Rev 1.0, Debian 13 (trixie) arm64, kernel 6.18.50+rpt-rpi-v8, systemd 257, one image. The support status stays Compatible. The values come from the owner's observations of the G6.9 device run and of the G6.10 closeout runs (2026-11-12) with the device test kit, not part of this repository; the repository holds no device logs. The classes are those of [Evidence classes](#evidence-classes): D is the production binaries and the production release key (key id `11f1c52777090bfc`), T is a test build with a throwaway key and the build tag `faulthooks` and is never production evidence. No host names, addresses, user names or serial numbers are recorded here.
 
 ### Phase 1, class D (installers of `v0.1.0-alpha.7` and `v0.1.0-alpha.8`)
 
@@ -305,9 +313,99 @@ The six power cuts were switched by a switchable power outlet controlled by the 
 - **Redaction check:** password count 0 everywhere; host name, user name, IPv4, IPv6 and MAC counts 0 in the helper, recover and service journals and in the audit files. The whole system journal and the kit logs are informative only.
 - **State directory:** after uninstall and reinstall it has no state file (a fresh idle state). This is consistent with the helper creating it only with the first update transaction.
 
+### `v0.1.0-alpha.11`, class D
+
+The first release with the helper of G6.10 step b: the tag is on commit `8530be61d6b701b600eddf2e049ad2fee87e885b`, signed with the production key (key id `11f1c52777090bfc`); the helper has the SHA-256 `f0b21c6176b97d03c4703c9b6bc40bceed2b80c05e39cd614de1e2e46cb35362`. Compared with `v0.1.0-alpha.10`, only `oarfish-update-helper` differs of the five compared files, so a device on an earlier release needs one installer run ([When the installer is required](#when-the-installer-is-required)).
+
+Installed on the reference device with the official installer (class D, observed on one device, not Verified). The reboot test passed: 0 failed units, `/healthz` ok.
+
+### D1, class T (Phase 5)
+
+Kit Phase 5, 2026-11-12. Class T, observed on one device, not Verified, and no evidence about the production key path. A test build of the helper of commit `8530be61` (build tag `faulthooks`, throwaway key) ran one real component update, test release 51 to 52, with the production unit files:
+
+- The result was `success` with `components_updated: true`, 23.1 s in total.
+- The journal phases, in this order: `staging`, `staged`, `c_switching`, `c_switched`, `c_verified`, `c_committed`, `switching`, `verifying`, `committed`, `idle`. No rolling back.
+- **D1 is inferred, not logged.** `c_verified` is written only after the self-check, and the self-check includes the SHA-256 of the helper's own executable image (A15.1 D1, A16.2). So the read of the own image under the sandbox is inferred from `c_verified` and `success`; there is no log line about the read itself.
+- After the hand-over the helper process had the hash of the new helper and a new pid.
+- Two `daemon-reload` calls of about 3.2 s each on this device.
+- `systemd-analyze security` of the helper unit after the update: 1.7 OK.
+- The device was restored with the official installer (class D).
+
+### Phase 6, class T
+
+Kit Phase 6, 2026-11-12. Class T, observed on one device, not Verified. The test releases `0.1.0-alpha.11.test.100` to `0.1.0-alpha.11.test.178` were signed with a throwaway key and never published; nothing of this phase is evidence about the production key path. Observed as expected:
+
+| Row | Result | Core |
+|---|---|---|
+| F25 | PASS | 12 bundles, one forbidden case each, all `unit_rejected`, nothing changed |
+| F26a | PASS | `stage` answered `key_changed`, nothing changed |
+| F26b | PASS | `components_rolled_back`, reason `key_changed`, the old helper answers |
+| F27 | PASS | `components_rolled_back`, reason `interrupted`, the old helper answers |
+| F28 | PASS | `components_rolled_back`, reason `protocol_mismatch`, the old helper answers |
+| F30a | PASS | `components_damaged`, no component transaction, the original restored |
+| F30b | PASS | `rollback_failed`, reason `known_good_damaged`, `needs_attention`, the original restored |
+| F31 | PASS | the release was rolled back (`health_timeout`), the components stay new (`components_updated`) |
+| F29 | PASS | four phases a to d, each with three process kills (`SIGKILL`) and one real power cut: a: all outcomes `aborted` (`stage_expired`); b: all rolled back (`interrupted`); c: all rolled back; d: call 6 rolled back (kills 1 and 3), call 9 committed (kill 2 and the power cut) |
+
+**Process kills and power cuts are different evidence.** The twelve process kills of F29 show the state machine of the component phases, not durability. The durability evidence is the four real power cuts, one per phase a to d. The first attempt in phase b does not count: the plug was pulled after the hold window had expired, and the kit detected that and withdrew the attempt. The hold window at a real power cut is about 15 minutes.
+
+At the end of the phase the device was restored to the production release `v0.1.0-alpha.11` with the official installer (class D): 0 failed units, `/healthz` ok. The kit-only findings of this phase are in [Kit false stops and observations](#kit-false-stops-and-observations). Two open points came out of it, not decided: the ADR text of the U13 row F28 against A16.3 P24, and the reason `interrupted` for F27, which the kit requires and the ADR does not name.
+
+### `v0.1.0-alpha.12`, class D
+
+**The release.** The tag is on commit `291d21f3ae3b0b8d92cb3bc85f9fa0e121682de8` (the merge commit of PR #49), signed with the production key (key id `11f1c52777090bfc`), a prerelease with 7 assets, `components.protocol` 1. Compared with `v0.1.0-alpha.11`, exactly two of the five compared files differ: `oarfish-update-helper` (SHA-256 `059c73f09c86e781d5de6de33406c00e62154e669d4147a893763cba63e54063`; the change is one start-up message, D-C85) and `oarfish-update-recover.service` (`Description=` only). `oarfish-update-helper.service`, `oarfish-update-helper.socket` and `oarfish.service` are identical.
+
+**F24, the GUI update from `v0.1.0-alpha.11` to `v0.1.0-alpha.12`** (class D, production key, 2026-11-12; observed on one device, not Verified):
+
+- **Before:** the helper at the installed path had the SHA-256 `f0b21c61…` of `v0.1.0-alpha.11`, `components/0.1.0-alpha.11`, the recover unit's `Description` "Oarfish update recovery", 0 failed units, `/healthz` `0.1.0-alpha.11`.
+- **The page:** the owner reports that the page showed the second confirmation and asked for the password again. The wording of the dialog was not captured, and whether the page showed the hand-over text during the 60-second window (F4) was not confirmed.
+- **After:** the helper SHA-256 `059c73f0…`, equal to the published manifest; `components/0.1.0-alpha.12`; the recover unit link names `components/0.1.0-alpha.12` and its `Description` reads "Oarfish update recovery at boot and after an update helper failure"; `/healthz` version `0.1.0-alpha.12`; 0 failed units; `state.json`: phase `idle`, `needs_attention` false, `previous_version` and `components_previous` `0.1.0-alpha.11`, `known_good_sha256` set, `differs` empty.
+
+The journal of the helper, all phases with `result=ok`:
+
+| Step | Observed |
+|---|---|
+| `staging` to `staged` | 4 s |
+| waiting for the second confirmation | 18 s |
+| `c_switching`, `c_switched` | in the same second |
+| the hand-over | the old helper unit was deactivated and systemd scheduled a restart (restart counter 1); the new helper started |
+| `c_switched` to `c_verified` | 5 s |
+| `c_verified` to `c_committed` | 3 s |
+| `switching`, `verifying`, the restart of the service | about 1 s down, then listening with version `0.1.0-alpha.12` |
+| the restart to `committed` | about 12 s |
+| then | `idle` |
+| `update_started` in the audit to `idle` | about 45 s |
+
+No rolling back and no `components_rolled_back`.
+
+**Observed for the first time in class D:** the restart of the real helper unit after the hand-over (the journal shows the deactivation and the scheduled restart; the value of the exit code itself is not in the lines read), and the new helper passing its self-check (`c_verified`), so D1 is now also observed with the production key, by the same inference as in [Phase 5](#d1-class-t-phase-5).
+
+**D2, the boot after the component update.** A soft reboot (`systemctl reboot`, not a power cut). SSH back after about 57 s. The recover unit started and finished within about 1 s with the new text; 0 lines "ordering cycle" or deleted jobs in the journal of the boot; 0 failed units; the helper socket and `oarfish.service` active; `/healthz` `0.1.0-alpha.12`. Boot time 40.864 s (kernel 4.962 s, userspace 35.902 s), `multi-user.target` after 35.123 s. The text of the recover unit changed only in `Description=`, so this shows that the new unit text runs at boot without regression. It does not show that a changed ordering takes effect. D4 (a changed socket unit) was not observed: the socket unit did not change.
+
+**Not observed in this run:** `daemon-reload` as a separate event; D4; a real power cut with a production release; F4 and the 60-second display; the wording of the dialog; the second confirmation in a browser other than as reported by the owner.
+
+#### The closeout list for the component update
+
+The points of [Closeout evidence](#closeout-evidence) for this update (class D, observed on one device, not Verified):
+
+| Point | Value |
+|---|---|
+| The success run with its timings | the journal table above: `staging` to `staged` 4 s, `c_switched` to `c_verified` 5 s, `c_committed` 3 s later, the service about 1 s down, `committed` about 12 s after the restart, about 45 s from `update_started` to `idle` |
+| `write_bytes` of the service and of the helper, before and after the update | not measured |
+| Peak `VmHWM` of the service and of both helper processes during the update | not measured. Only values after the reboot exist (service `VmHWM` 9,552 kB, `write_bytes` 0, about 8 minutes after boot); they are not update values |
+| `systemd-analyze security` after the update | 1.7 OK for `oarfish.service`, `oarfish-update-helper.service` and `oarfish-update-recover.service` |
+| Redaction counts (patterns: password, token, secret, bearer, authorization, the host name, IPv4) | the helper, recover and socket journals 0; `state.json` 0; the service journal 1 (the loopback listen address `127.0.0.1` in the start-up line); the audit 7 occurrences of the word "password", all in the names of events and targets (`password_changed`, `password_change_failed`, `account/password`), no value |
+| The boot time and the recover unit's timing | 40.864 s (kernel 4.962 s, userspace 35.902 s), `multi-user.target` after 35.123 s; the recover unit started and finished within about 1 s (D2 above) |
+| `pid` of `/healthz` against `MainPID` (A11.2) | equal |
+| When the finishing audit entry is written (C3) | no `update_finished` entry when read more than 10 minutes after the update and after the reboot ([Open condition C3](#open-condition-c3-the-finishing-audit-entry)) |
+| What the page showed during the hand-over (F4) | not observed |
+| What was not run | [What was not run, and what is not verified](#what-was-not-run-and-what-is-not-verified) |
+
 ### Open condition C3, the finishing audit entry
 
 `update_finished` is written only on a later `GET /api/v1/update` poll. In the run it was written about 13.5 min after the commit, with the time of the write and the user field "-", not the time the helper finished. This is the behaviour designed in G6.7. A proposal exists (write the entry with the helper's `finished_at` and check once at service start). The owner has not decided it; nothing was changed.
+
+**`v0.1.0-alpha.12` (class D, 2026-11-12):** the audit has `update_started` for `0.1.0-alpha.12`, and there was no `update_finished` entry when the audit was read more than 10 minutes after the update and after the reboot. By the design of G6.7 the entry is written on a later `GET /api/v1/update` poll. This is recorded as an observation; it is not decided, and nothing was changed.
 
 ### Kit false stops and observations
 
@@ -319,6 +417,7 @@ The device test kit stopped several times on its own checks. These are the "ABWE
 - A stale-test counter counted leftovers of an earlier version.
 - The kit driver marked a step as failed when the printed ledger history contained the word "ABWEICHUNG".
 - One early class T run on `v0.1.0-alpha.9` had a gap of 15 minutes between `stage` and `activate`, caused by a sleep defect of the kit (a kit defect, not a product finding).
+- G6.10 closeout, Phase 6 (class T), kit-only findings, not product findings: a state file that does not exist before the first update was read as an empty value; the first creation of `state.json` by the helper was counted as a change; the kill row accepted only one outcome where ADR 0010 A16.2 row c2 allows two; a `SIGKILL` during `activate` gives no answer (`closed_without_answer` or `connection_reset`); the restore did not clear the expected failed state of the recover unit after F30b (cleared by hand); the word scanner of the kit raised a false alarm on old ledger lines.
 
 **Observations without a gate failure:**
 
@@ -326,10 +425,16 @@ The device test kit stopped several times on its own checks. These are the "ABWE
 2. Failed test releases stay in `releases/` after a rollback. Whether this is intended retention is an open question.
 3. For F14 the service state and `/healthz` during `rollback_failed` were not captured.
 4. The official uninstall and installer after F14 needed about 100 s before its own log started. The cause is unknown.
+5. Phase 6 (G6.10 closeout): the hold window at a real power cut is about 15 minutes. After a power cut through the switched outlet the device did not start by itself; the cause lies between the outlet and the device, not in the software, and the owner switched the device on by hand.
 
 ### What was not run, and what is not verified
 
-- F13 and the parts marked "C only" in the matrix: the audit entry of F1, the cut download and the `.part` file of F4, the fake `403` with a reset header of F18, and the GUI text "start again" of F22.
-- F24 to F32 belong to G6.10. The unit lint of step a, the component transaction of step b and the page, texts and service follow-ups of step c have class C tests only; they did not run on a device. The page of step c was checked in jsdom only, not in a browser. Not verified in particular: the read of the helper's own executable image under the unit sandbox, the restart of the real units after exit code 75, `daemon-reload` from the helper and from the recover unit, and the effect of a changed recover unit at the next boot.
+**What ran on the device** (observed on one device, not Verified): the rows F1 to F23 except F13 in G6.9 (class D and T, above); for G6.10 the installer of `v0.1.0-alpha.11` and the GUI update to `v0.1.0-alpha.12` with F24 and D2 (class D), the component update of Phase 5 (class T, D1) and the rows F25 to F31 of Phase 6 (class T, four real power cuts in F29). Class T is no evidence about the production key path.
+
+**What did not run, or was not measured or observed:**
+
+- F13 and the parts marked "C only" in the matrix: the audit entry of F1, the cut download and the `.part` file of F4, the fake `403` with a reset header of F18, the GUI text "start again" of F22, and F32.
+- Not measured during the component update: `write_bytes` before and after, and the peak `VmHWM` of the service and of both helper processes. The values after the reboot are not update values.
+- Not observed: `daemon-reload` as a separate event in class D (class T: two reloads of about 3.2 s in Phase 5); the value of the exit code 75 of the old helper (the journal shows the deactivation and the scheduled restart); D4 (no release changed the socket unit); that a changed ordering of the recover unit takes effect at the next boot (only `Description=` changed); a real power cut with a production release; F4 and the 60-second display; the wording of the dialog of the second confirmation; the second confirmation in a browser other than as reported by the owner. The page of step c was otherwise checked in jsdom only.
 - Not verified: screen reader use, other boards and models, Ubuntu, behaviour over many days, four simultaneous clients.
 - Nothing is Verified for this device or for any feature. G6 stays open until the owner decides on G6.10 with its device evidence.
