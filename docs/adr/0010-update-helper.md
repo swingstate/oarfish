@@ -19,6 +19,8 @@
 
 - Amendment A17 (G6.10 step c, written 2026-11-11, `docs/DECISIONS.md` D-C84, addition of step c): the owner decisions F1 to F5 for the page, the texts and three follow-ups of the service, and the second confirmation of U15 rule 7 as implemented, listed in "Amendment A17 (G6.10, step c)" below. It edits no accepted sentence in place except a pointer in U14; its change table names the rule that now applies; the specification is not changed.
 
+- Amendment A18 (G6.10 closeout, written 2026-11-13, `docs/DECISIONS.md` D-C86): the assumption of D1 was observed, listed in "Amendment A18 (G6.10 closeout)" below. It edits no accepted sentence in place except a pointer after each of the two sentences that call the assumption of D1 "to be observed"; the specification is not changed.
+
 ## How to read this ADR
 
 Every statement carries one of these labels, so that a reader can tell what is known from what is hoped:
@@ -893,7 +895,7 @@ Each of D1 to D7 is an **owner decision**. Only D3, as far as the lint needs it,
 
 Statements that belong to the decisions and are not part of them:
 
-- **Assumption (D1), to be observed on the device before the first release that carries the code:** the helper sandbox (`ProtectProc=invisible`, `ProcSubset=pid`) lets the process read its own executable image. It is not checked.
+- **Assumption (D1), to be observed on the device before the first release that carries the code:** the helper sandbox (`ProtectProc=invisible`, `ProcSubset=pid`) lets the process read its own executable image (observed, see A18). It is not checked.
 - **Fact (D1, `main.go`, `handler.go`):** the helper has no release version; `helper_version` is the constant `protocol-1` (A13). Nothing in step a reads the helper's own image.
 - **Fact (D2, `install/install.sh`, `move_known_good`):** the installer moves `known-good` after its health check and runs `daemon-reload` when the recover unit text differs. D2 gives the helper the same order.
 - **Fact (D4, `state.go`):** the state has the boolean `socket_restart_pending` and no member for the time since boot at which it was set; `resetTxn` keeps the flag; nothing sets it and `status` does not report it. The new member and the report are step b.
@@ -1098,7 +1100,7 @@ The table has 38 rows: 32 baseline and 6 extras.
 1. **Password at the second confirmation (C4, D7): open owner question.** The present behaviour stays until the owner decides.
 2. **A release tooling check for the two-step rule: not decided.** Nothing in `scripts/` or in CI compares the helper units of a release with the accepted forms of the helper of the release before it. `TestInstallUnitsPassTheLint` only proves that the units and the tables of the same commit agree. `docs/RELEASING.md` has a checklist item; whether a tool should enforce it is an owner decision.
 3. **The wording of the U13 row F14 against the U6 sentence about the hash recorded "before a transaction starts": pending owner check.** Neither text is edited by A15.
-4. **The assumption of D1** (the helper can read its own executable image under its sandbox) is to be observed on the device before the first release that carries the code of step b.
+4. **The assumption of D1** (the helper can read its own executable image under its sandbox) is to be observed on the device before the first release that carries the code of step b (observed, see A18).
 5. **Statement 1 of A15.2** contains a proposal about `installer_required` after step b; it is confirmed or changed at the review of step b.
 
 ### Changes made to the accepted text (A15)
@@ -1363,6 +1365,10 @@ The accepted text is not rewritten; U14 got a pointer below its table. For every
 | A16.2, "The service" | a status that fails during the hand-over is shown as a helper that is not reachable | progress within the bound of F4, the error after it | F4, S4 |
 | U13, rows F24 to F32 (not edited) | class C tests of step b | plus the service and page tests of step c (`docs/UPDATE.md`); class D and T not run | A17.2 |
 | U14, row G6.10 (not edited) | one step | the pointer below the table: steps a to c, then a release and the device evidence | A15.2, A17 |
+
+## Amendment A18 (G6.10 closeout)
+
+**A18 (G6.10 closeout, 2026-11-13, `docs/DECISIONS.md` D-C86).** It edits no accepted sentence in place; it adds pointers. The assumption of D1 (A15.1, A16.4: the helper can read its own executable image under its sandbox, "to be observed on the device before the first release that carries the code") was observed: in class T on the reference device (kit Phase 5, a real component update of a test build with the production unit files, `c_verified` and success) and in class D (the GUI update from `v0.1.0-alpha.11` to `v0.1.0-alpha.12`, `c_verified`). D1 is inferred from `c_verified`, which is written only after the self-check that includes the SHA-256 of the helper's own executable image; no log line states the read itself. The two sentences "to be observed" are met; nothing else changes. Not observed: D4, the 60-second display of F4, `daemon-reload` as a separate event.
 
 ## Evidence and test plan for the later implementation
 
