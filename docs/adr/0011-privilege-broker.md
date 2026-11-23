@@ -1,6 +1,7 @@
 # ADR 0011: Privilege Broker: a socket-activated root process with a closed, typed allowlist for systemd services, reboot and shutdown
 
-- Status: **Proposed** (design stop G7.0; nothing in this ADR is decided until the project owner accepts it)
+- Status: **Accepted** (2026-11-23, accepted by the project owner in chat, recorded in `docs/DECISIONS.md` as D-C87, with the changes of [amendment A1](#amendment-a1-g70-owner-decisions); proposed in the design stop G7.0, PR #53)
+- Amendment A1 (G7.0 owner decisions, written 2026-11-23, D-C87): the owner's decisions on the draft items, two changes (item 6, item 11), one open item (16) and one added task for the spike G7.1, listed in "Amendment A1 (G7.0 owner decisions)" below. It edits no sentence of the body; where the body speaks of itself as Proposed or as a proposal, the amendment governs.
 - Date: 2026-11-23
 - Gate: G7, step G7.0 (design stop; G7.1 and later are not started)
 - Written against: `main` at commit `4f1b5d13accc7373e5fee586c0defe45e9b7ae0c` (merge of PR #52)
@@ -23,6 +24,7 @@
 12. [Risks](#risks)
 13. [Draft decisions for the owner](#draft-decisions-for-the-owner)
 14. [Assumptions to verify](#assumptions-to-verify)
+15. [Amendment A1 (G7.0 owner decisions)](#amendment-a1-g70-owner-decisions)
 
 ## How to read this ADR
 
@@ -588,3 +590,31 @@ Each item is a proposal with a recommendation. Accepted items become `D-C87` and
 | A-08 | `flock` with `LOCK_SH` works on a directory under `ProtectSystem=strict`, read-only, and conflicts with the helper's `LOCK_EX`. | B6, B8 | G7.1 spike and class C test |
 | A-09 | `systemctl start`, `stop`, `restart`, `reboot` and `poweroff` work from uid 0 with an empty capability set, `PrivateNetwork=yes` and `ProtectProc=invisible`. | B8 | G7.1 spike; if not, stop and ask the owner |
 | A-10 | `systemctl` reaches systemd through a file-system socket from a private network namespace. | B8 | G7.1 spike |
+
+## Amendment A1 (G7.0 owner decisions)
+
+**A1 (G7.0, 2026-11-23, `docs/DECISIONS.md` D-C87).** The project owner decided the draft items in chat on 2026-11-23. D-C87 records them as items 1 to 18, with the numbers of `D-DRAFT-G7-01` to `D-DRAFT-G7-18` in [Draft decisions for the owner](#draft-decisions-for-the-owner); `D-C82` stays reserved. This amendment edits no sentence of the body above. Where the body speaks of this ADR, a decision or a recommendation as Proposed, as a proposal or as "not decided here", the decisions below govern; where an item is changed, the change governs over the body.
+
+### A1.1 Accepted as recommended
+
+Items 1 to 5, 7 to 10, 12 to 15, 17 and 18 are accepted as recommended in the table of draft decisions, among them layout L1 (item 2), read path R1 with R3 as a fallback only (item 3), the deny list of B3 rule 10 (item 5), and the residual risk TB1 (item 8). The conflicts these items settle and the documents changed for them are named in D-C87.
+
+### A1.2 Item 6, critical units: accepted with a change
+
+`tailscaled.service` is restart only, like SSH and the network path. In the table of B3 rule 11, the row "Remote access" therefore reads "No (restart only)" instead of "Yes, with warning"; a stop of it is refused with `operation_not_offered` (B2) and BF12 covers it. The warnings for the kinds of B3 rule 11 stay as recommended. The rule in the owner's words: what can cut the person's access can only be restarted, not stopped. The acceptance criterion of ORB-SVC-003 says so (specification 0.4.3).
+
+### A1.3 Item 11, connected users: changed
+
+"Verbundene Benutzer" in ORB-PWR-002 means other Oarfish sessions and open live views only (B6, list items 1 to 3). Part (4) of that list, the count of login sessions on the device from systemd-logind, is dropped from G7, and assumption A-06 is dropped from the spike G7.1. ORB-PWR-002 carries the definition (specification 0.4.3).
+
+### A1.4 Item 16, installer budget: not decided
+
+The installer budget stays open (K3). The owner decides it before G7.3, together with the needs of D-D10, as B10 already plans. The owner's stated direction, not binding: raise the limit (option I1 of B1) rather than restructure the root script. No budget value is changed; `scripts/check-budgets.sh` and `docs/DEVELOPMENT.md` are not touched.
+
+### A1.5 Added task for the spike G7.1
+
+The spike reads the real service list on the reference device and reports further units that can cut the person's access, as candidates for restart only. **The list of B3 rule 11 has not been checked on a device.** A unit is added to the restart-only list only by a later owner decision on the spike's findings (the stop point of G7.1 in B10).
+
+### A1.6 What is not done
+
+The amendments named in [Amendments this ADR would need](#amendments-this-adr-would-need) are made as text only: ADR 0010 amendment A19, ADR 0009 amendment A7 and the specification in version 0.4.3 (8.6, 14.2, ORB-SVC-003, ORB-LOG-002, ORB-PWR-002). Specification 8.2 (K12) is aligned in G7.3. No code implements anything of this ADR yet: the broker is G7.2, its packaging G7.3, the service side and the audit in code G7.4, reboot and shutdown G7.5. **Nothing in this ADR is verified, on a device or otherwise**; the assumptions A-01 to A-05 and A-07 to A-10 stay open for the steps named in [Assumptions to verify](#assumptions-to-verify). G7.1 has not started.

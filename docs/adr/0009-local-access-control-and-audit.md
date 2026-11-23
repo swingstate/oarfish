@@ -2,7 +2,7 @@
 
 - Status: **Accepted** (2026-10-28, accepted by the project owner)
 - Date: 2026-10-28
-- Amended: 2026-10-31 by amendments A1 to A4 (D-C49 to D-C52); amendment A5 adds the confirmation of the hash parameters on the reference device; amendment A6 (2026-11-02, D-C61, accepted together with [ADR 0010](0010-update-helper.md)) adds the update actions to the audit sets
+- Amended: 2026-10-31 by amendments A1 to A4 (D-C49 to D-C52); amendment A5 adds the confirmation of the hash parameters on the reference device; amendment A6 (2026-11-02, D-C61, accepted together with [ADR 0010](0010-update-helper.md)) adds the update actions to the audit sets; amendment A7 (2026-11-23, D-C87, accepted together with [ADR 0011](0011-privilege-broker.md)) adds the service and power actions of the Privilege Broker and an `fsync` before a power operation
 - Gate: G5.1 (design stop; G5.1 itself is not started)
 
 ## Context
@@ -116,6 +116,16 @@ The project owner confirmed four deviations that the G5.1 implementation made fr
 - **Result values added** to `success`, `wrong_password`, `rate_limited` and `error`, which already exist: the error codes and outcomes of the update helper, `busy`, `signature_invalid`, `checksum_mismatch`, `manifest_invalid`, `downgrade_refused`, `already_installed`, `requirements_not_met`, `helper_too_old`, `installer_required`, `confirmation_required`, `key_changed`, `unit_rejected`, `components_damaged`, `stage_expired`, `no_space`, `current_unhealthy`, `cooldown`, `io_error`, `rolled_back`, `components_rolled_back`, `rollback_failed`, `aborted`, and `unavailable` (the helper could not be reached). The helper codes `bad_request`, `not_found` and `internal` are recorded as the existing `error`.
 
 Nothing in the audit file may contain a password, a token, a host name or an address; the new values add none. The write load of two to three entries per update is an estimate of about 750 bytes (ADR 0010, U8), not a measurement. The code change belongs to step G6.7 of ADR 0010; this amendment is text only and the audit package is not changed by it.
+
+**A7. Service and power actions in the audit sets, and `fsync` before a power operation (amends E7; D-C87 item 9; accepted together with ADR 0011).** The Privilege Broker of G7 ([ADR 0011](0011-privilege-broker.md), B5) needs more values, and a power operation stops the service within seconds of its audit entry. The service stays the only writer of the audit file; the broker writes journal lines only. The rule is now: the sets gain the following values, and nothing else in E7 changes (fixed typed fields, no free-form text, server-made correlation ID, the aggregation of A4), except the flush rule for a power operation below.
+
+- **Actions:** `service_start`, `service_stop`, `service_restart` (user = the account name, one entry when the broker has answered), `system_reboot` and `system_poweroff` (one entry when the broker has answered `accepted`). None is aggregated. A refusal by the service before the broker is called (password, CSRF, Origin) is audited as today.
+- **Targets:** the pattern `service/<unit>`, where `<unit>` passes the syntax rule of ADR 0011 B3 rule 1 and has at most 255 bytes after the prefix, and the fixed target `system` for the two power actions. The pattern is checked like the correlation ID; a value that does not match is dropped and counted, as E7 says for values outside the sets.
+- **Result values added** to `success`, `wrong_password`, `rate_limited`, `error`, `busy` and `unavailable`, which already exist (E7, A6): the broker codes of ADR 0011 B2 `unit_invalid`, `unit_unknown`, `unit_not_canonical`, `unit_denied`, `unit_masked`, `unit_transient`, `unit_oneshot`, `unit_template`, `refused_by_unit`, `operation_not_offered`, `already_in_state`, `job_failed`, `timeout`, `state_unexpected`, `update_running` and `already_requested`. The broker codes `bad_request` and `internal` are recorded as the existing `error`.
+- **Flush and `fsync` before a power operation.** After the entry `system_reboot` or `system_poweroff`, the service flushes the audit buffer at once and calls `fsync` on the audit file, before anything else happens, because the stop of the service follows within seconds. Today the data is not `fsync`ed, only the directory at rotation (ADR 0011, "Facts found"). The flush on SIGTERM stays. The 30 s flush of E7 and the accepted loss of A4 stay for every other entry.
+- **Plugin field.** The field `plugin` stays empty until G8 (ORB-SEC-003, ADR 0011 B7); A7 does not change it.
+
+Unit names are not secrets and are audited as they are, bounded by the syntax rule; unit descriptions, request bodies, error texts of `systemctl` and the password are never audited (ADR 0011 B5, ORB-SEC-007). The new values add no host name and no address. **No code implements A7 yet:** the service actions and their audit entries are step G7.4 of ADR 0011, the power actions with the flush and `fsync` step G7.5. This amendment is text only and the audit package is not changed by it. Nothing of it is verified.
 
 ## Forward compatibility with HTTPS
 

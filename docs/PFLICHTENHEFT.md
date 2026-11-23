@@ -2,9 +2,9 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.4.2
+- Dokumentversion: 0.4.3
 - Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G5.1 abgenommen)
-- Stand: 7. November 2026
+- Stand: 23. November 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
@@ -441,7 +441,7 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 | ORB-DASH-007 | Oarfish muss laufende Plugins und Anwendungen zusammenfassen. | SOLL | Das Dashboard verlinkt direkt zu Plugin- oder Containerdetails. |
 | ORB-DASH-008 | Die Oberfläche soll einen optionalen Verlauf von CPU-Auslastung, Arbeitsspeicher und Temperatur anzeigen können (Richtwert: die letzten 24 Stunden bei etwa fünf Minuten Auflösung; endgültige Werte nach H1 und Messung auf dem Referenzgerät). Die Hintergrundmessung ist standardmäßig aus. | SOLL | Ausgeschaltet findet keine Messung ohne Zuschauer statt; eingeschaltet bleiben Idle-CPU und Schreiblast innerhalb der NFR-Budgets (Messung auf dem Referenzgerät). |
 | ORB-PWR-001 | Reboot und Shutdown müssen als bestätigungspflichtige GUI-Aktionen verfügbar sein. | MUSS | Aktion wird autorisiert und auditiert. |
-| ORB-PWR-002 | Ein Neustart muss wartende Aktionen und verbundene Benutzer sichtbar machen. | SOLL | Bestätigungsdialog nennt mögliche Auswirkungen. |
+| ORB-PWR-002 | Ein Neustart muss wartende Aktionen und verbundene Benutzer sichtbar machen. Verbundene Benutzer sind andere Oarfish-Sitzungen und offene Live-Ansichten; Anmeldesitzungen am Gerät werden nicht gezählt (D-C87). | SOLL | Bestätigungsdialog nennt mögliche Auswirkungen. |
 
 ### 6.4 Systemdienste, Journal, Prozesse und Updates
 
@@ -449,9 +449,9 @@ Die folgenden Anforderungen sind verbindliche Grundlage für Implementierung, Te
 |---|---|---|---|
 | ORB-SVC-001 | systemd-Dienste müssen filterbar gelistet werden. | MUSS | Name, Status, Startmodus und Kurzbeschreibung sind sichtbar. |
 | ORB-SVC-002 | Start, Stop und Neustart müssen mit Auswirkungsbeschreibung und Bestätigung möglich sein. | MUSS | Aktion wird autorisiert, protokolliert und verifiziert. |
-| ORB-SVC-003 | Kritische Systemdienste müssen besonders gekennzeichnet sein. | SOLL | Netzwerk, SSH, Oarfish und Containerengines zeigen zusätzliche Warnung. |
+| ORB-SVC-003 | Kritische Systemdienste müssen besonders gekennzeichnet sein. | SOLL | Netzwerk, SSH, Oarfish und Containerengines zeigen zusätzliche Warnung. Dienste, die den Zugang zum Gerät trennen können (SSH, Netzwerkpfad, `tailscaled`), lassen sich nur neu starten, nicht stoppen (D-C87). |
 | ORB-LOG-001 | Das Journal muss nach Zeit, Priorität, Unit und Freitext filterbar sein. | SOLL | Filter sind kombinierbar und Ergebnisse werden begrenzt nachgeladen. Reserve: darf nach der MVP-Abnahme folgen. |
-| ORB-LOG-002 | Loganzeige muss Secrets und definierte sensible Muster maskieren. Das gilt für jede Anzeige von Logs und Systemdateien. | MUSS | Testfälle decken Tokens, Keys und Passwörter ab. |
+| ORB-LOG-002 | Loganzeige muss Secrets und definierte sensible Muster maskieren. Das gilt für jede Anzeige von Logs und Systemdateien. Namen und Beschreibungen von systemd-Units sind kein Log- oder Systemdateiinhalt; sie werden als begrenzter reiner Text angezeigt (D-C87). | MUSS | Testfälle decken Tokens, Keys und Passwörter ab. |
 | ORB-PRC-001 | Oarfish muss Prozesse nach CPU und RAM anzeigen. | SOLL | PID, Benutzer, Prozessname, CPU und RAM werden dargestellt. |
 | ORB-OSU-001 | APT-Updates müssen klassifiziert angezeigt werden, sofern die Anzeige ohne Programmaufruf und innerhalb des Speicherbudgets möglich ist. Die Prüfung im Geräte-Spike S1 ist erfolgt: Die Zahl verfügbarer Updates lässt sich ohne Programmaufruf nicht ableiten, daher gehört die Anzeige nicht zum MVP-Umfang und kann nach G7 folgen (D-C78). | SOLL | Sicherheits- und reguläre Updates sind getrennt. |
 | ORB-OSU-002 | OS-Updates benötigen Plan, Bestätigung und Ergebnisprüfung. Nach dem MVP. | KANN | Pakete, Downloadgröße und Neustartbedarf erscheinen vor Ausführung. |
@@ -751,7 +751,8 @@ Der Update Helper ist separat und darf ausschließlich:
 - einen Rollback auf eine bekannte gesunde Version ausführen,
 - den eigenen Zustand führen,
 - den Zustand von `oarfish.service` lesen,
-- die eigene Binärdatei und die zugehörigen Unit-Dateien aus einem signierten Oarfish-Release nach den Regeln von ADR 0010 (U15) austauschen.
+- die eigene Binärdatei und die zugehörigen Unit-Dateien aus einem signierten Oarfish-Release nach den Regeln von ADR 0010 (U15) austauschen,
+- sowie Binärdatei und Units des Privilege Broker (`oarfish-broker`, `oarfish-broker.socket`, `oarfish-broker.service`) als Teil desselben Komponentensatzes austauschen (D-C87, ADR 0010 A19; umgesetzt in G7.3).
 
 ### 8.7 API- und Ereignismodell
 
@@ -1106,7 +1107,7 @@ Der Implementierungsagent muss vor jeder Arbeit:
 | G5.1 | Lokaler Zugriffsschutz und Audit-Grundlage | Erstkonto-Einrichtung (ORB-ONB-002), lokales Administratorkonto mit Anmeldung, Abmeldung und Passwortänderung (ORB-AUTH-001), serverseitig invalidierbare Sitzungen mit sicheren Cookies (ORB-AUTH-002), Rate-Limit für Anmeldeversuche (ORB-AUTH-003), CSRF- und Herkunftsschutz (ORB-SEC-004), restriktive Datei-Rechte (ORB-SEC-005), Audit-Log (ORB-SEC-006) ohne Secrets (ORB-SEC-007). G5.1 bleibt auf Loopback beschränkt; die explizite Konfiguration für nicht-lokale Bindung behandelt der Design-Stopp D-D10 vor dem MVP-Release (D-C48, ADR 0009). Design-Stopp mit ADR zu Passwort-Hashing, Sitzungsspeicher, Audit-Speicher unter Berücksichtigung der microSD-Schreiblast und Erstkonto-Einrichtung. | Zustandsändernde Endpunkte lehnen Anfragen ohne gültige Sitzung und ohne CSRF-Schutz ab; Audit-Einträge enthalten keine Secrets; Anmeldung auf dem Raspberry Pi verifiziert. |
 | G6 | Self-Update | GUI, Update Manager, Signaturprüfung, atomare Aktivierung und Rollback. Update Helper als separater privilegierter Prozess. Teilschritte G6.0 bis G6.10 nach ADR 0010 (D-C53, D-C63). | Erfolgs- und Fehlerupdate auf Pi verifiziert. G6 ist erst mit G6.10 abgeschlossen. |
 | G6.10 | Austausch von Update Helper und Units durch GUI-Update | Eigene Bestätigung, Prüfung der Unit-Dateien gegen fest einkompilierte Regeln, Rollback des Helpers, Schlüsselregel (D-C54, D-C60, ADR 0010, U15). | Austausch von Update Helper und Units mit dem Produktionsschlüssel auf dem Pi verifiziert; Fehlerfälle nachgewiesen und gekennzeichnet. |
-| G7 | System Core | Dienste, Journal, Prozesse, Reboot und Shutdown. Privilege Broker mit fester Allowlist (ORB-SEC-002). Journal und Prozesse sind Reserve nach der MVP-Abnahme. | Sicherer Dienstneustart End-to-End. |
+| G7 | System Core | Dienste, Journal, Prozesse, Reboot und Shutdown. Privilege Broker mit fester Allowlist (ORB-SEC-002). Journal und Prozesse sind Reserve nach der MVP-Abnahme. | Sicherer Dienstneustart End-to-End. Reboot und Shutdown auf dem Referenzgerät nachgewiesen (Nachweisklasse D, D-C87). |
 | G8 | Plugin Runtime | Manifest, Lifecycle, Capability-Modell und Beispielplugin. Capability-Prüfung im Broker (ORB-SEC-003). | Fehlerhaftes Plugin blockiert Core nicht. |
 | G9 | Tailscale Plugin | Setup, Login, Status, Enable/Disable und Audit. Installation per GUI über eine typisierte Broker-Aktion (eigener Entwurfsstopp). | Realer Workflow auf Pi. |
 | G10 | Containers Plugin | Engine Detection, Liste, Details, Logs und Lifecycle. | Mindestens eine reale Engine verifiziert. |
@@ -1254,3 +1255,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.4.0 | 6. November 2026 | Anforderungen des Entscheidungspakets R1 (D-C69 bis D-C76, ADR 0008, Ergänzung nach R1): Abschnitt 4.1 und 4.3 (LAN-Zugriff über HTTPS, Files lesend, optionaler Verlauf; Schreiben in Files, WLAN ändern, OS-Updates ausführen und Datenträgerverwaltung nicht im MVP); ORB-GEN-006 (Deutsch und Englisch vollständig, Sprache folgt dem Browser); ORB-DASH-006 und neu ORB-DASH-008 (optionaler Verlauf, Hintergrundmessung nur auf Einschalten); ORB-LOG-001 von MUSS auf SOLL, ORB-LOG-002 für jede Anzeige von Logs und Systemdateien; ORB-OSU-001 unter Bedingung, ORB-OSU-002 nach dem MVP; ORB-STO-007 und ORB-NFR-009 (Verlauf mit fester Obergrenze, Schreibhäufigkeit nach Medientyp); ORB-NET-001 (Standardroute und DNS) und ORB-NET-003 (WLAN nur anzeigen); ORB-ONB-003 und ORB-SEC-010 (Bindung außerhalb von Loopback nur durch Wahl beim Installieren), neu ORB-SEC-011 (nur HTTPS bei nicht-lokaler Bindung); ORB-UPD-001 (Update-Hinweis, in Übereinstimmung mit ADR 0010, A11.1); neuer Abschnitt 6.13 mit ORB-FIL-001 bis ORB-FIL-005; Abschnitt 7.2 (neue Navigation, erster Eintrag "Dashboard" statt "Home", auch in 1.5, 4.1, UC-02, ORB-DASH-001 und ORB-DASH-007); Abschnitt 8.2 (Einstellungen, Verlaufsschnappschuss, TLS-Zertifikat); Abschnitt 12.3 (AT-028 bis AT-030); Abschnitt 13.2 (Sicherung als dokumentierter Kopierweg); Abschnitt 14.2 (Reserve in G7, Installation in G9, Umsetzungsreihenfolge G10, G9, G11, Entwurfsstopps D-D10, H1 und F1); Abschnitt 16 (Punkte 12, 13 und 19 angepasst, neue Punkte 21 bis 23); Kopfzeile: Dokumentversion, Status (Gates G0 bis G5.1) und Stand. Die Wurzeln von Files, Intervalle und Schreibzahlen des Verlaufs, die WLAN- und DNS-Quelle sowie die Anzeige von Betriebssystem-Updates sind offen. Nichts davon ist auf einem Gerät verifiziert. |
 | 0.4.1 | 6. November 2026 | Abschnitt 6.4, ORB-OSU-001: Ergebnis des Geräte-Spikes S1 (Anzeige verfügbarer Updates nicht ohne Programmaufruf möglich, nicht im MVP-Umfang, kann nach G7 folgen; D-C78, ADR 0008, Ergänzung nach S1); Kopfzeile: Dokumentversion. Sonst unverändert. |
 | 0.4.2 | 7. November 2026 | Abschnitt 14.1 und 14.3 sowie 18.2: Die dauerhaften Regeln für den Implementierungsagenten stehen als `docs/AGENT_RULES.md` im Repository (D-C79, ändert D-C65 Teil 1); Gate-Prompts verweisen darauf und wiederholen die Regeln nicht; Statuszeile in `docs/ROADMAP.md` gehört zur Definition of Done. Kopfzeile: Dokumentversion und Stand. Sonst unverändert. |
+| 0.4.3 | 23. November 2026 | Entscheidungen zum Entwurfsstopp G7.0 (D-C87, ADR 0011 Ergänzung A1, ADR 0010 A19, ADR 0009 A7): Abschnitt 6.3, ORB-PWR-002: verbundene Benutzer sind andere Oarfish-Sitzungen und offene Live-Ansichten, keine Anmeldesitzungen am Gerät (D-C87, Punkt 11); Abschnitt 6.4, ORB-SVC-003: Dienste, die den Zugang trennen können (SSH, Netzwerkpfad, `tailscaled`), nur neu starten, nicht stoppen (D-C87, Punkt 6); Abschnitt 6.4, ORB-LOG-002: Namen und Beschreibungen von Units sind kein Log- oder Systemdateiinhalt (D-C87, Punkt 17); Abschnitt 8.6: Binärdatei und Units des Privilege Broker im Komponentensatz des Update Helpers (D-C87, Punkt 2); Abschnitt 14.2, G7: Exit-Kriterium um Reboot und Shutdown auf dem Referenzgerät erweitert (D-C87, Punkt 15); Kopfzeile: Dokumentversion und Stand. Abschnitt 8.2 folgt in G7.3. Nichts davon ist umgesetzt oder auf einem Gerät verifiziert. |
