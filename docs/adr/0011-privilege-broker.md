@@ -2,6 +2,7 @@
 
 - Status: **Accepted** (2026-11-23, accepted by the project owner in chat, recorded in `docs/DECISIONS.md` as D-C87, with the changes of [amendment A1](#amendment-a1-g70-owner-decisions); proposed in the design stop G7.0, PR #53)
 - Amendment A1 (G7.0 owner decisions, written 2026-11-23, D-C87): the owner's decisions on the draft items, two changes (item 6, item 11), one open item (16) and one added task for the spike G7.1, listed in "Amendment A1 (G7.0 owner decisions)" below. It edits no sentence of the body; where the body speaks of itself as Proposed or as a proposal, the amendment governs.
+- Amendment A2 (G7.1 device spike findings, written 2026-11-23): the results of the device spike G7.1 with throwaway units on the reference device, one verdict per assumption, the service list for amendment A1.5, and draft changes to B2, B3 and B8 marked "proposal, not applied", listed in "Amendment A2 (G7.1 device spike findings)" below. It edits no sentence of the body and no row of "Assumptions to verify" and takes no decision; the owner decides B2, B3 and B8 from it (stop point of G7.1 in B10).
 - Date: 2026-11-23
 - Gate: G7, step G7.0 (design stop; G7.1 and later are not started)
 - Written against: `main` at commit `4f1b5d13accc7373e5fee586c0defe45e9b7ae0c` (merge of PR #52)
@@ -25,6 +26,7 @@
 13. [Draft decisions for the owner](#draft-decisions-for-the-owner)
 14. [Assumptions to verify](#assumptions-to-verify)
 15. [Amendment A1 (G7.0 owner decisions)](#amendment-a1-g70-owner-decisions)
+16. [Amendment A2 (G7.1 device spike findings)](#amendment-a2-g71-device-spike-findings)
 
 ## How to read this ADR
 
@@ -618,3 +620,140 @@ The spike reads the real service list on the reference device and reports furthe
 ### A1.6 What is not done
 
 The amendments named in [Amendments this ADR would need](#amendments-this-adr-would-need) are made as text only: ADR 0010 amendment A19, ADR 0009 amendment A7 and the specification in version 0.4.3 (8.6, 14.2, ORB-SVC-003, ORB-LOG-002, ORB-PWR-002). Specification 8.2 (K12) is aligned in G7.3. No code implements anything of this ADR yet: the broker is G7.2, its packaging G7.3, the service side and the audit in code G7.4, reboot and shutdown G7.5. **Nothing in this ADR is verified, on a device or otherwise**; the assumptions A-01 to A-05 and A-07 to A-10 stay open for the steps named in [Assumptions to verify](#assumptions-to-verify). G7.1 has not started.
+
+## Amendment A2 (G7.1 device spike findings)
+
+**A2 (G7.1, written 2026-11-23).** Step G7.1 ran on the reference device with throwaway units, a throwaway copy of the broker sandbox and throwaway scripts, as G6.1 did for the update helper. This amendment records what was observed. **It takes no decision.** It edits no sentence of the body above and no row of [Assumptions to verify](#assumptions-to-verify); A2.3 says which verdict belongs to which row. The draft text in A2.5 is marked "proposal, not applied" and changes nothing until the owner decides B2, B3 and B8 (the stop point of G7.1 in B10). `docs/DECISIONS.md` is not changed by it.
+
+**Evidence label.** Every result below is a *Device observation (G7.1), throwaway units, one device, one image, one moment, 2026-11-23*, in the sense of [ADR 0010](0010-update-helper.md#how-to-read-this-adr) "Device observation (G6.1)". It is one reading, not the production path: no broker binary exists, and no real (non-throwaway) unit was started, stopped or restarted. It is never called Verified, and the support status of the reference device stays Compatible. The write-up of the spike and its raw outputs are evidence outside this repository and are not linked from here. Device values (host name, user name, address, serial number, boot id, machine id, partition identifiers) are left out; DEVICE, USER and ADDRESS stand for them where needed.
+
+### A2.1 Refuted or surprising: read this first
+
+| # | Finding (device observation, G7.1) | Affects | What it means |
+|---|---|---|---|
+| S1 | **Refuted.** `show` of a template instance that was never started (`<tpl>@b.service`) reports `LoadState=loaded`: systemd loads an instance from its template on demand. A following `start` of that name returns 0 and creates the instance. | B3 rules 3 and 5 | "Accepted only when systemd already has it loaded" cannot be decided with the `show` shape. As written, rule 5 would let a caller create a new instance of any template. |
+| S2 | **Refuted.** Stopping a one-shot unit with `RemainAfterExit=yes` runs its `ExecStop=`. On this image: `rpi-setup-loop@var-swap.service` (active) has `ExecStop=/sbin/losetup -d …` for the swap file's loop device; `alsa-restore.service` (active) runs `alsactl … store`; `nftables.service` (inactive here) has `ExecStop=/usr/sbin/nft flush ruleset`. | B3 rules 6 and 8 | "`service.stop` is allowed (it only ends something that runs)" is not true for these units: a stop runs a privileged task. |
+| S3 | **Surprise.** A unit with `RefuseManualStop=yes` refuses `restart` as well as `stop` (exit code 4, "Operation refused, unit … may be requested by dependency only"). | B3 rule 9 | Rule 9 should name restart for `RefuseManualStop=yes`. |
+| S4 | **Partly refuted.** The manager's `DefaultTimeoutStartUSec` is 90 s, but `NetworkManager.service` has `TimeoutStartUSec=10min`, and `cloud-init-main.service` and `rc-local.service` have `infinity` (non-one-shot units). | B2 deadline, A-04 | The 100 s deadline covers the default, not every unit. A restart of NetworkManager, which B3.11 makes restart only, can outlast it and end in `timeout`. |
+| S5 | **Surprise.** A `Type=exec` unit whose main process exits with 1 right after starting: `systemctl start` returned 0 after 162 ms; one second later `ActiveState=failed`, `Result=exit-code`. | B2 verification of `service.start` and `service.restart` | Only the `show` read after the call catches this, and only if the unit has already failed when it is read. |
+| S6 | **Surprise.** `list-unit-files` takes 2.6 to 2.7 s on the reference device; `list-units` takes about 50 ms. | B2 bounds (5 s per call, 5 s cache) | Within the bound, with a margin below two. |
+| S7 | **Surprise, parsing.** `show` prints properties in systemd's own order, not in the order of `--property=`. `show` of an unknown name returns 0 with `LoadState=not-found`. `list-units --all` lists 16 `not-found` entries (names referenced by other units, without a file). `list-unit-files` prints a third column (vendor preset) and the states `enabled-runtime`, `linked` and `alias`, beside the ones B2 names. | B2 read shapes, B3 rule 3 | Parse by key, treat `not-found` as unknown, and expect three columns. |
+| S8 | **Surprise.** In the broker sandbox, `systemctl` cannot check whether it runs in a chroot (`/proc/1/root` is not accessible) and logs "Failed to check if we're running in chroot, assuming not: Permission denied". It then works normally. | B8, A-09 | The calls work because systemd 257 assumes "not in a chroot" on this error. If another systemd version decided the other way, `systemctl` would ignore the command and still exit 0 (*assumption*, not observed). |
+| S9 | **Surprise.** The two sides reach systemd differently: as `oarfish` in the service sandbox, `systemctl` connects to the D-Bus system bus (`/run/dbus/system_bus_socket`); as uid 0 in the broker sandbox it connects to `/run/systemd/private`. | R1, B8 | R1 depends on `dbus.service` running; the broker does not. |
+| S10 | **Not captured.** For `reboot` and `poweroff` the device went down within about 1 to 1.5 s of the start of the sandboxed unit, and the exit line of `systemctl` was lost with the link and the volatile journal. | A-09, B9 kit | The evidence for both is the device's behaviour, not an exit code. |
+| S11 | **Table gaps.** Several units of the B3.11 table do not exist on this image; several units on the image that can cut access are not in it (A2.4). | B3 rule 11 | Input for the owner's decision; nothing is changed here. |
+
+### A2.2 Device and method
+
+- **Device.** One Raspberry Pi Zero 2 W Rev 1.0, revision code `902120`; Raspberry Pi OS Lite 64-bit (Debian 13 "trixie", Raspberry Pi reference image of 2026-10-06); kernel `6.18.50+rpt-rpi-v8` (aarch64); systemd 257 (`257.13-1~deb13u1`); kernel command line with `cgroup_disable=memory`, controllers `cpuset cpu io pids` (as ADR 0010 A4); journald `Storage=volatile` from a drop-in, `/var/log/journal` empty, one boot in the journal after each restart (as ADR 0010 A6); 425,116 kB `MemTotal`.
+- **Production state.** Release `0.1.0-alpha.12`, read from the name of the release directory that `/opt/oarfish/current` points to (the release tree holds no manifest file; the binary was not run). `oarfish.service` active and running, `oarfish-update-helper.socket` active and listening, `oarfish-update-helper.service` and `oarfish-update-recover.service` inactive.
+- **Method.** A private kit outside this repository, run from the development computer over SSH with `sudo`, as fixed named blocks (no command is passed in from outside). Every throwaway unit, directory and file on the device had the prefix `oarfish-spike71-`. Two sandbox units were made mechanically and checked with `diff` on the device:
+  1. **Service sandbox copy:** the `[Service]` section of `install/oarfish.service` verbatim (`User=oarfish`, `Group=oarfish` and the whole hardening block); changed were only `ExecStart=`, the names in `StateDirectory=`, `CacheDirectory=` and `RuntimeDirectory=`, and `Description=`.
+  2. **Broker sandbox copy:** the `oarfish-broker.service` text of B8 verbatim, including `After=oarfish-update-recover.service`, `PrivateNetwork=yes`, `ProtectProc=invisible`, `ProcSubset=pid`, the empty `CapabilityBoundingSet=`, `RestrictAddressFamilies=AF_UNIX`, `IPAddressDeny=any`, `SystemCallFilter=@system-service`, `MemoryMax=32M`, `TasksMax=16` and `User=root`; changed were only `ExecStart=` and `Description=`. One copy per case.
+
+  Inside a sandbox, a POSIX shell script ran `/usr/bin/systemctl` with the exact shapes of B2 against throwaway target units. Durations were measured with nanosecond timestamps around each call. `VmHWM` of the `systemctl` child was polled from `/proc/<pid>/status` while it ran, so it is a lower bound. The transport was read from the debug log of `systemctl` (`SYSTEMD_LOG_LEVEL=debug`), as a diagnosis only, without `strace` and without installing a package. The throwaway target units were: a long-running `Type=exec` unit, a `Type=notify` unit that never becomes ready (`TimeoutStartSec=10`), a unit whose main process exits 1, a unit whose `ExecStartPre=` fails, a masked name (link to `/dev/null`), a transient unit made with `systemd-run --unit=…`, a `Type=oneshot` unit, a unit with `RefuseManualStop=yes`, a template with one started and one never-started instance, and an alias made as a link to the long-running unit.
+- **Snapshots.** Before anything else, before the reboot, after the reboot, after the power-off and after the cleanup, the kit recorded `ActiveState`, `SubState`, `UnitFileState`, `FragmentPath` and `NRestarts` of `oarfish.service` and the three helper units, the SHA-256 of their unit files and of `/opt/oarfish/current/oarfish`, and the target of `/opt/oarfish/current`. **All five snapshots are identical.**
+- **Incidents.** (1) For the two shortest lock cases, the first journal read returned nothing (a race with journald). The lines were read again by unit name; the kit then waited 1 s before reading. (2) The exit lines of `systemctl reboot` and `systemctl poweroff` were not captured (S10). (3) No production unit, file or lock was touched; the real `/var/lib/oarfish-update` was only read with `stat`.
+- **Not checked: Ubuntu Server.** There is no Ubuntu device (G12).
+
+### A2.3 Verdicts per assumption
+
+Each row names the row of [Assumptions to verify](#assumptions-to-verify) it belongs to. The row itself is not edited.
+
+| Row | Verdict (G7.1) | Evidence (device observation, G7.1) |
+|---|---|---|
+| A-01 | **Confirmed** | As `nobody` outside any sandbox: `list-units` exit 0, 128 lines; `list-unit-files` exit 0, 214 lines; `show` of `ssh.service` exit 0. As `oarfish` in the service sandbox: see A-02. |
+| A-02 | **Confirmed** | As uid 999 (`oarfish`), `CapEff` and `CapBnd` 0, `NoNewPrivs` 1, `Seccomp` 2, under the verbatim service sandbox: `list-units --type=service --all --no-legend --no-pager --plain` exit 0, 55 ms (51 ms warm), 15,084 bytes, 129 lines (2 throwaway); `list-unit-files --type=service --no-legend --no-pager` exit 0, 2,701 ms (2,561 ms warm), 13,906 bytes, 214 lines (25 throwaway); the `show` shape of B2 for one unit exit 0, 63 ms, 299 bytes, 13 lines; `show` of the manager exit 0, 35 ms. No output on stderr and no denial line in the journal. Transport: the D-Bus system bus (S9). |
+| A-03 | **Partly confirmed** (Raspberry Pi OS: confirmed; Ubuntu: not checked) | systemd 257: `list-units … --output=json` exit 0, 49 ms, 16,994 bytes (1.13 times the plain output), one line; members `unit`, `load`, `active`, `sub`, `description`. `list-unit-files … --output=json` exit 0, 2,559 ms, 16,164 bytes (1.16 times), members `unit_file`, `state`, `preset`. Together they cover name, load, active, sub, description and the unit file state. `--no-legend` makes no difference to the JSON output. The systemd of Ubuntu Server LTS was not checked (no device; G12). |
+| A-04 | **Partly confirmed** | `systemctl show` of the manager: `DefaultTimeoutStartUSec=1min 30s`, `DefaultTimeoutStopUSec=1min 30s`. A 100 s deadline covers the default, but not every unit (S4). Throwaway `Type=notify` unit with `TimeoutStartSec=10`, started from the broker sandbox with `systemctl start --no-ask-password --job-mode=fail -- <unit>`: exit 1 after 10,078 ms, stderr "Job for … failed because a timeout was exceeded."; afterwards `ActiveState=failed`, `SubState=failed`, `Result=timeout`. |
+| A-05 | **Confirmed** | 102 of 180 non-template unit files are `Type=oneshot` (one of them throwaway). First-boot and key-generation tasks: `regenerate_ssh_host_keys.service`, `sshd-keygen.service`, `rpi-resize.service` ("Grow and trim root filesystem on first boot"), `systemd-firstboot.service`, `cloud-init-local.service`, `cloud-init-network.service`, `cloud-config.service`, `cloud-final.service`, `systemd-growfs-root.service`, `systemd-machine-id-commit.service`. Similar privileged tasks: `rpi-eeprom-update.service` (EEPROM update check), `apt-daily.service`, `apt-daily-upgrade.service`, `sshswitch.service` ("Turn on SSH if /boot/ssh … is present"), `rpi-resize-swap-file.service`, `nftables.service`, `e2scrub_all.service`, `fstrim.service`, `dpkg-db-backup.service`, `logrotate.service`, `man-db.service`, `ldconfig.service`. Read only; nothing was started. |
+| A-06 | **Dropped** by A1.3 | Not checked. |
+| A-07 | **Not run** as BF27 evidence | Observed only alongside the power-off test (owner present and agreed in chat): after `systemctl poweroff` from the broker sandbox, SSH did not answer for 90 s (9 attempts), nor at any time before the owner restored the power about 7 minutes later. It answered 17 s after the owner reported the power restored. This is not BF27 evidence: there was no audit entry, no GUI and no production broker. |
+| A-08 | **Confirmed** | Throwaway directory `root:root`, 0700, opened read-only by `flock(1)` from the broker sandbox (no `ReadWritePaths=`). (a) `LOCK_SH\|LOCK_NB` with nobody holding it: exit 0, 14 ms. (b) While another process held `LOCK_EX`: exit 1, 8 ms (the conflict exit code of `flock -n`; the errno itself was not printed). (c) While the sandboxed process held `LOCK_SH` for 12 s: `LOCK_EX\|LOCK_NB` from another process exit 1; `LOCK_SH\|LOCK_NB` from another process exit 0; after the release `LOCK_EX\|LOCK_NB` exit 0. The real `/var/lib/oarfish-update` is `root:root`, 0700, a directory (`stat` only; no lock taken). |
+| A-09 | **Confirmed** for `start`, `stop` and `restart` on throwaway units; **confirmed by effect** for `reboot` and `poweroff` (exit code not captured, S10) | In the broker sandbox `/proc/self/status` shows `Uid` 0, `CapInh`, `CapPrm`, `CapEff`, `CapBnd` and `CapAmb` all 0, `NoNewPrivs` 1, `Seccomp` 2 (22 filters). Long-running unit: `show` exit 0, 108 ms; `start` exit 0, 115 ms, then `ActiveState=active`, `SubState=running`; `start` again exit 0, 53 ms; `restart` exit 0, 130 ms, then a new `MainPID` and a new `ExecMainStartTimestampMonotonic`; `stop` exit 0, 114 ms, then `inactive`/`dead`; `stop` again exit 0, 78 ms. No call needed a capability, and no polkit or D-Bus refusal appeared. `systemctl reboot --no-ask-password`: the sandboxed unit started (exit 0); SSH closed within 1 s; the device answered again after 52 s; at the check, uptime was 70.8 s. `systemctl poweroff --no-ask-password` (owner present): SSH closed about 1.5 s after the start; for the rest see A-07. After each boot: `oarfish.service` active, `oarfish-update-helper.socket` active, `systemctl --failed` empty, no line about an ordering cycle in the boot journal. |
+| A-10 | **Confirmed** | In the broker sandbox only `lo` exists (`/sys/class/net`). The debug log of `systemctl` shows "starting bus by connecting to /run/systemd/private", and every shape of A-09 worked. |
+
+**The cases B3 relies on**, observed through the `show` shape and the start, stop and restart shapes in the broker sandbox:
+
+| Case | Observed (device observation, G7.1) | B3 rule |
+|---|---|---|
+| Masked name | `LoadState=masked`, `UnitFileState=masked`; `start` and `restart` exit 1, "Unit … is masked."; `stop` exit 0 (no effect) | Rule 6 as assumed |
+| Transient unit (`systemd-run --unit=…`) | `Transient=yes`, `UnitFileState=transient`; `restart` exit 0 (systemd allows it; rule 7 is the broker's own refusal); after `stop` the unit is gone (`LoadState=not-found`) | Rule 7 as assumed |
+| `Type=oneshot`, `RemainAfterExit=no` | `start` exit 0, 158 ms, ends `inactive`/`dead`; `restart` exit 0 | Rule 8; see S2 for one-shots with `RemainAfterExit=yes` |
+| `RefuseManualStop=yes` | `stop` and `restart` exit 4, "Operation refused" | Rule 9; see S3 |
+| Template | `show` of `<tpl>@.service` exit 1 ("neither a valid invocation ID nor unit name"); `start` of it exit 1 ("missing the instance name"); started instance `loaded`/`active`, `restart` exit 0; never-started instance `loaded`/`inactive`, `start` exit 0 creates it | Rule 2 as assumed; rules 3 and 5 refuted (S1) |
+| Alias (link) | `show` of the alias: `Id=<target>`, `Names=<target> <alias>`; `start` and `stop` through the alias exit 0 and act on the target; the link makes the target's `UnitFileState=indirect` | Rule 4 as assumed |
+| Unknown name | `show` exit 0, `LoadState=not-found`; `start` exit 5, "Unit … not found." | Rule 3 (S7) |
+| Main process exits at once | see S5 | B2 verification |
+
+**`systemd-analyze security`** (device observation, G7.1): the broker sandbox copy **0.9 SAFE**; the service sandbox copy 1.7 OK; `oarfish.service` 1.7 OK; `oarfish-update-helper.service` 1.7 OK. The broker sandbox meets the target of B8 (at or below the helper's 1.7). Remaining deductions of the broker copy: root user 0.4, `@resources` and `@privileged` in the system call filter 0.2 each, `PrivateUsers=` 0.2, host root directory 0.1, `AF_UNIX` 0.1, device ACL `char-rtc:r` 0.1.
+
+**Memory** (one reading each, device observation, G7.1, not a budget): `VmHWM` of the `systemctl` child in the broker sandbox, polled, so a lower bound: the `show` shape 7,696 to 8,384 kB; `start` and `restart` 7,760 to 7,768 kB; `stop` up to 8,376 kB. The memory of the read shapes in the service sandbox was not measured.
+
+### A2.4 The service list and the access path (A1.5)
+
+Read only, as root, with the two read shapes and `show` per unit file; nothing was started, stopped or restarted. 127 entries in `list-units --all` and 189 unit files (without the throwaway units); 111 loaded, 41 active.
+
+**Units of the B3.11 table present on the device:** `NetworkManager.service` (running), `wpa_supplicant.service` (running; alias `dbus-fi.w1.wpa_supplicant1.service`), `avahi-daemon.service` (running; alias `dbus-org.freedesktop.Avahi.service`), `ssh.service` (running; alias `sshd.service`), `tailscaled.service` (running). `wpa_supplicant@.service` is installed as a template with no loaded instance.
+
+**Units of the table absent on the device:** `networking.service` (listed as `not-found`: referenced, no unit file), `dhcpcd.service`, `ModemManager.service`, `docker.service`, `containerd.service`, `podman.service`, `chrony.service` (`chronyd.service` is `not-found`), `ntp.service`, `ntpsec.service`. Time is kept by `systemd-timesyncd.service`, which the deny list of rule 10 already covers by the prefix `systemd-`.
+
+**Already covered by the deny list (rule 10):** `dbus.service` (NetworkManager, wpa_supplicant and the D-Bus read path R1 depend on it); `systemd-networkd.service` (installed, inactive), `systemd-timesyncd.service`, `systemd-logind.service`, `systemd-rfkill.service` (radio switch state), `systemd-hostnamed.service` (all by the prefix `systemd-`); `getty@tty1.service`, `serial-getty@.service`, `user@1000.service`, `user-runtime-dir@1000.service`. `systemd-resolved.service` is `not-found`.
+
+**Already covered by rule 8 for start and restart** (one-shot): `regenerate_ssh_host_keys.service` and `sshd-keygen.service` (new host keys would break every client's host key check), `sshswitch.service`, `NetworkManager-wait-online.service`, `cloud-init-network.service`, `tailscale-wait-online.service`, `nftables.service`. Stop stays allowed for them under rule 8 (S2).
+
+**Candidates for restart only, or for the deny list, not in the tables** (one line each; nothing is decided here):
+
+| Unit on the device | State | Reason it can cut access |
+|---|---|---|
+| `avahi-daemon.service` | running; in the table with "stop offered" | The mDNS responder: a person who reaches the device by its `.local` name loses that name when it stops. |
+| `sshd@.service` (template; loaded instance `sshd@sshd-keygen.service`) and `sshd-unix-local@.service` (alias) | template `indirect`; alias | Per-connection SSH daemons: stopping or restarting an instance ends that SSH connection; the B3.11 entry `ssh.service` does not cover the template. Restart does not help here, so the deny list may fit better than restart only. |
+| `wpa_supplicant-nl80211@.service`, `wpa_supplicant-wired@.service` | templates, disabled | Wireless and wired authentication; the pattern `wpa_supplicant@*.service` of the table does not match their names. |
+| `nftables.service` | one-shot, disabled, inactive | The firewall: `start` (refused by rule 8) can load rules that cut access, and `stop` (allowed by rule 8) runs `nft flush ruleset` (S2). |
+| `rpi-usb-gadget-ics.service` | disabled | USB gadget network sharing: on a Zero 2 W, the USB connection can be the person's network path when this is enabled. |
+| `ppp@.service` | template, disabled | A PPP link can be the only network path when used. |
+| `NetworkManager-dispatcher.service`, `nm-priv-helper.service` | D-Bus activated, static | Helpers of NetworkManager: a stop does not cut a running connection, but can break later network changes; low. |
+| `bluetooth.service` | running | Can carry a network path (Bluetooth PAN); no such use was seen on this image; low. |
+
+**Considered, not candidates:** `cron.service`, `udisks2.service`, `rsync.service`, `rc-local.service` (a person's own script; `infinity` start timeout, S4), `cloud-init-main.service` (`infinity`, S4), `rpi-setup-loop@var-swap.service` (not access, but S2).
+
+### A2.5 Proposed changes to B2, B3 and B8 (proposal, not applied)
+
+**Proposal, not applied.** Each item is draft text for the owner's decision at the stop point of G7.1. None changes the body of this ADR until the owner accepts it and a decision records it.
+
+**B2.**
+
+- *P-B2-1 (read shapes).* Keep the two plain shapes as the R1 contract for G7: they work under the service sandbox (A-02) and their output is 13 to 16 % smaller than JSON. Parse `list-units` as four words and the rest of the line as the description. Parse `list-unit-files` as three words: name, state and vendor preset. Accept the state words observed here (`enabled`, `enabled-runtime`, `disabled`, `static`, `masked`, `indirect`, `linked`, `alias`) plus `generated` and `transient`; anything else fails closed. Revisit `--output=json` when the Ubuntu systemd is checked (G12), because A-03 is only half answered.
+- *P-B2-2 (`not-found`).* Entries with `LoadState=not-found` in `list-units --all` are not shown as services. A `show` that answers `LoadState=not-found` is `unit_unknown`.
+- *P-B2-3 (`show` parsing).* The `show` output is parsed by key, never by position. Each of the 13 keys must appear exactly once, else `internal`.
+- *P-B2-4 (timing).* The 5 s bound per call stays. The observed margin for `list-unit-files` is below two (S6), so the device-wide cache of 5 s stays as designed. If the margin proves too small in G7.6, the bound is raised for `list-unit-files` only.
+- *P-B2-5 (deadline).* The 100 s deadline stays, and the sentence "covers a normal job" reads "covers the manager's default start timeout of 90 s (device observation, G7.1); units with a longer `TimeoutStartUSec`, among them `NetworkManager.service` (10 min) on the reference image, can end in `timeout` while the job continues" (S4).
+- *P-B2-6 (verification after start and restart).* The verification reads the `show` shape once more about 1 s after `systemctl` returned, and accepts only `ActiveState=active`. A failure later than that is outside what the broker verifies, and the page says so in the success text (S5).
+
+**B3.**
+
+- *P-B3-1 (rule 5, instances; S1).* Replace "accepted only when systemd already has it loaded (rule 3)" by: an instance is accepted for `service.stop` and `service.restart` only while its `ActiveState` is not `inactive`, and `service.start` of an instance is refused with `unit_template` unless its `ActiveState` is `failed`. Alternative: the broker reads `list-units --all --type=service --no-legend --no-pager --plain -- <name>` before its `show` and accepts the instance only if it is listed. The name is literal, because rule 1 allows no `*`, `?` or `[`. This adds a fourth shape and may still race with the load that `show` itself causes (not observed).
+- *P-B3-2 (rule 8, one-shot; S2).* Refuse `service.stop` of a one-shot unit as well, so that `unit_oneshot` covers all three operations. The text "Oarfish startet solche Aufgaben nicht" then reads "Oarfish verwaltet solche Aufgaben nicht" / "Oarfish does not manage such tasks". Alternative: allow stop only when `RemainAfterExit=no`, which needs one more property in the `show` shape.
+- *P-B3-3 (rule 9; S3).* `RefuseManualStop=yes` refuses `service.stop` and `service.restart`. `RefuseManualStart=yes` refuses `service.start` and `service.restart`. The second sentence is an *assumption*: only `RefuseManualStop=` was observed.
+- *P-B3-4 (rule 3; S7).* `LoadState=not-found` (exit code 0) is `unit_unknown`. Rule 3 already says so; this adds the observed form.
+- *P-B3-5 (rules 10 and 11; A2.4).* The owner decides which candidates of A2.4 join the restart-only list or the deny list. The table of rule 11 keeps its absent units, because other images and Ubuntu may have them; the time row has no unit on this image.
+- Rules 2, 4, 6 and 7 behaved as written (A2.3); no change is proposed for them.
+
+**B8.**
+
+- *P-B8-1.* No change of the unit text: start, stop, restart, reboot and poweroff worked with the text verbatim and an empty capability set (A-09, A-10), and the score is 0.9 (target at or below 1.7). No capability stop was needed, and no diagnostic variant was run.
+- *P-B8-2 (S8).* Add a sentence: "`systemctl` cannot read `/proc/1/root` in this sandbox and assumes it does not run in a chroot (device observation, G7.1, systemd 257). The broker's verification of service operations by `show` would detect a silent refusal; for `system.reboot` and `system.poweroff` only the next boot does. G7.6 and the Ubuntu check (G12) observe it again."
+- *P-B8-3 (memory).* The `systemctl` child alone peaked at about 7.7 to 8.4 MB (7,696 to 8,384 kB, lower bound, A2.3), so the *estimate* "below 12 MB together" in B1 consequence 4 leaves about 4 MB for the broker process. BF31 measures it.
+- *P-B8-4 (journal).* For reboot and power-off the broker's own journal lines do not survive (S10, ADR 0010 A6). B5 already makes the audit entry the persistent record; the device kit of B9 must collect the broker's lines before the click, as B9 item 1 says.
+
+### A2.6 What was not verified
+
+- Ubuntu Server: A-03 and every other row (no device; G12).
+- The production path: there is no broker binary, socket, `SO_PEERCRED` check, idle exit, rate window or audit entry yet (G7.2 to G7.6). No real unit was started, stopped or restarted, so BF16 and every class D row stay open.
+- The exit codes of `systemctl reboot` and `systemctl poweroff` (S10). A-07 as BF27 evidence, and whether the device switches itself on after a longer time or after a power loss while running.
+- `RefuseManualStart=yes` (only `RefuseManualStop=yes` was observed).
+- Whether a `show` that loads an instance makes it appear in `list-units --all` (P-B3-1, alternative).
+- The memory of the read shapes in the service sandbox; `MemoryMax=` stays not enforced on this image (ADR 0010 A4).
+- The boot order with broker units (none were installed; BF30) and the cold-boot ordering of a broker socket.
+- Hostile output (BF21), behaviour under load, and the read shapes while a job is running.
+- A diagnostic variant without `PrivateNetwork=yes`: not needed, because nothing failed.
