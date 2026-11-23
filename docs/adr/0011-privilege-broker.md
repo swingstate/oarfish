@@ -3,8 +3,9 @@
 - Status: **Accepted** (2026-11-23, accepted by the project owner in chat, recorded in `docs/DECISIONS.md` as D-C87, with the changes of [amendment A1](#amendment-a1-g70-owner-decisions); proposed in the design stop G7.0, PR #53)
 - Amendment A1 (G7.0 owner decisions, written 2026-11-23, D-C87): the owner's decisions on the draft items, two changes (item 6, item 11), one open item (16) and one added task for the spike G7.1, listed in "Amendment A1 (G7.0 owner decisions)" below. It edits no sentence of the body; where the body speaks of itself as Proposed or as a proposal, the amendment governs.
 - Amendment A2 (G7.1 device spike findings, written 2026-11-23): the results of the device spike G7.1 with throwaway units on the reference device, one verdict per assumption, the service list for amendment A1.5, and draft changes to B2, B3 and B8 marked "proposal, not applied", listed in "Amendment A2 (G7.1 device spike findings)" below. It edits no sentence of the body and no row of "Assumptions to verify" and takes no decision; the owner decides B2, B3 and B8 from it (stop point of G7.1 in B10).
+- Amendment A3 (G7.1 owner decisions, written 2026-11-23, D-C88): the owner's decisions on the proposals of amendment A2.5, "wie empfohlen", with the full text of every rule they change (B2, B3, B8), the changed rows of the failure matrix and what stays open, listed in "Amendment A3 (G7.1 owner decisions)" below. It edits no sentence of the body; where the body and A3 differ, A3 governs. It is a decision, not evidence: nothing in it is verified.
 - Date: 2026-11-23
-- Gate: G7, step G7.0 (design stop; G7.1 and later are not started)
+- Gate: G7; steps G7.0 (design stop) and G7.1 (device spike) are done, G7.2 has not started
 - Written against: `main` at commit `4f1b5d13accc7373e5fee586c0defe45e9b7ae0c` (merge of PR #52)
 - Decision numbers: this ADR uses draft numbers `D-DRAFT-G7-nn` only. They become `D-C87` and later when the owner accepts them (`D-C82` stays reserved). `docs/DECISIONS.md` is not changed by this ADR.
 - Amends nothing. Where an accepted text (ADR 0009, ADR 0010, the specification) would need a change, this ADR lists it as a proposal in "Conflicts and gaps" and in "Amendments this ADR would need".
@@ -27,6 +28,7 @@
 14. [Assumptions to verify](#assumptions-to-verify)
 15. [Amendment A1 (G7.0 owner decisions)](#amendment-a1-g70-owner-decisions)
 16. [Amendment A2 (G7.1 device spike findings)](#amendment-a2-g71-device-spike-findings)
+17. [Amendment A3 (G7.1 owner decisions)](#amendment-a3-g71-owner-decisions)
 
 ## How to read this ADR
 
@@ -619,7 +621,7 @@ The spike reads the real service list on the reference device and reports furthe
 
 ### A1.6 What is not done
 
-The amendments named in [Amendments this ADR would need](#amendments-this-adr-would-need) are made as text only: ADR 0010 amendment A19, ADR 0009 amendment A7 and the specification in version 0.4.3 (8.6, 14.2, ORB-SVC-003, ORB-LOG-002, ORB-PWR-002). Specification 8.2 (K12) is aligned in G7.3. No code implements anything of this ADR yet: the broker is G7.2, its packaging G7.3, the service side and the audit in code G7.4, reboot and shutdown G7.5. **Nothing in this ADR is verified, on a device or otherwise**; the assumptions A-01 to A-05 and A-07 to A-10 stay open for the steps named in [Assumptions to verify](#assumptions-to-verify). G7.1 has not started.
+The amendments named in [Amendments this ADR would need](#amendments-this-adr-would-need) are made as text only: ADR 0010 amendment A19, ADR 0009 amendment A7 and the specification in version 0.4.3 (8.6, 14.2, ORB-SVC-003, ORB-LOG-002, ORB-PWR-002). Specification 8.2 (K12) is aligned in G7.3. No code implements anything of this ADR yet: the broker is G7.2, its packaging G7.3, the service side and the audit in code G7.4, reboot and shutdown G7.5. **Nothing in this ADR is verified, on a device or otherwise**; the assumptions A-01 to A-05 and A-07 to A-10 stay open for the steps named in [Assumptions to verify](#assumptions-to-verify). G7.1 has not started. (G7.1 ran on 2026-11-23; see amendment A2 and amendment A3.)
 
 ## Amendment A2 (G7.1 device spike findings)
 
@@ -757,3 +759,153 @@ Read only, as root, with the two read shapes and `show` per unit file; nothing w
 - The boot order with broker units (none were installed; BF30) and the cold-boot ordering of a broker socket.
 - Hostile output (BF21), behaviour under load, and the read shapes while a job is running.
 - A diagnostic variant without `PrivateNetwork=yes`: not needed, because nothing failed.
+
+## Amendment A3 (G7.1 owner decisions)
+
+**A3 (G7.1, 2026-11-23, `docs/DECISIONS.md` D-C88).** The project owner decided in chat on 2026-11-23 on the proposals of [A2.5](#a25-proposed-changes-to-b2-b3-and-b8-proposal-not-applied): "wie empfohlen", that is, every item as written in A2.5, with the choices named below. D-C88 records them as items 1 to 15. This amendment edits no sentence of the body above and no row of [Assumptions to verify](#assumptions-to-verify) or of the [failure matrix](#failure-matrix); it states each changed rule as it now applies, with the proposal id. **Where the body and A3 differ, A3 governs.** The text of A2 stays as written: its A2.5 items, marked "proposal, not applied", are decided by this amendment as stated in the sections below.
+
+**A3 is a decision, not evidence.** It verifies nothing, on a device or otherwise. The findings it rests on are the device observations of A2 (throwaway units, one device, one image, one moment); the reference device stays Compatible, and nothing is called Verified. The installer budget (D-C87 item 16, K3) stays open and is not decided here. G7.2 has not started.
+
+### A3.1 Overview
+
+| D-C88 item | Proposal id | Applies to | Where in A3 |
+|---|---|---|---|
+| 1 | P-B2-1 | B2 read shapes and parsing | A3.2 |
+| 2 | P-B2-2 | B2 read shapes, B3 rule 3 | A3.2 |
+| 3 | P-B2-3 | B2 `show` parsing | A3.2 |
+| 4 | P-B2-4 | B2 bounds | A3.2 |
+| 5 | P-B2-5 | B2 deadline sentence, row A-04 | A3.3 |
+| 6 | P-B2-6 | B2 operations table, verification | A3.3 |
+| 7 | P-B3-1 | B3 rule 5 | A3.4 |
+| 8 | P-B3-2 | B3 rule 8, `unit_oneshot` text | A3.4, A3.3 |
+| 9 | P-B3-3 | B3 rule 9 | A3.4 |
+| 10 | P-B3-4 | B3 rule 3 | A3.4 |
+| 11 | P-B3-5 | B3 rules 10 and 11 | A3.4 |
+| 12 | P-B8-1 | B8 unit text (no change) | A3.5 |
+| 13 | P-B8-2 | B8 chroot sentence | A3.5 |
+| 14 | P-B8-3, P-B8-4 | B8 memory note, journal note | A3.5 |
+| 15 | (A2.3) | B3 rules 2, 4, 6 and 7 (no change) | A3.4 |
+
+### A3.2 B2: read shapes and parsing (items 1 to 4)
+
+The two read shapes of B2 stay the R1 contract for G7 (P-B2-1). The following replaces the sentence "A JSON output (`--output=json`) is used instead if the spike shows that both systemd versions in scope support it (A-03)" and adds to the bounds of B2:
+
+- **`list-units` is parsed** as four words (name, load state, active state, sub state) and the rest of the line as the description.
+- **`list-unit-files` is parsed** as three words: name, state and vendor preset.
+- **Accepted state words** of `list-unit-files`: `enabled`, `enabled-runtime`, `disabled`, `static`, `masked`, `indirect`, `linked`, `alias`, `generated`, `transient`. Any other word fails closed.
+- **`--output=json`** is not used in G7. It is revisited when the Ubuntu systemd is checked (G12), because A-03 is only half answered (A2.3).
+- **`not-found`** (P-B2-2): entries with `LoadState=not-found` in `list-units --all` are not shown as services. A `show` answer with `LoadState=not-found` is `unit_unknown`.
+- **`show` parsing** (P-B2-3): the output of the `show` shape is parsed by key, never by position. Each of the 13 keys of the shape must appear exactly once, else `internal`.
+- **Timing** (P-B2-4): 5 s per call and the device-wide cache of 5 s stay as in B2. If the margin of `list-unit-files` (2.6 to 2.7 s observed, S6) proves too small in G7.6, the bound is raised for `list-unit-files` only.
+
+### A3.3 B2: deadline, verification and the text of `unit_oneshot` (items 5, 6, 8)
+
+**Deadline sentence (P-B2-5).** The sentence of B2 "Each mutating call has a deadline of 100 s (systemd's usual start timeout of 90 s plus a margin, A-04)" and the words "covers a normal job" of row A-04 are replaced by: the deadline of 100 s stays. It covers the manager's default start timeout of 90 s (device observation, G7.1). Units with a longer `TimeoutStartUSec`, among them `NetworkManager.service` (10 min) on the reference image, can end in `timeout` while the job continues. The rest of the sentence stands: at the deadline the broker ends its `systemctl` child and answers `timeout` with the state it reads then; the job may continue inside systemd, and the page says so.
+
+**Verification after `service.start` and `service.restart` (P-B2-6).** In the operations table of B2 the column "Verification afterwards" now reads:
+
+| `op` | Verification afterwards (as it now applies) |
+|---|---|
+| `service.start` | The broker reads the `show` shape once more about 1 s after `systemctl` returned and accepts only `ActiveState=active`; else `state_unexpected` with the observed state. |
+| `service.restart` | The same read, about 1 s after `systemctl` returned: `ActiveState=active` is the only accepted state; the check of B2 for a new `ExecMainStartTimestampMonotonic` (or a changed `MainPID`) is not dropped by this amendment and applies to that read. |
+| `service.stop` | Unchanged: `ActiveState` is `inactive` or `failed`. |
+
+A failure later than that read is outside what the broker verifies, and the page says so in the success text. The wording of that text is set at the UI step (G7.4); its meaning is fixed here. `system.reboot` and `system.poweroff` are unchanged.
+
+**Typed error `unit_oneshot` (item 8).** The row of the table of typed errors now reads:
+
+| Code | Source | Deutsch | English |
+|---|---|---|---|
+| `unit_oneshot` | broker | Dieser Dienst führt eine einmalige Aufgabe aus. Oarfish verwaltet solche Aufgaben nicht. | This service runs a one-time task. Oarfish does not manage such tasks. |
+
+### A3.4 B3: the rules as they now apply (items 7 to 11, 15)
+
+Rules 1, 2, 4, 6 and 7 stay as written in B3 (A2.3; item 15). The order of B3 is unchanged. Rules 3, 5, 8, 9, 10 and 11 now read as follows.
+
+3. **Known to systemd, by the broker's own read** (P-B3-4). The broker runs the `show` shape of B2 for the name. `LoadState` must be `loaded` or `masked` (B3.6). `LoadState=not-found`, which `show` answers with exit code 0, is `unit_unknown`; every other `LoadState` is `unit_unknown` too.
+
+5. **Template instances** (P-B3-1, main variant). `show` reports `LoadState=loaded` for an instance that was never started (S1), so `loaded` is not proof that an instance exists. For a name `name@inst.service`:
+   - `service.stop` and `service.restart` are accepted only while its `ActiveState` is not `inactive`;
+   - `service.start` is refused with `unit_template` unless its `ActiveState` is `failed`;
+   - the broker never creates a new instance.
+
+   The alternative of P-B3-1 (a fourth read shape, `list-units` with the literal name) is rejected. The error code for `service.stop` or `service.restart` of an instance whose `ActiveState` is `inactive` is not fixed by P-B3-1 or by D-C88; see A3.7.
+
+8. **One-shot tasks** (P-B3-2, main variant). `Type=oneshot`: `service.start`, `service.stop` and `service.restart` are all refused with `unit_oneshot`, whatever the unit's state and its `RemainAfterExit=`. Reason: starting a one-shot service runs a task, not a daemon (A-05), and stopping one with `RemainAfterExit=yes` runs its `ExecStop=` (S2). The alternative "stop only when `RemainAfterExit=no`" is rejected. This is still the narrowing of ORB-SVC-002 that B3 rule 8 names (D-C87 item 5).
+
+9. **The unit's own refusal** (P-B3-3).
+   - `RefuseManualStop=yes` refuses `service.stop` and `service.restart` with `refused_by_unit`. Observed: both exit 4 (S3).
+   - `RefuseManualStart=yes` refuses `service.start` and `service.restart` with `refused_by_unit`. **This sentence rests on an assumption:** only `RefuseManualStop=` was observed (A2.6).
+
+10. **Deny list** (P-B3-5; compiled in, refused for every operation with `unit_denied`; the page shows these units without buttons). The deny list is checked against `Id` and every entry of `Names` (rule 4). It now holds:
+    - Oarfish's own units: `oarfish.service`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish-broker.service`.
+    - Every unit whose `Id` or alias begins with `systemd-` (among them `systemd-reboot.service`, `systemd-poweroff.service`, `systemd-halt.service`, `systemd-kexec.service`, `systemd-soft-reboot.service`, `systemd-journald`, `systemd-logind`, `systemd-udevd`).
+    - `dbus.service`, `dbus-broker.service`, `polkit.service`; `emergency.service`, `rescue.service`, `debug-shell.service`; `user@*.service`, `user-runtime-dir@*.service`; `getty@*.service`, `serial-getty@*.service`, `autovt@*.service`, `console-getty.service`, `container-getty@*.service`.
+    - **New:** `sshd@*.service` and `sshd-unix-local@*.service`. Reason: a restart of such an instance would also end the connection (A2.4).
+
+    The list stays closed and fail-closed only for these names; any other loaded service is allowed unless rules 1 to 9 refuse it.
+
+11. **Critical list** (ORB-SVC-003; allowed, with an additional warning in the dialog, and **restart only** for the units marked "No", P-B3-5). For a unit that is restart only, `service.stop` is refused with `operation_not_offered`; `service.restart` is accepted. The owner's rule: what can cut the person's access can only be restarted, not stopped.
+
+    | Kind | Units (`Id` or alias) | Stop offered |
+    |---|---|---|
+    | Network | `NetworkManager.service`, `networking.service`, `dhcpcd.service`, `wpa_supplicant.service`, `wpa_supplicant@*.service`, `wpa_supplicant-nl80211@*.service`, `wpa_supplicant-wired@*.service`, `ModemManager.service`, `avahi-daemon.service`, `rpi-usb-gadget-ics.service`, `ppp@*.service` | No (restart only), except `ModemManager.service` |
+    | SSH | `ssh.service`, `sshd.service` | No (restart only) |
+    | Remote access | `tailscaled.service` | No (restart only; A1.2) |
+    | Container engines | `docker.service`, `containerd.service`, `podman.service` | Yes, with warning |
+    | Time | `chrony.service`, `ntp.service`, `ntpsec.service` | Yes, with warning |
+
+    Changes against the body and A1.2: `avahi-daemon.service` moves from "stop offered" to restart only (`ModemManager.service` keeps "stop offered"); `wpa_supplicant-nl80211@*.service`, `wpa_supplicant-wired@*.service`, `rpi-usb-gadget-ics.service` and `ppp@*.service` are added as restart only. The rows for units that are absent on the reference image (A2.4) stay, because other images and Ubuntu may have them. For an instance such as `ppp@<name>.service`, rule 5 applies as well.
+
+    **No list entry** for `NetworkManager-dispatcher.service`, `nm-priv-helper.service` and `bluetooth.service` (no change). `nftables.service` needs none either: it is `Type=oneshot`, so rule 8 refuses every operation on it.
+
+### A3.5 B8: sentences added (items 12 to 14)
+
+- **Unit text (P-B8-1).** No change of the unit texts of B8.
+- **Chroot (P-B8-2).** Added to B8: "`systemctl` cannot read `/proc/1/root` in this sandbox and assumes it does not run in a chroot (device observation, G7.1, systemd 257). The broker's verification of service operations by `show` would detect a silent refusal; for `system.reboot` and `system.poweroff` only the next boot does. G7.6 and the Ubuntu check (G12) observe it again."
+- **Memory (P-B8-3), a note on B1 consequence 4.** The `systemctl` child alone peaked at about 7.7 to 8.4 MB (7,696 to 8,384 kB, lower bound, A2.3), so the *estimate* "below 12 MB together" in B1 consequence 4 leaves about 4 MB for the broker process. BF31 measures it.
+- **Journal (P-B8-4), a note for the device kit of B9.** For reboot and power-off the broker's own journal lines do not survive (S10, ADR 0010 A6). B5 already makes the audit entry the persistent record; the device kit of B9 must collect the broker's lines before the click, as B9 item 1 says.
+
+### A3.6 Rules and texts that do not change
+
+B3 rules 1, 2, 4, 6 and 7; the unit text of B8; the 100 s deadline, the 5 s bounds and the 5 s cache; the deny list apart from the two names above; every typed error apart from the text of `unit_oneshot`. `docs/DECISIONS.md` D-C87 stays as it is, including item 5 and item 6.
+
+### A3.7 Failure matrix: rows whose expected result changes
+
+The rows of the [failure matrix](#failure-matrix) are not edited. Where a row below differs from the body, this table governs. Classes stay as in the body.
+
+**Rows whose expected result changes:**
+
+| # | New expected result |
+|---|---|
+| BF4 | An instance that is `inactive`: `service.start` is refused with `unit_template`; `service.stop` and `service.restart` are refused (code open, see below). An instance that is `failed`: `service.start` is accepted; `service.stop` and `service.restart` are accepted. A running instance: `service.stop` and `service.restart` are accepted; `service.start` is `unit_template`, as P-B3-1 says "unless its `ActiveState` is `failed`" (whether `already_in_state` should come first is not decided). A template without instance (`name@.service`): `unit_template`, as before. No new instance is ever created (rule 5). The body's "an instance that is not loaded: `unit_unknown`" no longer describes the case, because `show` reports a never-started instance as loaded (S1). Class T as before; a throwaway template with a started, a never-started and a failed instance. |
+| BF10 | A `Type=oneshot` unit: `service.start`, `service.restart` **and `service.stop`** are all `unit_oneshot`, with the new text of A3.3. The body's "stop allowed" is withdrawn. |
+| BF11 | `RefuseManualStop=yes`: `service.stop` **and `service.restart`** are `refused_by_unit` (observed, S3). `RefuseManualStart=yes`: `service.start` **and `service.restart`** are `refused_by_unit` (an assumption, not observed; the class T row must observe it). |
+| BF12 | Restart only: `service.stop` of `ssh.service` is `operation_not_offered`, as before; the row now covers every unit of the "No" rows of the table in A3.4 rule 11 (among them `tailscaled.service` since A1.2, `avahi-daemon.service`, `wpa_supplicant-nl80211@*.service`, `wpa_supplicant-wired@*.service`, `rpi-usb-gadget-ics.service`, `ppp@*.service`), and `service.restart` of them is accepted. `ModemManager.service` stays stoppable. |
+| BF13 | Two cases. `systemctl` exits non-zero (for example a unit whose `ExecStartPre=` fails, or a start timeout): `job_failed` with the state word, audit entry, as before. `systemctl` exits 0 but the unit has already failed when the `show` read about 1 s later is taken (a `Type=exec` unit whose main process exits at once, S5): `state_unexpected` with the state word `failed`. A failure later than that read is not caught (A3.3). |
+
+**Rows whose expected result is the same, with a changed or widened scope:**
+
+| # | Change |
+|---|---|
+| BF5 | "Unknown unit" now includes the `show` answer `LoadState=not-found` with exit code 0 (rule 3, P-B3-4). Result `unit_unknown` as before. |
+| BF6 | The set of entries grows by `sshd@*.service` and `sshd-unix-local@*.service` (rule 10). Result `unit_denied` as before. |
+| BF14 | The deadline of 100 s stays; the row's unit with a start timeout longer than 100 s (the shape of the `NetworkManager.service` case, S4) also ends in `timeout`, and the job may continue. |
+| BF15 | The state is read about 1 s after `systemctl` returned (item 6); result `state_unexpected` as before. |
+| BF16 | The success verification is the read about 1 s after `systemctl` returned; for a restart, `ActiveState=active` and a new start timestamp or `MainPID`. The success text says that a later failure is not verified. |
+| BF21 | Class C cases added: a `show` output with a missing or duplicated key is `internal`; a `list-unit-files` line with a state word outside the closed set, or with a number of words other than three, fails closed; `list-units --all` entries with `LoadState=not-found` are not shown. |
+| BF29 | "Every denied case of B2 and B3" now includes the rows of this table (rules 5, 8, 9, 10 and 11 as they now read). |
+| BF31 | Records `VmHWM` of the broker apart from its `systemctl` child, because the child alone was observed at 7.7 to 8.4 MB (P-B8-3). |
+
+**Open point in BF4.** Neither P-B3-1 nor D-C88 names the error code for `service.stop` or `service.restart` of a template instance whose `ActiveState` is `inactive`. The body has no code for it either (`already_in_state` fits a stop only). A3 does not choose one. It is chosen from the closed set of B2 in G7.2 and shown to the owner at the review of the privileged code, or decided earlier by a further amendment.
+
+Rows not named above (BF1 to BF3, BF7 to BF9, BF17 to BF20, BF22 to BF28, BF30, BF32) are unchanged. BF8 is unchanged: masked units behave as in rule 6, and a masked unit that is also `Type=oneshot` is refused by rule 8 for `service.stop` as well.
+
+### A3.8 What is not verified, and what stays open
+
+- **Nothing is verified by A3.** It records decisions. The evidence behind them is A2, a set of device observations on throwaway units; no production path exists yet.
+- **Assumption, from item 9:** `RefuseManualStart=yes` refuses `service.start` and `service.restart`. Not observed (A2.6).
+- **Not observed and still open from A2.6:** Ubuntu Server (A-03 and the rest, G12); the exit codes of `systemctl reboot` and `systemctl poweroff` (S10); A-07 as BF27 evidence; the memory of the read shapes in the service sandbox; the boot order with broker units (BF30); hostile output (BF21); and the read shapes while a job runs.
+- **Installer budget (D-C87 item 16, K3):** not decided. It is decided before G7.3, together with the needs of D-D10. `scripts/check-budgets.sh` and `docs/DEVELOPMENT.md` are not touched.
+- **Error code for `service.stop` and `service.restart` of an inactive template instance:** open (A3.7, BF4).
+- **Next:** the installer budget decision, then G7.2. G7.2 has not started and is not prepared by this amendment.
