@@ -4,27 +4,28 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
 
-// stagedSet reports whether components/<version> holds the four files.
+// stagedSet reports whether components/<version> holds the seven files.
 func stagedSet(v *tenv, version string) bool {
-	for _, n := range componentNames[:4] {
-		if fi, err := os.Lstat(filepath.Join(v.root, "components", version, n)); err != nil || !fi.Mode().IsRegular() {
+	for _, f := range componentSet {
+		if fi, err := os.Lstat(filepath.Join(v.root, "components", version, f.name)); err != nil || !fi.Mode().IsRegular() {
 			return false
 		}
 	}
 	return true
 }
 
-// Each of the five names differing alone, several together, none differing.
+// Each of the eight names differing alone, several together, none differing.
 // Since G6.10 step b a difference is staged and named, never installer_required
 // (A16, E1): a difference of a helper file stages a component set, a difference
 // of oarfish.service alone only the record of D6.
 func TestComponentComparison(t *testing.T) {
 	changed := func(name string) []byte {
-		if strings.HasSuffix(name, "helper") {
+		if name == helperBinary || name == brokerBinary {
 			return elfStub("changed " + name)
 		}
 		return changedUnit(name) // a difference the unit lint accepts (a comment)
@@ -55,17 +56,17 @@ func TestComponentComparison(t *testing.T) {
 	t.Run("several together, in the fixed order", func(t *testing.T) {
 		v := newTenv(t)
 		r := v.release("1.1.0")
-		for _, n := range []string{"oarfish.service", "oarfish-update-recover.service", "oarfish-update-helper"} { // not in order
+		for _, n := range []string{"oarfish.service", "oarfish-broker.socket", "oarfish-update-recover.service", "oarfish-update-helper"} { // not in order
 			r.setFile(n, changed(n))
 		}
 		v.place("1.1.0", r.build())
 		got := wantOK(t, v.stage("1.1.0"))
-		want := []string{"oarfish-update-helper", "oarfish-update-recover.service", "oarfish.service"}
+		want := []string{"oarfish-update-helper", "oarfish-update-recover.service", "oarfish-broker.socket", "oarfish.service"}
 		if strings.Join(got.Differs, ",") != strings.Join(want, ",") {
 			t.Fatalf("differs %v, want %v", got.Differs, want)
 		}
 	})
-	t.Run("all five", func(t *testing.T) {
+	t.Run("all eight", func(t *testing.T) {
 		v := newTenv(t)
 		r := v.release("1.1.0")
 		for _, n := range componentNames {
@@ -205,28 +206,70 @@ func TestLegacyBundleIsRequirementsNotMet(t *testing.T) {
 	wantNothingLeft(t, v, before)
 }
 
-// The list of names is the closed list of the ADR (U2, "Replaceable component
-// files") plus oarfish.service, in that order.
-func TestComponentNamesMatchTheADR(t *testing.T) {
+// a20Row is the row of the table of A20.1 whose first cell is label: since
+// G7.3a the rows "Unit names" and "Replaceable component files" of U2 are those
+// of A20.1 (the pointer below the table of U2).
+func a20Row(t *testing.T, label string) string {
+	t.Helper()
 	adr, err := os.ReadFile("../../../docs/adr/0010-update-helper.md")
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, a20, ok := strings.Cut(string(adr), "\n### A20.1 The closed lists of U2\n")
+	if !ok {
+		t.Fatal("A20.1 not found")
+	}
+	a20, _, _ = strings.Cut(a20, "\n### ")
 	var row string
-	for _, l := range strings.Split(string(adr), "\n") {
-		if strings.HasPrefix(l, "  | Replaceable component files |") {
+	for _, l := range strings.Split(a20, "\n") {
+		if strings.HasPrefix(l, "  | "+label+" |") {
+			if row != "" {
+				t.Fatalf("two rows %q in A20.1", label)
+			}
 			row = l
 		}
 	}
 	if row == "" {
-		t.Fatal("row not found")
+		t.Fatalf("row %q not found in A20.1", label)
 	}
-	var want []string
+	return row
+}
+
+func backticked(row string) []string {
+	var out []string
 	for _, m := range regexp.MustCompile("`([a-z.-]+)`").FindAllStringSubmatch(row, -1) {
-		want = append(want, m[1])
+		out = append(out, m[1])
 	}
-	// The row lists the four files and names oarfish.service as the one that travels with the release.
-	if strings.Join(want, ",") != strings.Join(componentNames, ",") {
+	return out
+}
+
+// The list of names is the closed list of the ADR (U2, "Replaceable component
+// files", as A20.1 states it) plus oarfish.service, in that order.
+func TestComponentNamesMatchTheADR(t *testing.T) {
+	want := backticked(a20Row(t, "Replaceable component files"))
+	// The row lists the seven files and names oarfish.service as the one that travels with the release.
+	if strings.Join(want, ",") != strings.Join(componentNames, ",") || len(want) != 8 {
 		t.Fatalf("ADR %v, code %v", want, componentNames)
+	}
+}
+
+// The unit names of the closed list (U2, "Unit names", as A20.1 states it) are
+// the units the lint knows, each with a unit kind.
+func TestUnitNamesMatchTheADR(t *testing.T) {
+	want := backticked(a20Row(t, "Unit names"))
+	var have []string
+	for n := range unitKinds {
+		have = append(have, n)
+	}
+	slices.Sort(want)
+	slices.Sort(have)
+	if !slices.Equal(want, have) || len(want) != 6 {
+		t.Fatalf("ADR %v, code %v", want, have)
+	}
+	// Every unit of the component set is in the list, and every program is not.
+	for _, f := range componentSet {
+		if _, isUnit := unitKinds[f.name]; isUnit != f.unit {
+			t.Errorf("%s: unit %v in the table, %v in the lint", f.name, f.unit, isUnit)
+		}
 	}
 }

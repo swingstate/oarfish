@@ -18,7 +18,8 @@
 #
 # A release can carry the update helper (ADR 0010, "components" bundle shape): the
 # installer then also installs it below /opt/oarfish/components, links it into /usr
-# and /etc/systemd/system and locks /var/lib/oarfish-update (waits at most 30 s). A
+# and /etc/systemd/system and locks /var/lib/oarfish-update (waits at most 30 s). The
+# set also holds the privilege broker's three files, which are only stored (G7.3a). A
 # release without the helper ("legacy") is installed as before, and refused where the
 # helper layout exists.
 #
@@ -84,7 +85,8 @@ MULTI_WANTS=$UNIT_DIR/multi-user.target.wants
 SOCKETS_WANTS=$UNIT_DIR/sockets.target.wants
 # Link targets are written as on the real system, without the test root.
 REAL_OPT=/opt/oarfish
-COMP_FILES='oarfish-update-helper oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service'
+# The component set (ADR 0010 A20): the helper and its units, the broker and its units.
+COMP_FILES='oarfish-update-helper oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service oarfish-broker oarfish-broker.socket oarfish-broker.service'
 
 OPENSSL=openssl
 SYSTEMCTL=systemctl
@@ -304,8 +306,8 @@ check_manifest() {
 
 # The bundle has exactly one of two shapes, all entries regular files, checked before
 # anything is extracted: legacy (the directory, oarfish, oarfish.service, LICENSE,
-# THIRD_PARTY_NOTICES.txt: five entries) or components (those plus oarfish-update-helper
-# and the helper service, helper socket and recover units: nine). The shape must agree
+# THIRD_PARTY_NOTICES.txt: five entries) or components (those plus the seven component
+# files, the helper and its three units and the broker and its two: twelve). The shape must agree
 # with the manifest, which has a "components" object if and only if the bundle does.
 # The manifest's key id is not compared with this installer's; the release build checks it.
 check_bundle_entries() {
@@ -319,6 +321,7 @@ check_bundle_entries() {
     case $e in
       "$BUNDLE_ROOT"/|"$BUNDLE_ROOT"/oarfish|"$BUNDLE_ROOT"/oarfish.service|"$BUNDLE_ROOT"/LICENSE|"$BUNDLE_ROOT"/THIRD_PARTY_NOTICES.txt) ;;
       "$BUNDLE_ROOT"/oarfish-update-helper|"$BUNDLE_ROOT"/oarfish-update-helper.socket|"$BUNDLE_ROOT"/oarfish-update-helper.service|"$BUNDLE_ROOT"/oarfish-update-recover.service) extra=$((extra + 1)) ;;
+      "$BUNDLE_ROOT"/oarfish-broker|"$BUNDLE_ROOT"/oarfish-broker.socket|"$BUNDLE_ROOT"/oarfish-broker.service) extra=$((extra + 1)) ;;
       *) die "the bundle contains an unexpected entry '$e'." ;;
     esac
     case $seen in *" $e "*) die "the bundle lists the entry '$e' twice." ;; esac
@@ -327,10 +330,10 @@ check_bundle_entries() {
   done < "$WORK/entries"
   if [ "$n" = 5 ] && [ "$extra" = 0 ]; then
     BUNDLE_SHAPE=legacy
-  elif [ "$n" = 9 ] && [ "$extra" = 4 ]; then
+  elif [ "$n" = 12 ] && [ "$extra" = 7 ]; then
     BUNDLE_SHAPE=components
   else
-    die "the bundle has neither the legacy shape (five entries) nor the components shape (nine entries)."
+    die "the bundle has neither the legacy shape (five entries) nor the components shape (twelve entries)."
   fi
   has_components=0
   if grep -q '^  "components": {$' "$WORK/manifest.json"; then has_components=1; fi
@@ -372,6 +375,7 @@ download_and_verify() {
   check_binary "$WORK/extract/$BUNDLE_ROOT/oarfish" oarfish
   if [ "$BUNDLE_SHAPE" = components ]; then
     check_binary "$WORK/extract/$BUNDLE_ROOT/oarfish-update-helper" oarfish-update-helper
+    check_binary "$WORK/extract/$BUNDLE_ROOT/oarfish-broker" oarfish-broker
   fi
   say "    bundle contents OK ($BUNDLE_SHAPE shape)"
 }
@@ -567,7 +571,7 @@ check_wants_link() { # a wants link may be absent or any symbolic link, never a 
   if [ -e "$1" ] && [ ! -L "$1" ]; then die "$1 exists and is not a symbolic link. Nothing was changed."; fi
 }
 
-comp_same() { # comp_same DIR SRC: the four component files in DIR are regular files equal to those in SRC
+comp_same() { # comp_same DIR SRC: the seven component files in DIR are regular files equal to those in SRC
   for f in $COMP_FILES; do
     if [ ! -f "$1/$f" ] || [ -L "$1/$f" ] || [ "$(file_sha "$1/$f")" != "$(file_sha "$2/$f")" ]; then return 1; fi
   done
@@ -647,8 +651,9 @@ ensure_comp_dirs() {
   make_dir "$SOCKETS_WANTS" 0755 root:root
 }
 
-# The four component files below components/<id>, through a staging directory and one
-# rename, only when these bytes are new.
+# The seven component files below components/<id>, through a staging directory and one
+# rename, only when these bytes are new. G7.3a stores the broker's files there and links
+# nothing for them; G7.3b adds the links.
 install_components() {
   src=$WORK/extract/$BUNDLE_ROOT
   if [ "$COMP_ACTIVE_MOVES" = 0 ] || [ "$COMP_DIR_EXISTS" = 1 ]; then
@@ -658,8 +663,9 @@ install_components() {
   STAGE=$(mktemp -d "$COMP_DIR/.stage.XXXXXX") || die "cannot create a staging directory below $COMP_DIR."
   mkdir "$STAGE/set"
   for f in $COMP_FILES; do cp "$src/$f" "$STAGE/set/$f"; done
-  chmod 0755 "$STAGE/set" "$STAGE/set/oarfish-update-helper"
-  chmod 0644 "$STAGE/set/oarfish-update-helper.socket" "$STAGE/set/oarfish-update-helper.service" "$STAGE/set/oarfish-update-recover.service"
+  chmod 0755 "$STAGE/set" "$STAGE/set/oarfish-update-helper" "$STAGE/set/oarfish-broker"
+  chmod 0644 "$STAGE/set/oarfish-update-helper.socket" "$STAGE/set/oarfish-update-helper.service" "$STAGE/set/oarfish-update-recover.service" \
+    "$STAGE/set/oarfish-broker.socket" "$STAGE/set/oarfish-broker.service"
   set_owner root:root "$STAGE/set"
   for f in $COMP_FILES; do set_owner root:root "$STAGE/set/$f"; done
   mv "$STAGE/set" "$COMP_DIR/$VERSION"
@@ -988,7 +994,7 @@ print_plan_install() {
   say ""
   say "The bundle shape is only known after the download. For the components shape (with the update helper):"
   say "  3. create $UPDATE_STATE_DIR (root:root, 0700) and take an exclusive lock on it (at most 30 s wait)"
-  say "  5. install the release and the helper set below $COMP_DIR/<id>"
+  say "  5. install the release and the component set (the helper and its units, the broker and its units) below $COMP_DIR/<id>; the broker is stored only, not linked or started"
   say "  6. replace atomically: $CURRENT_LINK, $COMP_DIR/active and known-good, $HELPER_LINK, $UNIT_PATH"
   say "     (a regular file there is replaced; oarfish.service.d is kept), the helper units, and the relative"
   say "     wants links of the three units (systemctl enable is not used)"

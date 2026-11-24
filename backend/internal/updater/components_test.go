@@ -61,6 +61,30 @@ func TestComponentNamesAreDecodedThroughTheClosedList(t *testing.T) {
 	}
 }
 
+// ADR 0010 A20: the broker's three files are names of the closed list. They
+// pass through in the helper's order, and a release that changes only broker
+// files is applied with the hand-over like any component set (F4).
+func TestBrokerNamesAreComponentNames(t *testing.T) {
+	answer := `{"v":1,"ok":true,"version":"` + v9 + `","commit":"0123456789abcdef0123456789abcdef01234567","components_differ":true,` +
+		`"differs":["oarfish-update-helper","oarfish-broker","oarfish-broker.socket","oarfish-broker.service","oarfish-broker.timer","oarfish.service"]}` + "\n"
+	si, e := helperWith(fixed(answer)).Stage(context.Background(), v9, "0123456789abcdef")
+	want := []string{"oarfish-update-helper", "oarfish-broker", "oarfish-broker.socket", "oarfish-broker.service", "oarfish.service"}
+	if e != nil || !slices.Equal(si.Differs, want) {
+		t.Fatalf("%v %+v", e, si)
+	}
+	if len(componentNames) != 8 {
+		t.Fatalf("%d names in the closed list, want 8", len(componentNames))
+	}
+	for _, names := range [][]string{{"oarfish-broker"}, {"oarfish-broker.socket"}, {"oarfish-broker.service", "oarfish.service"}} {
+		if !replacesHelper(names) {
+			t.Errorf("%v is no component set", names)
+		}
+	}
+	if replacesHelper([]string{"oarfish.service"}) || replacesHelper([]string{"oarfish-broker.timer"}) {
+		t.Error("oarfish.service alone or an unknown name counts as a component set")
+	}
+}
+
 // The hand-over (exit code 75): the socket stays, nobody accepts for a moment,
 // and the next process answers. A request made meanwhile waits and succeeds.
 func TestHelperRequestWaitsForTheNextHelperProcess(t *testing.T) {

@@ -32,6 +32,18 @@ func (v *tenv) componentRelease(version string, alsoChanged ...string) *release 
 	return r
 }
 
+// brokerRelease is a release whose broker binary differs from the installed
+// one and whose helper does not: it brings a component set all the same (A20).
+// alsoChanged names broker units that get another comment line.
+func (v *tenv) brokerRelease(version string, alsoChanged ...string) *release {
+	r := v.release(version)
+	r.setFile(brokerBinary, elfStub("broker "+version))
+	for _, n := range alsoChanged {
+		r.setFile(n, changedUnit(n))
+	}
+	return r
+}
+
 // newComponentEnv returns an environment with the installed binary, the fakes
 // and a staged 1.1.0 that brings a component set.
 func newComponentEnv(t *testing.T, alsoChanged ...string) (*tenv, *supervisor) {
@@ -197,21 +209,27 @@ func (s *supervisor) nextStart() {
 	s.settle()
 }
 
-// setComplete: components/<id> holds the four files, the helper with the bytes
-// of that set and units that the lint accepts.
+// setComplete: components/<id> holds the seven files, the helper with the
+// bytes of that set, the broker as a regular file and units that the lint
+// accepts.
 func setComplete(v *tenv, id string) bool {
 	want := elfStub("helper " + id)
 	if id == v.installed {
 		want = baseComponents["oarfish-update-helper"]
 	}
 	dir := filepath.Join(v.root, "components", id)
-	if got, err := os.ReadFile(filepath.Join(dir, "oarfish-update-helper")); err != nil || string(got) != string(want) {
+	// A set that changes only broker files carries the installed helper.
+	if got, err := os.ReadFile(filepath.Join(dir, "oarfish-update-helper")); err != nil ||
+		(string(got) != string(want) && string(got) != string(baseComponents["oarfish-update-helper"])) {
 		return false
 	}
-	for _, n := range componentNames[1:4] {
-		text, err := os.ReadFile(filepath.Join(dir, n))
+	for _, f := range componentSet {
+		text, err := os.ReadFile(filepath.Join(dir, f.name))
+		if err != nil {
+			return false
+		}
 		// The units of a staged set passed the lint; installed ones are not linted.
-		if err != nil || (id != v.installed && !lintUnit(n, text).Accepted) {
+		if f.unit && id != v.installed && !lintUnit(f.name, text).Accepted {
 			return false
 		}
 	}

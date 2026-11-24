@@ -222,10 +222,10 @@ func (r *txnRun) checkStaged(installed string) (socketChanged bool, code errorCo
 		}
 		return false, code
 	}
-	lint := func(name, path string) ([]byte, [sha256.Size]byte, errorCode) {
+	lint := func(name, path string) ([]byte, digest, errorCode) {
 		text, tooLarge, err := readUnit(e.opt, path)
 		if err != nil {
-			return nil, [sha256.Size]byte{}, codeIOError
+			return nil, digest{}, codeIOError
 		}
 		res := rejected(lintTooLarge)
 		if !tooLarge {
@@ -233,7 +233,7 @@ func (r *txnRun) checkStaged(installed string) (socketChanged bool, code errorCo
 		}
 		if !res.Accepted {
 			r.h.logLint(t.To, installed, t.CorrelationID, name, res.Reason)
-			return nil, [sha256.Size]byte{}, codeUnitRejected
+			return nil, digest{}, codeUnitRejected
 		}
 		return text, sha256.Sum256(text), ""
 	}
@@ -253,27 +253,37 @@ func (r *txnRun) checkStaged(installed string) (socketChanged bool, code errorCo
 		// Staged against another active set: as good as expired.
 		return end(reasonStageExpired, codeStageExpired)
 	}
+	// Each file of the set by the table: a program by its digest only, a unit
+	// text linted and hashed from the same bytes.
 	dir := componentPath(t.ComponentsTo)
-	var d [4][sha256.Size]byte
+	d := make([]digest, 0, len(componentSet))
 	var socketText []byte
-	var err error
-	if d[0], err = fileDigest(e.opt, dir+"/"+componentNames[0]); err != nil {
-		return false, codeIOError
-	}
-	for i := 1; i < len(d); i++ {
-		text, sum, code := lint(componentNames[i], dir+"/"+componentNames[i])
+	var helperSum digest
+	for _, f := range componentSet {
+		if !f.unit {
+			sum, err := fileDigest(e.opt, dir+"/"+f.name)
+			if err != nil {
+				return false, codeIOError
+			}
+			if f.name == helperBinary {
+				helperSum = sum
+			}
+			d = append(d, sum)
+			continue
+		}
+		text, sum, code := lint(f.name, dir+"/"+f.name)
 		switch {
 		case code == codeUnitRejected:
 			return end(reasonUnitRejected, code)
 		case code != "":
 			return false, code
 		}
-		d[i] = sum
-		if componentNames[i] == unitHelperSocket {
+		d = append(d, sum)
+		if f.name == unitHelperSocket {
 			socketText = text
 		}
 	}
-	if setDigest(d) != t.ComponentsSetSHA256 || hex.EncodeToString(d[0][:]) != t.ComponentsHelperSHA256 {
+	if setDigest(d) != t.ComponentsSetSHA256 || hex.EncodeToString(helperSum[:]) != t.ComponentsHelperSHA256 {
 		return end(reasonStagedChanged, codeChecksumMismatch)
 	}
 	old, tooLarge, err := readUnit(e.opt, "components/"+linkActive+"/"+unitHelperSocket)

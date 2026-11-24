@@ -28,7 +28,10 @@ func TestImports(t *testing.T) {
 		modulePath + "internal/relverify":        true,
 		modulePath + "internal/trustkey":         true,
 	}
-	forbidden := []string{"net/http", "plugin", modulePath + "internal/version"}
+	// The broker's files are part of the component set since A20, but the
+	// helper never becomes a broker: it imports nothing of it and shares no
+	// request handling with it (U2 rules 4 and 5).
+	forbidden := []string{"net/http", "plugin", modulePath + "internal/version", modulePath + "cmd/oarfish-broker"}
 	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
 	if _, err := os.Stat(goTool); err != nil {
 		goTool = "go"

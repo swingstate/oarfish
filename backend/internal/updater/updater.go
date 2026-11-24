@@ -372,8 +372,10 @@ func (u *Updater) handingOverLocked(e *Error) bool {
 	return !u.now().After(since.Add(u.handOver))
 }
 
-// replacesHelper says whether names contain one of the four files of the
-// component set (U15 rule 2): oarfish.service alone is no hand-over.
+// replacesHelper says whether names contain one of the seven files of the
+// component set (U15 rule 2, A20): every component set is applied with the
+// hand-over, also one that changes only broker files; oarfish.service alone is
+// no hand-over.
 func replacesHelper(names []string) bool {
 	for _, n := range names {
 		if n != "oarfish.service" && componentNames[n] {

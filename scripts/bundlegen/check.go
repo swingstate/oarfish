@@ -89,11 +89,12 @@ type checkOptions struct {
 //     is stamped with exactly the manifest's version,
 //  3. the manifest agrees with the bundle (name, size, SHA-256),
 //  4. the manifest declares exactly one of the two bundle shapes (legacy, or
-//     components with the update helper and its three units), the optional
+//     components with the update helper and its three units and the privilege
+//     broker and its two units, ADR 0010 A20), the optional
 //     requirements fields and the components object are valid, and
 //  5. the tarball holds exactly the files the manifest declares, with the
-//     declared modes and hashes, owned by uid/gid 0, and the helper is an
-//     ARM64 ELF executable.
+//     declared modes and hashes, owned by uid/gid 0, and the helper and the
+//     broker are ARM64 ELF executables.
 //
 // The manifest is decoded strictly: an unknown field is an error, because this
 // tool validates the manifest we produce at release time. (The readers on the
@@ -256,7 +257,7 @@ func checkTarball(tgz []byte, mf *Manifest) error {
 		if seen[hdr.Name] {
 			return fmt.Errorf("bundle: %s appears twice", hdr.Name)
 		}
-		if hdr.Name == root+"/"+helperName {
+		if n := strings.TrimPrefix(hdr.Name, root+"/"); n == helperName || n == brokerName {
 			if err := checkARM64ELF(data); err != nil {
 				return fmt.Errorf("bundle: %s: %w", hdr.Name, err)
 			}

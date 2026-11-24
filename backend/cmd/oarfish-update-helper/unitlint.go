@@ -29,7 +29,7 @@ const (
 type lintReason string
 
 const (
-	lintUnknownUnit     lintReason = "unknown_unit"          // the name is not one of the four units
+	lintUnknownUnit     lintReason = "unknown_unit"          // the name is not one of the six units
 	lintTooLarge        lintReason = "too_large"             // more than 16 KiB
 	lintNUL             lintReason = "nul_byte"              // a NUL byte
 	lintNotUTF8         lintReason = "not_utf8"              // not valid UTF-8
@@ -41,7 +41,7 @@ const (
 	lintDuplicateKey    lintReason = "duplicate_key"         // a key twice in one section
 	lintInstall         lintReason = "install_section"       // [Install] holds something else than the expected WantedBy=
 	lintText            lintReason = "text_value"            // Description= or Documentation= not printable or too long
-	lintForm            lintReason = "form_mismatch"         // a helper unit that equals no accepted form
+	lintForm            lintReason = "form_mismatch"         // a component unit that equals no accepted form
 	lintNotAllowed      lintReason = "directive_not_allowed" // oarfish.service: a directive without a rule
 	lintBaselineMissing lintReason = "baseline_missing"      // oarfish.service: a baseline directive is absent
 	lintBaselineValue   lintReason = "baseline_value"        // oarfish.service: a baseline directive has another value
@@ -83,7 +83,7 @@ func lintUnit(name string, text []byte) lintResult {
 		return lintService(lines)
 	}
 	norm := normalisedUnit(lines)
-	for _, form := range helperForms[name] {
+	for _, form := range unitForms[name] {
 		if norm == form {
 			return lintResult{Accepted: true}
 		}
@@ -214,7 +214,7 @@ func unitKey(s string) bool {
 // printable ASCII (the parser has checked that) and at most 200 characters.
 func unitText(v string) bool { return len(v) <= maxUnitText && printableASCII(v) }
 
-// normalisedUnit is the text that the accepted forms of a helper unit are
+// normalisedUnit is the text that the accepted forms of a component unit are
 // compared with: the section headers and key=value lines in file order, with
 // the values of Description= and Documentation= removed, joined by newlines.
 func normalisedUnit(lines []unitLine) string {
@@ -288,8 +288,8 @@ func readUnit(root *os.Root, name string) ([]byte, bool, error) {
 }
 
 // lintUnits lints the unit files of the staged tree (U4 step 9): always
-// oarfish.service, and the three helper units when the release carries the
-// components. The first rejection ends it with unit_rejected and one journal
+// oarfish.service, and the five units of the component set (the helper's three
+// and the broker's two, A20) when the release carries the components. The first rejection ends it with unit_rejected and one journal
 // line that names the unit and the reason.
 func (r *stageRun) lintUnits(dir string, components bool) errorCode {
 	for _, name := range lintedUnits {

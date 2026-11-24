@@ -137,7 +137,7 @@ func TestSinkRules(t *testing.T) {
 	for n, d := range sinkTargets {
 		got[n] = d
 	}
-	if len(got) != 8 {
+	if len(got) != 11 {
 		t.Fatalf("table has %d names", len(got))
 	}
 	for _, n := range []string{"oarfish", "oarfish.service", "LICENSE", "THIRD_PARTY_NOTICES.txt"} {
@@ -145,8 +145,8 @@ func TestSinkRules(t *testing.T) {
 			t.Errorf("%s -> %s", n, got[n])
 		}
 	}
-	for _, n := range componentNames[:4] {
-		if got[n] != dirComponents {
+	for _, f := range componentSet {
+		if n := f.name; got[n] != dirComponents {
 			t.Errorf("%s -> %s", n, got[n])
 		}
 	}

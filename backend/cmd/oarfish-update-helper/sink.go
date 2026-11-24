@@ -8,7 +8,7 @@ import (
 )
 
 // The staging sink implements relverify.Sink (ADR 0010 U5 extraction rules).
-// It writes below .stage.<id>: the four release files into release/, the four
+// It writes below .stage.<id>: the four release files into release/, the seven
 // component files into components/, by a fixed table of names. Everything it
 // writes is unusable after any error of Inspect; the caller removes the whole
 // staging directory.
@@ -30,6 +30,10 @@ var sinkTargets = map[string]string{
 	"oarfish-update-helper.socket":   dirComponents,
 	"oarfish-update-helper.service":  dirComponents,
 	"oarfish-update-recover.service": dirComponents,
+
+	"oarfish-broker":         dirComponents,
+	"oarfish-broker.socket":  dirComponents,
+	"oarfish-broker.service": dirComponents,
 }
 
 var (

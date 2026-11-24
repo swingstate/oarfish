@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/swingstate/oarfish/backend/internal/relverify"
 )
 
 // The component transaction (ADR 0010 U15 rule 4, A15 D1 to D6, A16 E1 to E4)
@@ -37,6 +39,60 @@ func (f *fakeSystemd) acting() []string {
 
 func journalLines(v *tenv) []string {
 	return strings.Split(strings.TrimSuffix(v.journal.String(), "\n"), "\n")
+}
+
+// A20: a release that differs only in a broker file is a component update.
+// The whole transaction runs, with the hand-over to the same helper binary; the
+// broker files are replaced on disk, and no systemctl call names a broker unit
+// (S4: nothing of the broker is started, stopped or restarted).
+func TestComponentTransactionBrokerOnly(t *testing.T) {
+	for _, changed := range [][]string{{brokerBinary}, {unitBrokerSocket}, {unitBrokerService}, {brokerBinary, unitBrokerSocket, unitBrokerService}} {
+		t.Run(strings.Join(changed, "+"), func(t *testing.T) {
+			v := newTenv(t)
+			v.installOarfish()
+			v.fakeSystemd()
+			v.h.wrapFS = withoutSync
+			r := v.release(newVersion)
+			for _, n := range changed {
+				r.setFile(n, changedUnit(n))
+			}
+			v.place(newVersion, r.build())
+			got := wantOK(t, v.stage(newVersion))
+			if !got.ComponentsDiffer || !slices.Equal(got.Differs, changed) {
+				t.Fatalf("differs %v, want %v", got.Differs, changed)
+			}
+			st, _ := v.readState()
+			if st.Txn.ComponentsTo != newVersion || st.Txn.ComponentsHelperSHA256 != sumHex(baseComponents[helperBinary]) {
+				t.Fatalf("staged %+v", st.Txn)
+			}
+			s := &supervisor{v: v}
+			wantOK(t, v.confirm(newVersion))
+			s.settle()
+			checkSettled(t, v, false)
+			st, _ = v.readState()
+			if st.Last == nil || st.Last.Outcome != outcomeSuccess || !st.Last.ComponentsUpdated ||
+				v.link(linkActive) != newVersion || v.link(linkKnownGood) != newVersion || v.current() != newVersion {
+				t.Fatalf("last %+v, active %s, known-good %s, current %s", st.Last, v.link(linkActive), v.link(linkKnownGood), v.current())
+			}
+			for _, n := range changed {
+				b, _ := os.ReadFile(filepath.Join(v.root, "components", newVersion, n))
+				if string(b) != string(changedUnit(n)) {
+					t.Fatalf("components/%s/%s has the old bytes", newVersion, n)
+				}
+			}
+			if st.Txn.KnownGoodSHA256 != diskSetDigest(t, v, newVersion) {
+				t.Fatal("the reference hash is not the one of the new set")
+			}
+			for _, c := range v.sd.Calls() {
+				if strings.Contains(strings.Join(c, " "), "broker") {
+					t.Fatalf("systemctl %v names a broker unit", c)
+				}
+			}
+			if s := v.status(); s.SocketRestartPending {
+				t.Fatal("a broker unit set the helper's socket flag (D4 is about the helper socket only)")
+			}
+		})
+	}
 }
 
 // F24 (class C): a release with another helper binary and another unit text is
@@ -526,6 +582,38 @@ func TestStageComponentRefusals(t *testing.T) {
 		"unit_rejected: a helper unit differs in a directive": {func(v *tenv, r *release) {
 			r.setFile(unitHelperSocket, bytes.Replace(baseComponents[unitHelperSocket], []byte("Backlog=8"), []byte("Backlog=9"), 1))
 		}, codeUnitRejected},
+		// A20: a broken broker file is refused before anything changes.
+		"unit_rejected: the broker socket has another SocketMode": {func(v *tenv, r *release) {
+			r.setFile(unitBrokerSocket, bytes.Replace(baseComponents[unitBrokerSocket], []byte("SocketMode=0660"), []byte("SocketMode=0666"), 1))
+		}, codeUnitRejected},
+		"unit_rejected: the broker service gets an [Install] section": {func(v *tenv, r *release) {
+			r.setFile(unitBrokerService, append(append([]byte(nil), baseComponents[unitBrokerService]...), "[Install]\nWantedBy=multi-user.target\n"...))
+		}, codeUnitRejected},
+		"requirements_not_met: the broker is not an arm64 program": {func(v *tenv, r *release) {
+			r.setFile(brokerBinary, []byte("#!/bin/sh\nexit 0\n"))
+		}, codeRequirementsNotMet},
+		"manifest_invalid: the components shape of before A20 (no broker files)": {func(v *tenv, r *release) {
+			var keep []tf
+			for _, f := range r.files {
+				if f.name != brokerBinary && f.name != unitBrokerSocket && f.name != unitBrokerService {
+					keep = append(keep, f)
+				}
+			}
+			r.files = keep
+			r.setBundle(defaultEnts(r.root, r.files))
+		}, codeManifestInvalid},
+		"manifest_invalid: a broker file missing from the bundle only": {func(v *tenv, r *release) {
+			var ents []tarEnt
+			for _, e := range defaultEnts(r.root, r.files) {
+				if !strings.HasSuffix(e.name, "/"+unitBrokerService) {
+					ents = append(ents, e)
+				}
+			}
+			man := r.defaultManifest()
+			r.bundle = gz(makeTar(ents))
+			man["bundle"] = map[string]any{"file": r.bundleName(), "sha256": relverify.SumHex(r.bundle), "size": len(r.bundle)}
+			r.man = man
+		}, codeManifestInvalid},
 	} {
 		t.Run(name, func(t *testing.T) {
 			v := newTenv(t)
@@ -591,6 +679,14 @@ func TestActivateChecksTheStagedFilesAgain(t *testing.T) {
 		"a helper unit has other bytes":       {"components/1.1.0/" + unitHelperService, changedUnit(unitHelperService), codeChecksumMismatch, reasonStagedChanged},
 		"the helper binary has other bytes":   {"components/1.1.0/oarfish-update-helper", elfStub("swapped"), codeChecksumMismatch, reasonStagedChanged},
 		"a helper unit is larger than 16 KiB": {"components/1.1.0/" + unitHelperSocket, bytes.Repeat([]byte("# x\n"), 5000), codeUnitRejected, reasonUnitRejected},
+		// The broker files of A20: a unit that fails the lint, a unit or the
+		// binary with other bytes. The binary is compared by its digest only.
+		"a broker unit fails the lint": {"components/1.1.0/" + unitBrokerService,
+			bytes.Replace(baseComponents[unitBrokerService], []byte("CapabilityBoundingSet=\n"), []byte("CapabilityBoundingSet=CAP_SYS_ADMIN\n"), 1), codeUnitRejected, reasonUnitRejected},
+		"a broker socket fails the lint":       {"components/1.1.0/" + unitBrokerSocket, bytes.Replace(baseComponents[unitBrokerSocket], []byte("SocketMode=0660"), []byte("SocketMode=0666"), 1), codeUnitRejected, reasonUnitRejected},
+		"a broker unit has other bytes":        {"components/1.1.0/" + unitBrokerSocket, changedUnit(unitBrokerSocket), codeChecksumMismatch, reasonStagedChanged},
+		"the broker binary has other bytes":    {"components/1.1.0/" + brokerBinary, elfStub("swapped broker"), codeChecksumMismatch, reasonStagedChanged},
+		"the broker binary is a unit text now": {"components/1.1.0/" + brokerBinary, baseComponents[unitBrokerService], codeChecksumMismatch, reasonStagedChanged},
 	} {
 		t.Run(name, func(t *testing.T) {
 			v, _ := newComponentEnv(t)
@@ -641,10 +737,12 @@ func TestActivateChecksTheStagedFilesAgain(t *testing.T) {
 // E2: the encoding of known_good_sha256.
 func TestKnownGoodDigestEncoding(t *testing.T) {
 	v := newTenv(t)
-	// SHA-256 over the four file digests (32 bytes each) in the order of U2:
-	// helper, socket unit, helper service unit, recover unit.
+	// SHA-256 over the seven file digests (32 bytes each) in the order of U2
+	// (A20): helper, socket unit, helper service unit, recover unit, broker,
+	// broker socket unit, broker service unit. oarfish.service is not part of it.
 	var cat []byte
-	for _, n := range []string{"oarfish-update-helper", "oarfish-update-helper.socket", "oarfish-update-helper.service", "oarfish-update-recover.service"} {
+	for _, n := range []string{"oarfish-update-helper", "oarfish-update-helper.socket", "oarfish-update-helper.service", "oarfish-update-recover.service",
+		"oarfish-broker", "oarfish-broker.socket", "oarfish-broker.service"} {
 		d := sha256.Sum256(baseComponents[n])
 		cat = append(cat, d[:]...)
 	}
@@ -652,8 +750,9 @@ func TestKnownGoodDigestEncoding(t *testing.T) {
 	if got := diskSetDigest(t, v, "1.0.0"); got != hex.EncodeToString(want[:]) || !isHex(64)(got) {
 		t.Fatalf("set digest %s, want %x", got, want)
 	}
-	// One changed byte in any of the four files changes it; another file does not.
-	for _, n := range componentNames[:4] {
+	// One changed byte in any of the seven files changes it; another file does not.
+	for _, f := range componentSet {
+		n := f.name
 		p := filepath.Join(v.root, "components", "1.0.0", n)
 		orig, _ := os.ReadFile(p)
 		os.WriteFile(p, append(append([]byte(nil), orig...), '\n'), 0o755)
@@ -1768,4 +1867,83 @@ func TestStartupRecoveryIsRetriedWhenTheLockWasHeld(t *testing.T) {
 	if st := checkSettled(t, v, false); st.Last.Outcome != outcomeSuccess {
 		t.Fatalf("result %+v", st.Last)
 	}
+}
+
+// S3 of A20: no transaction spans a four-file and a seven-file set. A set of the
+// shape before A20 (the helper's four files, no broker files) and a reference
+// hash or a staged set hash computed over four digests are never accepted as a
+// seven-file set.
+func TestFourFileSetIsNotASevenFileSet(t *testing.T) {
+	brokerFiles := []string{brokerBinary, unitBrokerSocket, unitBrokerService}
+	fourDigests := func(t *testing.T, v *tenv, id string) string {
+		h := sha256.New()
+		for _, n := range componentNames[:4] {
+			b, err := os.ReadFile(filepath.Join(v.root, "components", id, n))
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := sha256.Sum256(b)
+			h.Write(d[:])
+		}
+		return hex.EncodeToString(h.Sum(nil))
+	}
+	t.Run("setDigest of four digests is no hash", func(t *testing.T) {
+		if setDigest(make([]digest, 4)) != "" || setDigest(make([]digest, 8)) != "" || setDigest(make([]digest, len(componentSet))) == "" {
+			t.Fatal("setDigest accepts a list that is not the seven of componentSet")
+		}
+	})
+	t.Run("an active four-file set is components_damaged at stage", func(t *testing.T) {
+		v := newTenv(t)
+		for _, n := range brokerFiles {
+			os.Remove(filepath.Join(v.root, "components", "1.0.0", n))
+		}
+		v.place(newVersion, v.componentRelease(newVersion).build())
+		before := snapshot(t, v.root)
+		wantErrCode(t, v.stage(newVersion), codeComponentsDamaged)
+		wantNothingLeft(t, v, before)
+	})
+	t.Run("a four-file known-good set is components_damaged at stage", func(t *testing.T) {
+		v := newTenv(t)
+		v.makeSet("0.9.0")
+		for _, n := range brokerFiles {
+			os.Remove(filepath.Join(v.root, "components", "0.9.0", n))
+		}
+		os.Remove(filepath.Join(v.root, "components", linkKnownGood))
+		os.Symlink("0.9.0", filepath.Join(v.root, "components", linkKnownGood))
+		v.place(newVersion, v.componentRelease(newVersion).build())
+		wantErrCode(t, v.stage(newVersion), codeComponentsDamaged)
+		if v.exists("components/" + newVersion) {
+			t.Fatal("a set was staged against a four-file known-good set")
+		}
+	})
+	t.Run("a reference hash over four digests is components_damaged", func(t *testing.T) {
+		v := newTenv(t)
+		st, _ := v.readState()
+		if st == nil {
+			st = freshState("0.0.0-test")
+		}
+		st.Txn.KnownGoodID, st.Txn.KnownGoodSHA256 = "1.0.0", fourDigests(t, v, "1.0.0")
+		v.writeState(st)
+		v.place(newVersion, v.componentRelease(newVersion).build())
+		wantErrCode(t, v.stage(newVersion), codeComponentsDamaged)
+	})
+	t.Run("a staged set hash over four digests ends the staged release at activate", func(t *testing.T) {
+		v, _ := newComponentEnv(t)
+		st, _ := v.readState()
+		st.Txn.ComponentsSetSHA256 = fourDigests(t, v, newVersion)
+		v.writeState(st)
+		wantErrCode(t, v.confirm(newVersion), codeChecksumMismatch)
+		v.wantIdleWith(outcomeAborted, reasonStagedChanged)
+		if v.link(linkActive) != "1.0.0" || v.link(linkKnownGood) != "1.0.0" {
+			t.Fatal("a link moved")
+		}
+	})
+	t.Run("a staged set without a broker file ends the staged release at activate", func(t *testing.T) {
+		v, _ := newComponentEnv(t)
+		os.Remove(filepath.Join(v.root, "components", newVersion, brokerBinary))
+		wantErrCode(t, v.confirm(newVersion), codeIOError)
+		if v.link(linkActive) != "1.0.0" || v.link(linkKnownGood) != "1.0.0" || v.current() != "1.0.0" {
+			t.Fatal("a link moved")
+		}
+	})
 }

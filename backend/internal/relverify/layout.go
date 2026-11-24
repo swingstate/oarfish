@@ -4,14 +4,18 @@ package relverify
 type layoutFile struct {
 	name string
 	mode uint32
-	// elf marks the two programs, which must be ELF64 little-endian
+	// elf marks the three programs, which must be ELF64 little-endian
 	// executables for machine 0xB7.
 	elf bool
 }
 
 // layout returns the exact set of files of a bundle shape: the legacy shape
 // (four files, plus the directory) or, with components, the same plus the
-// update helper and its three units. The list is the allow-list of ADR 0010 U5.
+// seven files of the component set (ADR 0010 A20): the update helper and its
+// three units, and the privilege broker and its two units. The list is the
+// allow-list of ADR 0010 U5. There is no third shape: a components bundle
+// without the broker files (the shape before A20) is refused like any other
+// bundle that lacks a file.
 func layout(components bool) []layoutFile {
 	l := []layoutFile{
 		{name: "LICENSE", mode: 0o644},
@@ -25,6 +29,9 @@ func layout(components bool) []layoutFile {
 			layoutFile{name: "oarfish-update-helper.service", mode: 0o644},
 			layoutFile{name: "oarfish-update-helper.socket", mode: 0o644},
 			layoutFile{name: "oarfish-update-recover.service", mode: 0o644},
+			layoutFile{name: "oarfish-broker", mode: 0o755, elf: true},
+			layoutFile{name: "oarfish-broker.service", mode: 0o644},
+			layoutFile{name: "oarfish-broker.socket", mode: 0o644},
 		)
 	}
 	return l

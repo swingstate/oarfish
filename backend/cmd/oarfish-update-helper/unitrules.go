@@ -10,36 +10,42 @@ import (
 // new directive needs a release that carries new tables first (the two-step
 // rule of U15 rule 3).
 
-// The four unit names, from the closed list of U2. Each has a unit type, which
-// decides the sections it may hold, and the one target its [Install] section
-// may name ("" means the unit has no [Install] section).
+// The six unit names, from the closed list of U2 (A20). Each has a unit type,
+// which decides the sections it may hold, and the one target its [Install]
+// section may name ("" means the unit has no [Install] section).
 const (
 	unitService       = "oarfish.service"
 	unitHelperSocket  = "oarfish-update-helper.socket"
 	unitHelperService = "oarfish-update-helper.service"
 	unitRecover       = "oarfish-update-recover.service"
+	unitBrokerSocket  = "oarfish-broker.socket"
+	unitBrokerService = "oarfish-broker.service"
 )
 
 // lintedUnits is the order in which stage lints the units of a release.
-var lintedUnits = []string{unitHelperSocket, unitHelperService, unitRecover, unitService}
+var lintedUnits = []string{unitHelperSocket, unitHelperService, unitRecover, unitBrokerSocket, unitBrokerService, unitService}
 
 type unitKind struct {
 	sections []string // the sections the unit type allows
 	wantedBy string   // the only value WantedBy= may have
 }
 
+// The broker service has no [Install] section at all (ADR 0011 B8): it is
+// started by its socket only, so the section is not even allowed.
 var unitKinds = map[string]unitKind{
 	unitService:       {sections: []string{"Unit", "Service", "Install"}, wantedBy: "multi-user.target"},
 	unitHelperSocket:  {sections: []string{"Unit", "Socket", "Install"}, wantedBy: "sockets.target"},
 	unitHelperService: {sections: []string{"Unit", "Service", "Install"}},
 	unitRecover:       {sections: []string{"Unit", "Service", "Install"}, wantedBy: "multi-user.target"},
+	unitBrokerSocket:  {sections: []string{"Unit", "Socket", "Install"}, wantedBy: "sockets.target"},
+	unitBrokerService: {sections: []string{"Unit", "Service"}},
 }
 
-// ---- the helper units: accepted canonical forms (D3) ------------------------
+// ---- the component units: accepted canonical forms (D3) ---------------------
 
-// maxHelperForms bounds each list: the current form and, during a two-step
+// maxUnitForms bounds each list: the current form and, during a two-step
 // change, the next one.
-const maxHelperForms = 2
+const maxUnitForms = 2
 
 // helperSandbox is the sandbox of U10, shared by the helper service and the
 // recover unit.
@@ -79,14 +85,15 @@ MemoryMax=64M
 TasksMax=16
 Nice=10`
 
-// helperForms holds, for each helper unit, the ordered list of accepted
+// unitForms holds, for each unit of the component set (the three helper units
+// and, since A20, the two broker units), the ordered list of accepted
 // canonical forms. A form is the unit text after normalisation: comment lines
 // and blank lines removed, the values of Description= and Documentation=
 // removed, lines joined by a newline, no newline at the end. The order of the
 // sections and of the lines inside a section is part of the form. An entry is
 // removed only by a later amendment or decision; in this step every list has
 // one entry, the text the repository ships (TestInstallUnitsAreTheFirstForms).
-var helperForms = map[string][]string{
+var unitForms = map[string][]string{
 	unitHelperSocket: {`[Unit]
 Description=
 Documentation=
@@ -131,6 +138,62 @@ ExecStart=/opt/oarfish/components/known-good/oarfish-update-helper recover
 ` + helperSandbox + `
 [Install]
 WantedBy=multi-user.target`},
+
+	// The broker units of ADR 0011 B8 as install/ ships them (A20). The helper
+	// only lints and replaces them; it never names them in a systemctl call.
+	unitBrokerSocket: {`[Unit]
+Description=
+[Socket]
+ListenStream=/run/oarfish-broker/broker.sock
+SocketUser=root
+SocketGroup=oarfish
+SocketMode=0660
+DirectoryMode=0755
+Accept=no
+Backlog=8
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target`},
+
+	unitBrokerService: {`[Unit]
+Description=
+After=oarfish-update-recover.service
+[Service]
+Type=exec
+ExecStart=/usr/libexec/oarfish-broker serve
+Restart=no
+RuntimeMaxSec=300
+User=root
+Group=root
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+MemoryMax=32M
+TasksMax=16`},
 }
 
 // ---- oarfish.service: required baseline and allowed extras -------------------

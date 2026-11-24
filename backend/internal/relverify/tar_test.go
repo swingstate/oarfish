@@ -300,13 +300,27 @@ func TestInspectShape(t *testing.T) {
 	t.Run("legacy tarball, components manifest", func(t *testing.T) {
 		wantDetail(t, Inspect(bytes.NewReader(leg.bundle), parsed(t, com), nil), CodeManifestInvalid, "missing")
 	})
-	t.Run("three of the four component files", func(t *testing.T) {
+	t.Run("six of the seven component files", func(t *testing.T) {
 		wantCode(t, inspectEnts(t, com, dropEnt(entsOf(com), "oarfish-update-recover.service"), nil), CodeManifestInvalid)
 	})
 	t.Run("each component file missing", func(t *testing.T) {
-		for _, n := range []string{"oarfish-update-helper", "oarfish-update-helper.service", "oarfish-update-helper.socket", "oarfish-update-recover.service"} {
+		for _, n := range append([]string{"oarfish-update-helper", "oarfish-update-helper.service", "oarfish-update-helper.socket", "oarfish-update-recover.service"}, brokerFiles...) {
 			wantCode(t, inspectEnts(t, com, dropEnt(entsOf(com), n), nil), CodeManifestInvalid)
 		}
+	})
+	t.Run("the components tarball of before A20, components manifest", func(t *testing.T) {
+		e := entsOf(com)
+		for _, n := range brokerFiles {
+			e = dropEnt(e, n)
+		}
+		if len(e) != 9 {
+			t.Fatalf("%d entries, want 9", len(e))
+		}
+		wantDetail(t, inspectEnts(t, com, e, nil), CodeManifestInvalid, "missing")
+	})
+	t.Run("a broker file in a legacy bundle", func(t *testing.T) {
+		e := append(entsOf(leg), tarEnt{name: leg.root + "/oarfish-broker.socket", body: []byte("x"), mode: 0o644})
+		wantCode(t, inspectEnts(t, leg, e, nil), CodeManifestInvalid)
 	})
 }
 
@@ -412,7 +426,7 @@ func TestInspectELF(t *testing.T) {
 		"wrong magic":            mk(func(b []byte) []byte { b[1] = 'e'; return b }),
 		"unknown class":          mk(func(b []byte) []byte { b[4] = 0; return b }),
 	}
-	for _, prog := range []string{"oarfish", "oarfish-update-helper"} {
+	for _, prog := range []string{"oarfish", "oarfish-update-helper", "oarfish-broker"} {
 		for name, content := range bads {
 			t.Run(prog+"/"+name, func(t *testing.T) {
 				r := newRelease(t, "0.1.0-test.1", true)

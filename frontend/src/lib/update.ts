@@ -87,12 +87,15 @@ export interface ResultView {
   components_updated?: boolean;
 }
 
-/** The names of ADR 0010 U2 that a release can replace besides itself (a closed list of the service). */
+/** The names of ADR 0010 U2 that a release can replace besides itself (a closed list of the service; A20 adds the broker's three). */
 export const componentNames = [
   'oarfish-update-helper',
   'oarfish-update-helper.socket',
   'oarfish-update-helper.service',
   'oarfish-update-recover.service',
+  'oarfish-broker',
+  'oarfish-broker.socket',
+  'oarfish-broker.service',
   'oarfish.service',
 ] as const;
 

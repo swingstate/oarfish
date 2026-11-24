@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -86,10 +87,10 @@ func TestInstallUnitsPassTheLint(t *testing.T) {
 	for _, name := range lintedUnits {
 		wantAccepted(t, name, installUnit(t, name))
 	}
-	if len(lintedUnits) != 4 || len(unitKinds) != 4 {
+	if len(lintedUnits) != 6 || len(unitKinds) != 6 {
 		t.Fatalf("%d linted units, %d kinds", len(lintedUnits), len(unitKinds))
 	}
-	// The four names are the unit names of the closed list of U2.
+	// The six names are the unit names of the closed list of U2 (A20).
 	for _, name := range lintedUnits {
 		found := false
 		for _, c := range componentNames {
@@ -101,16 +102,20 @@ func TestInstallUnitsPassTheLint(t *testing.T) {
 	}
 }
 
-// Each helper unit of install/ normalises to the first accepted form of its
+// componentUnits are the units of the component set that the lint compares
+// with accepted forms: the three helper units and the two broker units (A20).
+var componentUnits = []string{unitHelperSocket, unitHelperService, unitRecover, unitBrokerSocket, unitBrokerService}
+
+// Each component unit of install/ normalises to the first accepted form of its
 // list; every list has exactly one entry in this step and never more than two
-// (D3).
+// (D3). Since A20 this covers the two broker units.
 func TestInstallUnitsAreTheFirstForms(t *testing.T) {
-	if len(helperForms) != 3 {
-		t.Fatalf("%d helper units have forms", len(helperForms))
+	if len(unitForms) != 5 {
+		t.Fatalf("%d component units have forms", len(unitForms))
 	}
-	for _, name := range []string{unitHelperSocket, unitHelperService, unitRecover} {
-		forms := helperForms[name]
-		if len(forms) != 1 || len(forms) > maxHelperForms {
+	for _, name := range componentUnits {
+		forms := unitForms[name]
+		if len(forms) != 1 || len(forms) > maxUnitForms {
 			t.Fatalf("%s has %d accepted forms, want 1", name, len(forms))
 		}
 		lines, reason := parseUnit(unitKinds[name], []byte(installUnit(t, name)))
@@ -129,13 +134,13 @@ func TestInstallUnitsAreTheFirstForms(t *testing.T) {
 		unitRecover:       {"TimeoutStartSec=120", "DefaultDependencies=no", "After=local-fs.target"},
 	} {
 		for _, l := range lines {
-			if !strings.Contains("\n"+helperForms[name][0]+"\n", "\n"+l+"\n") {
+			if !strings.Contains("\n"+unitForms[name][0]+"\n", "\n"+l+"\n") {
 				t.Errorf("the form of %s has no line %s", name, l)
 			}
 		}
 	}
-	if maxHelperForms != 2 {
-		t.Fatalf("at most %d forms, want 2", maxHelperForms)
+	if maxUnitForms != 2 {
+		t.Fatalf("at most %d forms, want 2", maxUnitForms)
 	}
 }
 
@@ -226,15 +231,24 @@ func TestLintParsing(t *testing.T) {
 				return base + "#" + strings.Repeat("x", n-len(base)-2) + "\n"
 			}
 			foreign := "Socket"
-			if name == unitHelperSocket {
+			if strings.HasSuffix(name, ".socket") {
 				foreign = "Service"
+			}
+			// The broker units carry no Documentation= line: there the
+			// duplicate is a second Description= and a Documentation= line is
+			// added before its length is tested.
+			dupKey := "Documentation=two"
+			doc := base
+			if !strings.Contains(base, "\nDocumentation=") {
+				dupKey = "Description=two"
+				doc = afterLine(t, base, "[Unit]", "Documentation=x")
 			}
 			tests := []tc{
 				{"a continuation line", afterLine(t, base, "[Unit]", "After=a.target \\\n b.target"), lintContinuation},
 				{"a trailing backslash on the last line", base + `Foo=bar\`, lintContinuation},
 				{"a trailing backslash followed by spaces", afterLine(t, base, "[Unit]", `Foo=bar\  `), lintContinuation},
 				{"a trailing backslash in a comment", afterLine(t, base, "[Unit]", `# comment \`), lintContinuation},
-				{"a duplicate key", afterLine(t, base, "[Unit]", "Documentation=two"), lintDuplicateKey},
+				{"a duplicate key", afterLine(t, base, "[Unit]", dupKey), lintDuplicateKey},
 				{"an unknown section", base + "[Timer]\nOnBootSec=1\n", lintSection},
 				{"a section of another unit type", base + "[" + foreign + "]\n", lintSection},
 				{"a section twice", base + "[Unit]\n", lintSection},
@@ -254,7 +268,7 @@ func TestLintParsing(t *testing.T) {
 				{"a DEL character", base + "# \x7f\n", lintControl},
 				{"a Description of 201 characters", replaceDescription(t, base, strings.Repeat("d", 201)), lintText},
 				{"a Description of 200 characters", replaceDescription(t, base, strings.Repeat("d", 200)), ""},
-				{"a Documentation of 201 characters", replaceKey(t, base, "Documentation", strings.Repeat("d", 201)), lintText},
+				{"a Documentation of 201 characters", replaceKey(t, doc, "Documentation", strings.Repeat("d", 201)), lintText},
 				{"a non-ASCII character in Description=", replaceDescription(t, base, "Aktualisierung für Oarfish"), lintSyntax},
 				{"a non-ASCII character in a comment", "# für Oarfish\n" + base, ""},
 				{"a key=value line before the first section", "Foo=bar\n" + base, lintSyntax},
@@ -282,7 +296,13 @@ func TestLintParsing(t *testing.T) {
 					tc{"[Install] with an empty WantedBy=", replaceLine(t, base, "WantedBy="+kind.wantedBy, "WantedBy="), lintInstall},
 				)
 			} else {
-				tests = append(tests, tc{"an [Install] section where the unit has none", base + "[Install]\nWantedBy=multi-user.target\n", lintInstall})
+				// The helper service allows the section header and nothing in
+				// it; the broker service does not allow the section at all.
+				want := lintInstall
+				if !allowedSection(kind, "Install") {
+					want = lintSection
+				}
+				tests = append(tests, tc{"an [Install] section where the unit has none", base + "[Install]\nWantedBy=multi-user.target\n", want})
 			}
 			for _, tt := range tests {
 				t.Run(tt.what, func(t *testing.T) {
@@ -332,10 +352,10 @@ func replaceDescription(t *testing.T, text, value string) string {
 // ---- the helper units: equal to an accepted form ------------------------------
 
 func TestLintHelperUnits(t *testing.T) {
-	for _, name := range []string{unitHelperSocket, unitHelperService, unitRecover} {
+	for _, name := range componentUnits {
 		t.Run(name, func(t *testing.T) {
 			base := installUnit(t, name)
-			form := helperForms[name][0]
+			form := unitForms[name][0]
 
 			// Accepted: other comments, other blank lines, other Description= and
 			// Documentation= values.
@@ -350,8 +370,13 @@ func TestLintHelperUnits(t *testing.T) {
 			wantAccepted(t, name, strings.ReplaceAll(base, "\n", "\n\n"))
 			wantAccepted(t, name, replaceDescription(t, base, "Another description, with: punctuation (and more)"))
 			wantAccepted(t, name, replaceDescription(t, base, ""))
-			wantAccepted(t, name, replaceKey(t, base, "Documentation", "https://example.org/docs man:oarfish(8)"))
-			wantAccepted(t, name, replaceKey(t, base, "Documentation", strings.Repeat("u", 200)))
+			if strings.Contains(form, "\nDocumentation=") {
+				wantAccepted(t, name, replaceKey(t, base, "Documentation", "https://example.org/docs man:oarfish(8)"))
+				wantAccepted(t, name, replaceKey(t, base, "Documentation", strings.Repeat("u", 200)))
+			} else {
+				// A form without the line: an added Documentation= is an added directive.
+				wantRejected(t, name, afterLine(t, base, "[Unit]", "Documentation=https://example.org/docs"), lintForm)
+			}
 
 			// Rejected: every line of the form removed, changed, or doubled in
 			// another section; an added directive; another order.
@@ -378,7 +403,7 @@ func TestLintHelperUnits(t *testing.T) {
 				"BindPaths=/etc", "PrivateUsers=no", "AppArmorProfile=unconfined", "Conflicts=oarfish.service",
 			} {
 				section := "[Service]"
-				if name == unitHelperSocket {
+				if strings.HasSuffix(name, ".socket") {
 					section = "[Socket]"
 				}
 				wantRejected(t, name, afterLine(t, base, section, add), lintForm)
@@ -396,7 +421,9 @@ func TestLintHelperUnits(t *testing.T) {
 			// Description= after Documentation= is another order as well.
 			lines := strings.Split(form, "\n")
 			lines[1], lines[2] = lines[2], lines[1]
-			wantRejected(t, name, strings.Join(lines, "\n"), lintForm)
+			if strings.Join(lines, "\n") != form {
+				wantRejected(t, name, strings.Join(lines, "\n"), lintForm)
+			}
 		})
 	}
 	// The weakened values that U15 rule 3 names, on the units that run as root.
@@ -420,6 +447,64 @@ func TestLintHelperUnits(t *testing.T) {
 	// A unit text under the name of another unit is not that unit's form.
 	wantRejected(t, unitRecover, base, lintForm)
 	wantRejected(t, unitHelperService, installUnit(t, unitRecover), lintInstall)
+}
+
+// The broker units (A20, ADR 0011 B8) have one accepted form each, the text
+// that install/ ships. Each mutant of section 6 of the gate is rejected with an
+// existing reason: an added or a removed directive, another value of a line, a
+// second section, an [Install] section in the service, another SocketMode, a
+// capability and a writable path.
+func TestLintBrokerUnits(t *testing.T) {
+	for _, name := range []string{unitBrokerSocket, unitBrokerService} {
+		if len(unitForms[name]) != 1 {
+			t.Fatalf("%s has %d accepted forms, want 1", name, len(unitForms[name]))
+		}
+	}
+	sock, svc := installUnit(t, unitBrokerSocket), installUnit(t, unitBrokerService)
+	wantAccepted(t, unitBrokerSocket, sock)
+	wantAccepted(t, unitBrokerService, svc)
+	for _, c := range []struct {
+		what, name, text string
+		want             lintReason
+	}{
+		{"socket: another SocketMode", unitBrokerSocket, replaceLine(t, sock, "SocketMode=0660", "SocketMode=0666"), lintForm},
+		{"socket: another SocketGroup", unitBrokerSocket, replaceLine(t, sock, "SocketGroup=oarfish", "SocketGroup=users"), lintForm},
+		{"socket: another path", unitBrokerSocket, replaceLine(t, sock, "ListenStream=/run/oarfish-broker/broker.sock", "ListenStream=/run/oarfish/broker.sock"), lintForm},
+		{"socket: a TCP listener", unitBrokerSocket, replaceLine(t, sock, "ListenStream=/run/oarfish-broker/broker.sock", "ListenStream=127.0.0.1:8485"), lintForm},
+		{"socket: Accept=yes", unitBrokerSocket, replaceLine(t, sock, "Accept=no", "Accept=yes"), lintForm},
+		{"socket: an added directive", unitBrokerSocket, afterLine(t, sock, "[Socket]", "FreeBind=yes"), lintForm},
+		{"socket: a repeated directive", unitBrokerSocket, afterLine(t, sock, "[Socket]", "SocketUser=oarfish"), lintDuplicateKey},
+		{"socket: a removed directive", unitBrokerSocket, dropLine(t, sock, "RemoveOnStop=yes"), lintForm},
+		{"socket: another WantedBy", unitBrokerSocket, replaceLine(t, sock, "WantedBy=sockets.target", "WantedBy=multi-user.target"), lintInstall},
+		{"socket: a second section", unitBrokerSocket, sock + "[Socket]\nBacklog=8\n", lintSection},
+		{"socket: a [Service] section", unitBrokerSocket, sock + "[Service]\nExecStart=/bin/sh\n", lintSection},
+		{"socket: the helper socket text", unitBrokerSocket, installUnit(t, unitHelperSocket), lintForm},
+		{"service: an [Install] section", unitBrokerService, svc + "[Install]\nWantedBy=multi-user.target\n", lintSection},
+		{"service: a second [Service] section", unitBrokerService, svc + "[Service]\nUser=root\n", lintSection},
+		{"service: a [Socket] section", unitBrokerService, svc + "[Socket]\nListenStream=/x\n", lintSection},
+		{"service: a capability", unitBrokerService, replaceLine(t, svc, "CapabilityBoundingSet=", "CapabilityBoundingSet=CAP_SYS_ADMIN"), lintForm},
+		{"service: an ambient capability", unitBrokerService, replaceLine(t, svc, "AmbientCapabilities=", "AmbientCapabilities=CAP_DAC_OVERRIDE"), lintForm},
+		{"service: a writable path", unitBrokerService, afterLine(t, svc, "ProtectSystem=strict", "ReadWritePaths=/etc"), lintForm},
+		{"service: ProtectSystem=full", unitBrokerService, replaceLine(t, svc, "ProtectSystem=strict", "ProtectSystem=full"), lintForm},
+		{"service: NoNewPrivileges=no", unitBrokerService, replaceLine(t, svc, "NoNewPrivileges=yes", "NoNewPrivileges=no"), lintForm},
+		{"service: a network", unitBrokerService, replaceLine(t, svc, "PrivateNetwork=yes", "PrivateNetwork=no"), lintForm},
+		{"service: another address family", unitBrokerService, replaceLine(t, svc, "RestrictAddressFamilies=AF_UNIX", "RestrictAddressFamilies=AF_UNIX AF_INET"), lintForm},
+		{"service: another program", unitBrokerService, replaceLine(t, svc, "ExecStart=/usr/libexec/oarfish-broker serve", "ExecStart=/opt/oarfish/current/oarfish serve"), lintForm},
+		{"service: a + prefix", unitBrokerService, replaceLine(t, svc, "ExecStart=/usr/libexec/oarfish-broker serve", "ExecStart=+/usr/libexec/oarfish-broker serve"), lintForm},
+		{"service: Restart=always", unitBrokerService, replaceLine(t, svc, "Restart=no", "Restart=always"), lintForm},
+		{"service: another user", unitBrokerService, replaceLine(t, svc, "User=root", "User=oarfish"), lintForm},
+		{"service: a larger memory limit", unitBrokerService, replaceLine(t, svc, "MemoryMax=32M", "MemoryMax=64M"), lintForm},
+		{"service: an environment", unitBrokerService, afterLine(t, svc, "[Service]", "Environment=A=b"), lintForm},
+		{"service: ExecStartPre", unitBrokerService, afterLine(t, svc, "[Service]", "ExecStartPre=/bin/true"), lintForm},
+		{"service: a removed directive", unitBrokerService, dropLine(t, svc, "MemoryDenyWriteExecute=yes"), lintForm},
+		{"service: a removed dependency", unitBrokerService, dropLine(t, svc, "After=oarfish-update-recover.service"), lintForm},
+		{"service: the helper service text", unitBrokerService, installUnit(t, unitHelperService), lintForm},
+	} {
+		t.Run(c.what, func(t *testing.T) { wantRejected(t, c.name, c.text, c.want) })
+	}
+	// A broker unit text under the name of a helper unit is not that unit's form.
+	wantRejected(t, unitHelperSocket, sock, lintForm)
+	wantRejected(t, unitRecover, svc, lintForm)
 }
 
 // dropKey removes the one line "key=..." of text.
@@ -858,10 +943,10 @@ func FuzzUnitLint(f *testing.F) {
 			f.Add(uint8(i), []byte(mut))
 		}
 	}
-	for _, name := range []string{unitHelperSocket, unitHelperService, unitRecover} {
-		f.Add(uint8(0), []byte(helperForms[name][0]))
+	for _, name := range componentUnits {
+		f.Add(uint8(slices.Index(lintedUnits, name)), []byte(unitForms[name][0]))
 	}
-	f.Add(uint8(3), baseServiceUnit)
+	f.Add(uint8(slices.Index(lintedUnits, unitService)), baseServiceUnit)
 	f.Add(uint8(200), []byte("[Unit]\n"))
 	known := map[lintReason]bool{}
 	for _, r := range lintReasons {
@@ -943,7 +1028,7 @@ func FuzzUnitLint(f *testing.F) {
 					t.Fatalf("accepted with %s=%s", id, have[id])
 				}
 			}
-		} else if norm := normalisedUnit(lines); !contains(helperForms[name], norm) {
+		} else if norm := normalisedUnit(lines); !contains(unitForms[name], norm) {
 			t.Fatal("accepted a helper unit that equals no form")
 		}
 		// A comment line more does not change the verdict (while the size allows it).

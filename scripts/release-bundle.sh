@@ -9,25 +9,31 @@
 #   COMMIT   full commit hash (default: HEAD); build_date and tar mtimes are the
 #            timestamp of that commit, which makes the output reproducible.
 #
-# Bundle shape (ADR 0010, G6.3b). The default is the COMPONENTS shape: the bundle
-# carries the update helper (built here with scripts/build-helper.sh; its bytes do
-# not depend on VERSION or COMMIT, D-C80) and the four unit files from install/ (the three helper units and the
-# recover unit), components protocol 1, and the components key id derived from
+# Bundle shape (ADR 0010, G6.3b, A20). The default is the COMPONENTS shape: the bundle
+# carries the seven files of the component set: the update helper (built here with
+# scripts/build-helper.sh) and its three units from install/ (the helper socket, the
+# helper service and the recover unit), and the privilege broker (built here with
+# scripts/build-broker.sh) and its two units from install/ (the broker socket and the
+# broker service). The bytes of both programs do not depend on VERSION or COMMIT
+# (D-C80). Components protocol 1, and the components key id derived from
 # release/oarfish-release.pub (the 16 hex digits of its first line, lower case; the
 # method of scripts/check-helper-key.sh). After building, `bundlegen check
 # -expect-key-id` must accept the result.
 #   OARFISH_BUNDLE_SHAPE=legacy  explicit opt-out, for tests and comparison: the
 #                                legacy five-entry bundle, byte for byte what it was
 #                                before ADR 0010. Nothing selects it implicitly.
+#                                (The components shape has twelve entries; the
+#                                nine-entry shape without the broker is gone.)
 #                                It cannot be combined with OARFISH_COMPONENTS_*.
 #   OARFISH_BUNDLE_SHAPE=components   the default
 #
 # Optional, unset by default. When any OARFISH_COMPONENTS_* variable is set the
 # default above is not used at all and these keep their G6.2 meaning: all three or
 # none (bundlegen refuses a partial set), nothing is built or derived here.
-#   OARFISH_COMPONENTS_DIR       directory holding the four component files
+#   OARFISH_COMPONENTS_DIR       directory holding the seven component files
 #                                (oarfish-update-helper, oarfish-update-helper.service,
-#                                oarfish-update-helper.socket, oarfish-update-recover.service)
+#                                oarfish-update-helper.socket, oarfish-update-recover.service,
+#                                oarfish-broker, oarfish-broker.service, oarfish-broker.socket)
 #   OARFISH_COMPONENTS_PROTOCOL  highest protocol the delivered helper implements
 #   OARFISH_COMPONENTS_KEY_ID    16 lowercase hex digits, key id embedded in that helper
 #                                These three are all or nothing: bundlegen refuses a partial set.
@@ -84,8 +90,9 @@ EXPLICIT=0
 if [ -n "${OARFISH_COMPONENTS_DIR:-}" ] || [ -n "${OARFISH_COMPONENTS_PROTOCOL:-}" ] || [ -n "${OARFISH_COMPONENTS_KEY_ID:-}" ]; then EXPLICIT=1; fi
 [ "$SHAPE" = components ] || [ "$EXPLICIT" = 0 ] || die "OARFISH_BUNDLE_SHAPE=legacy cannot be combined with OARFISH_COMPONENTS_*"
 
-# Extra bundlegen flags. In the default components shape the helper is built and
-# the key id derived here; explicit OARFISH_COMPONENTS_* variables replace that.
+# Extra bundlegen flags. In the default components shape the helper and the broker
+# are built and the key id derived here; explicit OARFISH_COMPONENTS_* variables
+# replace that.
 EXPECT_KEY_ID=""
 EXTRA=()
 if [ "$SHAPE" = components ] && [ "$EXPLICIT" = 0 ]; then
@@ -94,7 +101,9 @@ if [ "$SHAPE" = components ] && [ "$EXPLICIT" = 0 ]; then
   [ -n "$EXPECT_KEY_ID" ] || die "cannot read the key id from release/oarfish-release.pub"
   mkdir -p "$WORK/components"
   "$ROOT/scripts/build-helper.sh" -o "$WORK/components/oarfish-update-helper"
-  for u in oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service; do
+  "$ROOT/scripts/build-broker.sh" -o "$WORK/components/oarfish-broker"
+  for u in oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service \
+    oarfish-broker.service oarfish-broker.socket; do
     cp "$ROOT/install/$u" "$WORK/components/$u"
   done
   OARFISH_COMPONENTS_DIR="$WORK/components"
@@ -105,7 +114,10 @@ if [ -n "${OARFISH_COMPONENTS_DIR:-}" ]; then
   EXTRA+=(-helper "$OARFISH_COMPONENTS_DIR/oarfish-update-helper"
     -helper-service "$OARFISH_COMPONENTS_DIR/oarfish-update-helper.service"
     -helper-socket "$OARFISH_COMPONENTS_DIR/oarfish-update-helper.socket"
-    -recover-service "$OARFISH_COMPONENTS_DIR/oarfish-update-recover.service")
+    -recover-service "$OARFISH_COMPONENTS_DIR/oarfish-update-recover.service"
+    -broker "$OARFISH_COMPONENTS_DIR/oarfish-broker"
+    -broker-service "$OARFISH_COMPONENTS_DIR/oarfish-broker.service"
+    -broker-socket "$OARFISH_COMPONENTS_DIR/oarfish-broker.socket")
 fi
 [ -z "${OARFISH_COMPONENTS_PROTOCOL:-}" ] || EXTRA+=(-components-protocol "$OARFISH_COMPONENTS_PROTOCOL")
 [ -z "${OARFISH_COMPONENTS_KEY_ID:-}" ] || EXTRA+=(-components-key-id "$OARFISH_COMPONENTS_KEY_ID")

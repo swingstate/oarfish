@@ -48,8 +48,16 @@ export function available(now = Date.now()): UpdateState {
   });
 }
 
-/** The four files of the component set (ADR 0010 U15 rule 2). */
-const helperSet = ['oarfish-update-helper', 'oarfish-update-helper.socket', 'oarfish-update-helper.service', 'oarfish-update-recover.service'];
+/** The seven files of the component set (ADR 0010 U15 rule 2, A20). */
+const helperSet = [
+  'oarfish-update-helper',
+  'oarfish-update-helper.socket',
+  'oarfish-update-helper.service',
+  'oarfish-update-recover.service',
+  'oarfish-broker',
+  'oarfish-broker.socket',
+  'oarfish-broker.service',
+];
 
 const job = (now: number, step: NonNullable<UpdateState['job']>['step'], running = true) => ({
   kind: 'apply' as const,

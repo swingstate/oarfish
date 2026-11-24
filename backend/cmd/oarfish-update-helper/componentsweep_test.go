@@ -95,9 +95,30 @@ func TestCrashSweepComponentTransaction(t *testing.T) {
 	sweepComponentRun(t, componentSweep{
 		name: "component transaction",
 		setup: func(t *testing.T) (*tenv, *supervisor) {
-			v, s := newComponentEnv(t, unitService)
+			// The broker's three files change with the helper (A20).
+			v, s := newComponentEnv(t, unitService, brokerBinary, unitBrokerSocket, unitBrokerService)
 			v.makeSet("0.8.0") // something to prune
 			return v, s
+		},
+		run: activateAndSettle,
+	})
+}
+
+// A release that changes only the broker's files (A20): the same transaction
+// with a helper that hands over to the same binary.
+func TestCrashSweepBrokerOnlyComponentTransaction(t *testing.T) {
+	sweepComponentRun(t, componentSweep{
+		name: "broker-only component transaction",
+		setup: func(t *testing.T) (*tenv, *supervisor) {
+			v := newTenv(t)
+			v.installOarfish()
+			v.fakeSystemd()
+			v.h.wrapFS = withoutSync
+			v.place(newVersion, v.brokerRelease(newVersion, unitBrokerSocket, unitBrokerService).build())
+			if r := wantOK(t, v.stage(newVersion)); !r.ComponentsDiffer {
+				t.Fatal("the release brings no component difference")
+			}
+			return v, &supervisor{v: v}
 		},
 		run: activateAndSettle,
 	})
