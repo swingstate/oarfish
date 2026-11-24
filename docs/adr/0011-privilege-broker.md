@@ -4,8 +4,9 @@
 - Amendment A1 (G7.0 owner decisions, written 2026-11-23, D-C87): the owner's decisions on the draft items, two changes (item 6, item 11), one open item (16) and one added task for the spike G7.1, listed in "Amendment A1 (G7.0 owner decisions)" below. It edits no sentence of the body; where the body speaks of itself as Proposed or as a proposal, the amendment governs.
 - Amendment A2 (G7.1 device spike findings, written 2026-11-23): the results of the device spike G7.1 with throwaway units on the reference device, one verdict per assumption, the service list for amendment A1.5, and draft changes to B2, B3 and B8 marked "proposal, not applied", listed in "Amendment A2 (G7.1 device spike findings)" below. It edits no sentence of the body and no row of "Assumptions to verify" and takes no decision; the owner decides B2, B3 and B8 from it (stop point of G7.1 in B10).
 - Amendment A3 (G7.1 owner decisions, written 2026-11-23, D-C88): the owner's decisions on the proposals of amendment A2.5, "wie empfohlen", with the full text of every rule they change (B2, B3, B8), the changed rows of the failure matrix and what stays open, listed in "Amendment A3 (G7.1 owner decisions)" below. It edits no sentence of the body; where the body and A3 differ, A3 governs. It is a decision, not evidence: nothing in it is verified.
+- Amendment A4 (G7.2 broker core as implemented, written 2026-11-24, D-C89): the owner's decisions for G7.2 (D-C89 items 2 to 7 and four accepted choices) as the rules that now apply, the broker as built (files, functions, the environment of `systemctl`, the bound of `correlation_id`, how test seams stay out of the release binary), every choice the code made where this ADR did not fix one, and the class C tests per row of the failure matrix, listed in "Amendment A4 (G7.2 broker core as implemented)" below. There is no deviation from the body, A1 or A3. It edits no sentence of the body, A1, A2 or A3 except two pointer sentences in A3.7 and A3.8. It is class C evidence only: nothing in it is verified on a device.
 - Date: 2026-11-23
-- Gate: G7; steps G7.0 (design stop) and G7.1 (device spike) are done, G7.2 has not started
+- Gate: G7; steps G7.0 (design stop) and G7.1 (device spike) are done; G7.2 (broker core) is implemented and waits for the owner's review of the privileged code (B10); G7.3 has not started
 - Written against: `main` at commit `4f1b5d13accc7373e5fee586c0defe45e9b7ae0c` (merge of PR #52)
 - Decision numbers: this ADR uses draft numbers `D-DRAFT-G7-nn` only. They become `D-C87` and later when the owner accepts them (`D-C82` stays reserved). `docs/DECISIONS.md` is not changed by this ADR.
 - Amends nothing. Where an accepted text (ADR 0009, ADR 0010, the specification) would need a change, this ADR lists it as a proposal in "Conflicts and gaps" and in "Amendments this ADR would need".
@@ -29,6 +30,7 @@
 15. [Amendment A1 (G7.0 owner decisions)](#amendment-a1-g70-owner-decisions)
 16. [Amendment A2 (G7.1 device spike findings)](#amendment-a2-g71-device-spike-findings)
 17. [Amendment A3 (G7.1 owner decisions)](#amendment-a3-g71-owner-decisions)
+18. [Amendment A4 (G7.2 broker core as implemented)](#amendment-a4-g72-broker-core-as-implemented)
 
 ## How to read this ADR
 
@@ -897,7 +899,7 @@ The rows of the [failure matrix](#failure-matrix) are not edited. Where a row be
 | BF29 | "Every denied case of B2 and B3" now includes the rows of this table (rules 5, 8, 9, 10 and 11 as they now read). |
 | BF31 | Records `VmHWM` of the broker apart from its `systemctl` child, because the child alone was observed at 7.7 to 8.4 MB (P-B8-3). |
 
-**Open point in BF4.** Neither P-B3-1 nor D-C88 names the error code for `service.stop` or `service.restart` of a template instance whose `ActiveState` is `inactive`. The body has no code for it either (`already_in_state` fits a stop only). A3 does not choose one. It is chosen from the closed set of B2 in G7.2 and shown to the owner at the review of the privileged code, or decided earlier by a further amendment.
+**Open point in BF4.** Neither P-B3-1 nor D-C88 names the error code for `service.stop` or `service.restart` of a template instance whose `ActiveState` is `inactive`. The body has no code for it either (`already_in_state` fits a stop only). A3 does not choose one. It is chosen from the closed set of B2 in G7.2 and shown to the owner at the review of the privileged code, or decided earlier by a further amendment. (Decided by D-C89 items 2 to 4 before the code was written; see [A4.1](#a41-owner-decisions-d-c89-as-they-now-apply).)
 
 Rows not named above (BF1 to BF3, BF7 to BF9, BF17 to BF20, BF22 to BF28, BF30, BF32) are unchanged. BF8 is unchanged: masked units behave as in rule 6, and a masked unit that is also `Type=oneshot` is refused by rule 8 for `service.stop` as well.
 
@@ -908,4 +910,125 @@ Rows not named above (BF1 to BF3, BF7 to BF9, BF17 to BF20, BF22 to BF28, BF30, 
 - **Not observed and still open from A2.6:** Ubuntu Server (A-03 and the rest, G12); the exit codes of `systemctl reboot` and `systemctl poweroff` (S10); A-07 as BF27 evidence; the memory of the read shapes in the service sandbox; the boot order with broker units (BF30); hostile output (BF21); and the read shapes while a job runs.
 - **Installer budget (D-C87 item 16, K3):** not decided. It is decided before G7.3, together with the needs of D-D10. `scripts/check-budgets.sh` and `docs/DEVELOPMENT.md` are not touched.
 - **Error code for `service.stop` and `service.restart` of an inactive template instance:** open (A3.7, BF4).
-- **Next:** the installer budget decision, then G7.2. G7.2 has not started and is not prepared by this amendment.
+- **Next:** the installer budget decision, then G7.2. G7.2 has not started and is not prepared by this amendment. (Both happened: D-C89 decides the budget and the open code of BF4, and G7.2 is recorded in [amendment A4](#amendment-a4-g72-broker-core-as-implemented).)
+
+## Amendment A4 (G7.2 broker core as implemented)
+
+**A4 (G7.2, 2026-11-24, `docs/DECISIONS.md` D-C89).** Step G7.2 implements the broker core of B10: the binary `oarfish-broker` with the subcommand `serve`, the protocol, the peer check, the constant G7 policy (B7), the unit rules (B3), the fixed `systemctl` shapes (B2), the rate limits (B4), the update check of the power operations (B6), the idle exit and the resource bounds (B8), the two unit files, a reproducible build, the unit checks in CI and the class C tests. The broker is **not** in the release bundle, the installer, `bundlegen`, `relverify`, the helper or the release workflow; that is G7.3. This amendment edits no sentence of the body, A1, A2 or A3, except a pointer sentence in A3.7 and one in A3.8.
+
+**A4 is class C evidence, not device evidence.** The tests prove argument shapes, the validation, the order of the checks and the error mapping against a fake `systemctl` and a fake root, and the socket handling on a real Unix socket. They prove nothing about systemd's behaviour. No device was touched in G7.2; every class D and T row of the [failure matrix](#failure-matrix) stays open for G7.6. Nothing is Verified, and the reference device stays Compatible.
+
+**Deviations from the body, A1 and A3: none.** Where this ADR left a choice to the code, A4.4 names it.
+
+### A4.1 Owner decisions (D-C89) as they now apply
+
+| D-C89 item | Rule as it now applies |
+|---|---|
+| 1 | The installer budget is raised from 50,000 to 80,000 bytes (option I1 of B1). Applied in G7.3; G7.2 changes no budget value. |
+| 2 | A template instance whose `ActiveState` is `inactive`: `service.stop` is `already_in_state`, as for any other unit that is already stopped. |
+| 3 | A template instance whose `ActiveState` is `inactive`: `service.restart` is `unit_template` (a restart would start it; rule 5). |
+| 4 | A template instance whose `ActiveState` is `active`: `service.start` is `already_in_state`, not `unit_template`. `service.start` of an instance that is neither `active` nor `failed` stays `unit_template`. |
+| 5 | The restart verification keeps the check for a new `ExecMainStartTimestampMonotonic` or a changed `MainPID` on the read about 1 s after `systemctl` returned (A3.3). |
+| 6 | Power flag (option P1): after the broker answered `accepted` to `system.reboot` or `system.poweroff`, it does not idle-exit; it runs until the shutdown ends it or until `RuntimeMaxSec=300`. The flag is in memory only. |
+| 7 | Rate counting: a slot of the window (10 mutating service operations per 60 s) is used as soon as a mutating service request passes the rate check, whatever the later result. Power operations use no slot. |
+
+**BF4 as it now reads** (replaces the open point of A3.7): template without instance, every operation: `unit_template`. Instance `inactive` (never started, S1): start `unit_template`, stop `already_in_state`, restart `unit_template`. Instance `failed`: start, stop and restart accepted. Instance `active`: start `already_in_state`, stop and restart accepted. Instance in any other state: start `unit_template`; stop and restart accepted. No new instance is ever created.
+
+**Residual risk of item 6, beside TB1.** If the device has not gone down within 300 s after `accepted`, systemd ends the broker at `RuntimeMaxSec=300`, and a new broker can accept one more power request in the same boot. A crash of the broker has the same effect at any time. TB1 therefore reads, for the power operations: "reboot or power off the device once per broker lifetime, which is once per boot unless the shutdown does not happen within 300 s of an accepted request or the broker crashes". The same holds for the rate window: it lives as long as the process, so a broker ended at `RuntimeMaxSec=300` starts with an empty window (B4 already accepts this for a crash).
+
+**Four choices accepted by the owner with items 6 and 7:** `correlation_id` is exactly 16 lowercase hexadecimal digits; the build id in `status` is a constant compiled into the binary (`broker-1`); `success` answers a service operation (and `status`) and `accepted` a power operation; `service.restart` of an ordinary inactive unit is allowed and starts it, while the refusal `unit_template` of item 3 applies to template instances only.
+
+### A4.2 Files and functions
+
+All in `backend/cmd/oarfish-broker` (package `main`, standard library only, the Go version of the module):
+
+| File | Content |
+|---|---|
+| `main.go` | constants of B2, B4 and B8; `options` (everything the tests replace) and `productionOptions`; `run` (exactly one argument, `serve`, else the usage text and exit 2); `serve`; `lookupUID` (`os/user`, once at start); `journal` (whole lines to standard error) |
+| `activation.go` | `activatedListener`: exactly one socket from systemd (`LISTEN_PID` equal to the own pid, `LISTEN_FDS=1`, descriptor 3, a Unix stream listener), else exit 1 with a fixed message; the variables are unset first |
+| `peercred_linux.go`, `peercred_other.go` | `peerUID` by `SO_PEERCRED`; on other systems every peer fails |
+| `server.go` | `server.serve` (accept loop, at most 4 connections at once, idle exit), `server.handle` (peer check, one request line, one answer), `drain` |
+| `protocol.go` | `readRequest`, `decodeRequest`, `requestMembers`, `validCorrelationID`, the codes, `answer`, `statusAnswer` |
+| `policy.go` | `Caller`, `Operation`, `Policy` and the constant `corePolicy` of B7 |
+| `unit.go` | `validUnitName` (rule 1), `splitTemplate`, `denyList` (rule 10), `restartOnly` (rule 11), `parseShow` and `unitFacts` (the show shape) |
+| `systemctl.go` | the shapes `shapeShow`, `shapeUnitJob`, `shapePower`; `allowedShape`; `broker.systemctl`; `runProgram` (the only place that starts a process); `limitedBuffer` |
+| `update.go` | `checkUpdate` (B6), `readHelperPhase`, `decodeHelperPhase`, `jsonObject` |
+| `broker.go` | `broker.respond`, `logLine`, `status`, the rate window, `begin`/`end` (busy), `mayExit`, `service`, `checkUnit` (B3 in order), `runServiceJob` (call and verification), `powerOp` |
+
+Unit files: `install/oarfish-broker.socket` and `install/oarfish-broker.service`, the text of B8 verbatim, each starting with the comment line that names it in the block of B8 (`TestUnitFilesMatchTheADR` compares them with this document). Scripts: `scripts/build-broker.sh`, `scripts/check-broker-independent.sh`; `scripts/check-units.sh` and `scripts/verify-units.sh` extended. Make targets `build-broker`, `test-broker`, `check-broker`; `make fuzz` runs four broker targets. CI job `broker`; the job `helper-units` runs the extended unit scripts unchanged in its steps.
+
+### A4.3 The protocol as built
+
+- **Request.** One JSON object on one line, at most 1,024 bytes including the newline, read within 5 s. Member sets: `status`, `system.reboot`, `system.poweroff`: exactly `v`, `op`, `correlation_id`; `service.start`, `service.stop`, `service.restart`: exactly `v`, `op`, `unit`, `correlation_id`. `v` is the JSON literal `1` (not `1.0`, `1e0` or `"1"`), for every operation including `status`. `correlation_id` is required for every operation and is exactly 16 lowercase hexadecimal digits. `unit` is a JSON string; rule 1 of B3 decides on it (`unit_invalid`), not the decoder. Unknown members, a member in another letter case, repeated members, `null`, a wrong type, data after the object or after the newline, a missing newline and a longer line are `bad_request`, and nothing runs.
+- **Answer.** One JSON line: `{"v":1,"code":"…"}`, with `"state":"…"` (a word of the closed set of `ActiveState`: `active`, `reloading`, `inactive`, `failed`, `activating`, `deactivating`, `maintenance`, `refreshing`) on `success` of a service operation and on `job_failed`, `timeout` and `state_unexpected` when the state could be read, and `"retry_after_s":n` (whole seconds, at least 1) on `rate_limited`. `status` answers `{"v":1,"code":"success","protocol_min":1,"protocol_max":1,"build_id":"broker-1","power_requested":…,"busy":…}`. No answer carries the request, a path, an operating-system error text or any `systemctl` output.
+- **Codes.** The closed set of B2 (as amended by A3) except the service's own `unavailable`, `wrong_password` and the password `rate_limited`, plus `success` and `accepted`: 22 codes (`allCodes`). `TestCodesMatchTheADR` compares them with the table of B2; `TestEveryCodeIsReached` reaches each.
+- **Journal.** One line per answered request: `op=<op> unit=<name|-> cid=<id> result=<code>`. The unit is printed only when it passes rule 1 (otherwise `-`); `op` and `cid` are `-` when the request was not decoded. A refused peer gets no line (as the helper). Without the user `oarfish` the broker writes one line at start: `oarfish-broker: the user oarfish does not exist; every connection is refused`.
+
+### A4.4 Choices the code made where this ADR did not fix one
+
+1. **Rule 1 and rule 2.** The pattern of rule 1 requires a non-empty instance, while rule 2 answers `unit_template` for `name@.service`. The code's pattern lets the instance be empty, so that rule 2 can answer; every other part of rule 1 is as written (ASCII, 1 to 255 bytes, no `..`, a backslash only as `\x` and two lowercase hexadecimal digits).
+2. **Order of rule 4 and rule 10 for aliases.** A request by an alias name is `unit_not_canonical` (rule 4 comes first), also when the alias or its unit is on the deny list. A request by the canonical name whose `Names` holds a denied name is `unit_denied`. Both refuse; BF6 is tested for both forms.
+3. **Where `already_in_state` is decided.** It is the state precondition of B2 after rules 1 to 11: start of an `active` unit, stop of an `inactive` unit. Rule 5 refuses with `unit_template` only start of an instance that is neither `active` nor `failed`, and restart of an `inactive` instance. So D-C89 item 4 holds (an active instance is never `unit_template` for start), and a denied active instance (for example `getty@tty1.service`) is `unit_denied`, not `already_in_state`.
+4. **Rule 3 before the values.** The output of `show` is first checked for its shape (13 keys, each exactly once, printable ASCII, no other line; else `internal`), then `LoadState` decides rule 3 (anything other than `loaded` or `masked` is `unit_unknown`), then the other values are checked, each fail-closed (`internal`): `Id` and every entry of `Names` pass rule 1, at most 64 names, single spaces; `ActiveState` and `Type` (`simple`, `exec`, `forking`, `oneshot`, `dbus`, `notify`, `notify-reload`, `idle`) from closed sets; `Transient`, `RefuseManualStart`, `RefuseManualStop` are `yes` or `no`; `ExecMainStartTimestampMonotonic` and `MainPID` plain decimals (64 and 32 bits); `SubState`, `Result`, `UnitFileState` match `[a-z0-9-]{0,64}`.
+5. **`show` failures.** A non-zero exit, a timeout, output over 256 KiB or a wrong shape of the check read is `internal`. The `show` call has a deadline of 5 s (the bound B2 names for the read shapes).
+6. **Reads after the call.** After a non-zero exit or the deadline, the state is read once; if that read fails, the answer is `job_failed` or `timeout` without a state word. If the verification read after exit 0 fails, the answer is `internal`. The read after `stop` is made at once (A3.3: stop unchanged); the read after `start` and `restart` waits `verifyDelay` (1 s).
+7. **Power operations.** The deadline of 100 s applies to `reboot` and `poweroff` as well. A non-zero exit is `job_failed` and the deadline `timeout`, both without a state word; neither sets the power flag. Only `accepted` sets it. The order is B2's: policy, busy, update check, once per lifetime; so with the flag set and an update running the answer is `update_running`.
+8. **Update check (B6).** The directory is opened with `O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC`; only its absence (`ENOENT`) means "no helper installed". Any other error, a held `LOCK_EX` and any other lock error are `update_running`. `state.json` is opened without following a link and must be a regular file of at most 64 KiB; a missing `state.json` in an existing directory is `update_running` (fail closed). The schema check: `schema_version` is the literal `1`, `transaction` an object and `phase` a string, each present exactly once and in its exact letter case; unknown members are ignored at both levels (the helper adds members additively, ADR 0010 U15 rule 6). The finished phases are `idle`, `staged`, `committed`, `rolled_back` and `rollback_failed`. **No component phase counts as ended:** `c_switching`, `c_switched`, `c_verified`, `c_committed` and `c_rolling_back` are each a phase inside a transaction (ADR 0010 A16.2), so all five are `update_running`, as are `staging`, `switching`, `verifying`, `rolling_back` and every unknown value. The shared lock is released when `systemctl` has returned, also after a failure.
+9. **Policy refusal.** `corePolicy` refuses every caller other than the core uid with `internal`, because the closed set has no capability code yet. In G7 no such caller passes the peer check, so the refusal is not reachable through the socket (tested directly). G8 names the code.
+10. **Status.** Answered while an operation runs; uses no rate slot and no policy decision (B2: peer only). `power_requested` reports the flag of item 6, which lives as long as the process.
+11. **Connections and time limits.** At most 4 connections are served at once (others wait in the backlog of 8); 5 s to send the request, 5 s to write the answer, then a drain of at most 250 ms and 4 KiB of unread client input.
+12. **Idle exit.** The broker exits when 30 s have passed since the last connection ended, no connection is open, no operation runs, the rate window is empty and no power operation was accepted. When the window empties later than 30 s after the last connection, the broker exits when it empties.
+13. **`systemctl` environment.** Exactly `PATH=/usr/sbin:/usr/bin:/sbin:/bin` and `LC_ALL=C`; standard input `/dev/null`, standard error discarded, working directory `/`. At the deadline the child is killed (`SIGKILL`); the broker waits at most 2 s more for its output.
+14. **Rule 11 in the broker.** The broker enforces only the restart-only part (the "No" rows). The warnings of the other rows are for the page (G7.4) and change nothing at the socket.
+15. **Termination.** `SIGTERM` (shutdown, `RuntimeMaxSec=`) ends the process with Go's default behaviour; there is nothing to save. `LISTEN_FDNAMES` is unset and not used.
+
+### A4.5 Test seams and the release binary
+
+There is no build tag and no fault hook. Every seam (the path of `systemctl`, the runner, the update directory, the user lookup, the peer check, the clock, the policy, the time limits) is a field of `options`, which only tests construct; `main` always runs `productionOptions`. The production binary reads only `LISTEN_PID` and `LISTEN_FDS` from its environment and takes exactly the argument `serve`. Tests pin this: `TestProductionOptions` (the constants of this ADR, no runner, the constant policy), `TestNoEnvironmentSeams` (no `flag` package, no other environment read), `TestOnlySystemctlExecutes` (only `systemctl.go` imports `os/exec`, one `exec.CommandContext`, no shell named; no call that creates, writes, renames or removes a file anywhere in the broker) and `TestImports` (standard library only, for linux/arm64, linux/amd64 and the host). The re-executed child of the process tests uses variables named in `main_test.go` only, which is not compiled into the binary. Because no tag exists, `make check-broker` has no hook check; such a check is needed only where a build tag compiles a seam in.
+
+### A4.6 Class C tests per row of the failure matrix
+
+Expected results as amended by A3.7 and A4.1. All in `backend/cmd/oarfish-broker`.
+
+| Row | Tests |
+|---|---|
+| BF1 | `TestWrongPeer` (root, another uid, an unreadable uid), `TestRefuseAll`, `TestServeProcess` (the real `SO_PEERCRED` path on Linux) |
+| BF2 | `TestDecodeRejects`, `TestReadRequest`, `TestMalformedOverSocket`, `FuzzDecodeRequest` |
+| BF3 | `TestRule1InvalidNames`, `FuzzUnitName` |
+| BF4 | `TestRule5Templates` |
+| BF5 | `TestRule3Unknown` |
+| BF6 | `TestRule10Denied` |
+| BF7 | `TestRule4Alias` |
+| BF8 | `TestRule6Masked` |
+| BF9 | `TestRule7Transient` |
+| BF10 | `TestRule8Oneshot` |
+| BF11 | `TestRule9Refusal` |
+| BF12 | `TestRule11RestartOnly` |
+| BF13 | `TestJobFailed` |
+| BF14 | `TestTimeout`, `TestRunProgramDeadline`, `TestServiceThroughProcessFake` |
+| BF15 | `TestStateUnexpected`, `TestVerificationDelay` |
+| BF16 (class C part) | `TestServiceSuccess` |
+| BF17 | `TestBusy`, `TestConcurrentConnections` |
+| BF18 | `TestRateLimit`, `TestWindowKeepsBroker` |
+| BF20 | `TestCrashDuringOperation` (the broker process is killed while the fake `systemctl` runs; no answer; the next start serves) |
+| BF21 (broker side) | `TestHostileShowOutput`, `TestRunProgramBound`, `TestParseShow`, `TestShowValueSets`, `FuzzParseShow`; the `list-units` and `list-unit-files` cases of A3.7 belong to the service's read path (G7.4) |
+| BF24 (class C part) | `TestUpdateLockHeld`, `TestUpdateLockHeldDuringCall` |
+| BF25 | `TestUpdatePhases`, `TestUpdateStateFailsClosed`, `TestUpdateLinks`, `FuzzHelperPhase` |
+| BF28 | `TestPowerOnce`, `TestPowerKeepsBroker`, `TestPowerOrder` |
+| BF29 | `TestCompromisedServiceBounded`, `TestEveryCodeIsReached` |
+| BF30 (class C part) | `scripts/verify-units.sh` (boot transaction of `multi-user.target` with the broker socket's wants link) and `scripts/verify-units.sh --cycle-self-test` |
+| BF32 (class C part) | `scripts/verify-units.sh` prints `systemd-analyze security --offline` of `oarfish-broker.service` (CI job `helper-units`; see A4.7) |
+
+The fake `systemctl` exists twice: a Go stand-in for the runner (`fakeSys`, used for most rule tests) and a small test program (`newFakeSystemctl`, a shell script in a temporary directory) that records its arguments and environment, prints fixture output, exits with a chosen status or hangs; it runs through the production `runProgram`. The fixtures use the shapes observed in A2 (S7: systemd's own property order, `not-found` with exit code 0) and throwaway names only. The third column of `list-unit-files` (S7) is not read by the broker; it belongs to the service's read path (G7.4).
+
+### A4.7 What is not verified
+
+- Everything on a device: the production broker under the sandbox of B8, `systemctl` behind the shapes, the real `SO_PEERCRED` of the service user, the update check against a real helper, a real reboot and shutdown, the cold-boot order, memory (BF31). Class D and T rows stay open for G7.6.
+- `systemd-analyze security --offline` is printed by CI in the job `helper-units` for information; it is a property of the unit text, not of a running process. G7.1 observed 0.9 SAFE on the device for the same text (A2.3).
+- `RefuseManualStart=yes` (assumption of A3.4 rule 9, tested only against the fake).
+- Ubuntu Server (G12).
+
+### A4.8 What stays open
+
+- G7.3 (packaging: bundle, component set, helper change, installer, budget value 80,000) has not started and is not prepared by G7.2.
+- The service side (read path R1, routes, audit entries, the Activity page) is G7.4; reboot and shutdown in the UI are G7.5.
