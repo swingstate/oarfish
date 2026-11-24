@@ -19,9 +19,9 @@
 # A release can carry the update helper (ADR 0010, "components" bundle shape): the
 # installer then also installs it below /opt/oarfish/components, links it into /usr
 # and /etc/systemd/system and locks /var/lib/oarfish-update (waits at most 30 s). The
-# set also holds the privilege broker's three files, which are only stored (G7.3a). A
-# release without the helper ("legacy") is installed as before, and refused where the
-# helper layout exists.
+# set also holds the privilege broker (ADR 0011): it is linked the same way and its
+# socket is started; the broker itself starts on demand (G7.3b). A release without the
+# helper ("legacy") is installed as before, and refused where the helper layout exists.
 #
 # Nothing is downloaded from anywhere but GitHub Releases over HTTPS, no token is
 # used, nothing is sent anywhere. Re-running is safe. Failed downloads or
@@ -81,6 +81,9 @@ UNIT_PATH=$UNIT_DIR/oarfish.service
 SOCKET_UNIT=$UNIT_DIR/oarfish-update-helper.socket
 HELPER_UNIT=$UNIT_DIR/oarfish-update-helper.service
 RECOVER_UNIT=$UNIT_DIR/oarfish-update-recover.service
+BROKER_LINK=$LIBEXEC_DIR/oarfish-broker
+BROKER_SOCKET_UNIT=$UNIT_DIR/oarfish-broker.socket
+BROKER_UNIT=$UNIT_DIR/oarfish-broker.service
 MULTI_WANTS=$UNIT_DIR/multi-user.target.wants
 SOCKETS_WANTS=$UNIT_DIR/sockets.target.wants
 # Link targets are written as on the real system, without the test root.
@@ -567,8 +570,12 @@ check_unit_link() { # check_unit_link PATH TARGET: absent, or a link to TARGET
   fi
 }
 
-check_wants_link() { # a wants link may be absent or any symbolic link, never a file or directory
+check_wants_link() { # check_wants_link PATH [UNIT]: absent or a symbolic link (to a file named UNIT if given), never a file or directory
   if [ -e "$1" ] && [ ! -L "$1" ]; then die "$1 exists and is not a symbolic link. Nothing was changed."; fi
+  if [ -n "${2:-}" ] && [ -L "$1" ]; then
+    t=$(readlink "$1")
+    [ "${t##*/}" = "$2" ] || die "$1 is a link to '$t', not to $2. Nothing was changed."
+  fi
 }
 
 comp_same() { # comp_same DIR SRC: the seven component files in DIR are regular files equal to those in SRC
@@ -595,9 +602,13 @@ preflight_components() {
   check_unit_link "$SOCKET_UNIT" "$REAL_OPT/components/active/oarfish-update-helper.socket"
   check_unit_link "$HELPER_UNIT" "$REAL_OPT/components/active/oarfish-update-helper.service"
   check_unit_link "$RECOVER_UNIT" "$REAL_OPT/components/known-good/oarfish-update-recover.service"
+  check_unit_link "$BROKER_LINK" "$REAL_OPT/components/active/oarfish-broker"
+  check_unit_link "$BROKER_SOCKET_UNIT" "$REAL_OPT/components/active/oarfish-broker.socket"
+  check_unit_link "$BROKER_UNIT" "$REAL_OPT/components/active/oarfish-broker.service"
   check_wants_link "$MULTI_WANTS/oarfish.service"
   check_wants_link "$SOCKETS_WANTS/oarfish-update-helper.socket"
   check_wants_link "$MULTI_WANTS/oarfish-update-recover.service"
+  check_wants_link "$SOCKETS_WANTS/oarfish-broker.socket" oarfish-broker.socket
   if [ -e "$UPDATE_STATE_DIR" ] || [ -L "$UPDATE_STATE_DIR" ]; then check_state_dir; fi
 
   if [ -L "$COMP_DIR" ] || { [ -e "$COMP_DIR" ] && [ ! -d "$COMP_DIR" ]; }; then
@@ -641,6 +652,17 @@ preflight_components() {
       HELPER_CHANGED=0
     fi
   fi
+  # The broker socket (ADR 0011 B8): new when the active set has none (a set of before A20),
+  # changed when its text differs; a running socket keeps its old text until restarted (A20.5).
+  BROKER_NEW=0
+  BROKER_SOCKET_CHANGED=0
+  if [ "$COMP_ACTIVE_MOVES" = 1 ] && [ -n "$ACTIVE_ID" ]; then
+    if [ ! -f "$COMP_DIR/active/oarfish-broker.socket" ]; then
+      BROKER_NEW=1
+    elif [ "$(file_sha "$COMP_DIR/active/oarfish-broker.socket")" != "$(file_sha "$src/oarfish-broker.socket")" ]; then
+      BROKER_SOCKET_CHANGED=1
+    fi
+  fi
 }
 
 ensure_comp_dirs() {
@@ -652,8 +674,7 @@ ensure_comp_dirs() {
 }
 
 # The seven component files below components/<id>, through a staging directory and one
-# rename, only when these bytes are new. G7.3a stores the broker's files there and links
-# nothing for them; G7.3b adds the links.
+# rename, only when these bytes are new.
 install_components() {
   src=$WORK/extract/$BUNDLE_ROOT
   if [ "$COMP_ACTIVE_MOVES" = 0 ] || [ "$COMP_DIR_EXISTS" = 1 ]; then
@@ -712,16 +733,22 @@ install_layout() {
   link_step "$REAL_OPT/components/active/oarfish-update-helper.socket" "$SOCKET_UNIT"
   link_step "$REAL_OPT/components/active/oarfish-update-helper.service" "$HELPER_UNIT"
   link_step "$REAL_OPT/components/known-good/oarfish-update-recover.service" "$RECOVER_UNIT"
+  # The broker follows active like the helper; it has no recover unit (ADR 0011 B1).
+  link_step "$REAL_OPT/components/active/oarfish-broker" "$BROKER_LINK"
+  link_step "$REAL_OPT/components/active/oarfish-broker.socket" "$BROKER_SOCKET_UNIT"
+  link_step "$REAL_OPT/components/active/oarfish-broker.service" "$BROKER_UNIT"
   # Relative wants links; systemctl enable would link the resolved release path (A5).
+  # The broker service has no [Install] section and no wants link: only its socket is enabled.
   link_step ../oarfish.service "$MULTI_WANTS/oarfish.service"
   link_step ../oarfish-update-helper.socket "$SOCKETS_WANTS/oarfish-update-helper.socket"
   link_step ../oarfish-update-recover.service "$MULTI_WANTS/oarfish-update-recover.service"
+  link_step ../oarfish-broker.socket "$SOCKETS_WANTS/oarfish-broker.socket"
 }
 
 # A socket cannot be (re)started while its service is active (ADR 0010, A9): stop that first.
-restart_helper_socket() {
-  systemctl_cmd stop oarfish-update-helper.service || return 1
-  systemctl_cmd restart oarfish-update-helper.socket || return 1
+restart_socket() { # restart_socket NAME: stop NAME.service, then restart NAME.socket
+  systemctl_cmd stop "$1.service" || return 1
+  systemctl_cmd restart "$1.socket" || return 1
 }
 
 # known-good moves only once the new release and helper have proven healthy.
@@ -747,8 +774,11 @@ health_check() {
       case $body in
         *'"status":"ok"'*)
           if systemctl_cmd is-active --quiet oarfish.service; then
-            # socket activated and idle-exiting: the socket must be active, not the service
-            if [ "$BUNDLE_SHAPE" != components ] || systemctl_cmd is-active --quiet oarfish-update-helper.socket; then return 0; fi
+            [ "$BUNDLE_SHAPE" = components ] || return 0
+            # socket activated and idle-exiting: the sockets must be active, not the services;
+            # the broker's only where the active set carries it (a rollback may restore an older set)
+            if systemctl_cmd is-active --quiet oarfish-update-helper.socket \
+              && { [ ! -f "$COMP_DIR/active/oarfish-broker.socket" ] || systemctl_cmd is-active --quiet oarfish-broker.socket; }; then return 0; fi
           fi ;;
       esac
     fi
@@ -768,7 +798,16 @@ roll_back() {
     switch_current "$PREV"
     if [ -n "$ACTIVE_MOVED_FROM" ]; then replace_link "$ACTIVE_MOVED_FROM" "$COMP_DIR/active"; fi
     systemctl_cmd daemon-reload
-    if [ -n "$ACTIVE_MOVED_FROM" ]; then restart_helper_socket || warn "could not restart oarfish-update-helper.socket"; fi
+    if [ -n "$ACTIVE_MOVED_FROM" ]; then
+      restart_socket oarfish-update-helper || warn "could not restart oarfish-update-helper.socket"
+      # The broker socket goes back with active: stopped when the restored set has no broker, restarted when its text changed.
+      if [ "$BROKER_NEW" = 1 ]; then
+        systemctl_cmd stop oarfish-broker.socket || warn "could not stop oarfish-broker.socket"
+        systemctl_cmd stop oarfish-broker.service || warn "could not stop oarfish-broker.service"
+      elif [ "$BROKER_SOCKET_CHANGED" = 1 ]; then
+        restart_socket oarfish-broker || warn "could not restart oarfish-broker.socket"
+      fi
+    fi
   else
     if [ -f "$RELEASES_DIR/$PREV/oarfish.service" ]; then install_unit "$RELEASES_DIR/$PREV/oarfish.service"; fi
     switch_current "$PREV"
@@ -836,8 +875,13 @@ do_install() {
   if [ "$BUNDLE_SHAPE" = components ]; then
     if [ "$LAYOUT_CHANGED" = 1 ] || [ "$UNIT_TEXT_CHANGED" = 1 ]; then systemctl_cmd daemon-reload; fi
     if [ "$HELPER_CHANGED" = 1 ] || ! systemctl_cmd is-active --quiet oarfish-update-helper.socket; then
-      restart_helper_socket || die "could not (re)start oarfish-update-helper.socket. See: systemctl status oarfish-update-helper.socket and journalctl -u oarfish-update-helper"
+      restart_socket oarfish-update-helper || die "could not (re)start oarfish-update-helper.socket. See: systemctl status oarfish-update-helper.socket and journalctl -u oarfish-update-helper"
       say "    update helper socket (re)started"
+    fi
+    # The same rule for the broker socket; the broker service is started only by its socket.
+    if [ "$BROKER_SOCKET_CHANGED" = 1 ] || ! systemctl_cmd is-active --quiet oarfish-broker.socket; then
+      restart_socket oarfish-broker || die "could not (re)start oarfish-broker.socket. See: systemctl status oarfish-broker.socket oarfish-broker.service and journalctl -u oarfish-broker.socket"
+      say "    broker socket (re)started"
     fi
     if [ "$SWITCHED" = 1 ] || [ "$UNIT_TEXT_CHANGED" = 1 ]; then
       UNIT_CHANGED=1
@@ -870,12 +914,14 @@ do_install() {
         systemctl_cmd disable --now oarfish-update-helper.socket || warn "could not disable oarfish-update-helper.socket"
         systemctl_cmd stop oarfish-update-helper.service || warn "could not stop oarfish-update-helper.service"
         systemctl_cmd disable oarfish-update-recover.service || warn "could not disable oarfish-update-recover.service"
-        die "Oarfish $VERSION is installed but its service did not become healthy (or the helper socket is not active), so oarfish.service, the helper socket and the recover unit were stopped and disabled. The files and links are kept in $OPT_DIR. See: journalctl -u oarfish and systemctl status oarfish oarfish-update-helper.socket. Run this installer again to start everything."
+        systemctl_cmd disable --now oarfish-broker.socket || warn "could not disable oarfish-broker.socket"
+        systemctl_cmd stop oarfish-broker.service || warn "could not stop oarfish-broker.service"
+        die "Oarfish $VERSION is installed but its service did not become healthy (or the helper or broker socket is not active), so oarfish.service, the helper socket, the recover unit and the broker socket were stopped and disabled. The files and links are kept in $OPT_DIR. See: journalctl -u oarfish and systemctl status oarfish oarfish-update-helper.socket oarfish-broker.socket. Run this installer again to start everything."
       fi
       die "Oarfish $VERSION is installed but its service did not become healthy, so it was stopped and disabled. The files are kept in $OPT_DIR. See: journalctl -u oarfish and systemctl status oarfish. Start it again with: systemctl enable --now oarfish"
     fi
     if [ "$BUNDLE_SHAPE" = components ]; then
-      die "the service did not become healthy, or the update helper socket is not active. See: systemctl status oarfish oarfish-update-helper.socket and journalctl -u oarfish"
+      die "the service did not become healthy, or the update helper socket or the broker socket is not active. See: systemctl status oarfish oarfish-update-helper.socket oarfish-broker.socket and journalctl -u oarfish"
     fi
     die "the service did not become healthy. See: systemctl status oarfish and journalctl -u oarfish"
   fi
@@ -893,6 +939,7 @@ do_install() {
   fi
   if [ "$BUNDLE_SHAPE" = components ]; then
     say "  Update helper: components $COMP_NEW_ID, socket oarfish-update-helper.socket is active"
+    say "  Privilege broker: socket oarfish-broker.socket is active (the broker starts on demand)"
   fi
   say "  Release key checked: $OARFISH_KEY_ID"
 }
@@ -931,7 +978,7 @@ do_uninstall() {
     systemctl_cmd stop oarfish.service 2>/dev/null || warn "could not stop oarfish.service (not running?)"
     systemctl_cmd disable oarfish.service 2>/dev/null || warn "could not disable oarfish.service (not enabled?)"
   fi
-  for u in oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service; do
+  for u in oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service oarfish-broker.socket oarfish-broker.service; do
     if [ -e "$UNIT_DIR/$u" ] || [ -L "$UNIT_DIR/$u" ]; then
       systemctl_cmd stop "$u" 2>/dev/null || warn "could not stop $u (not running?)"
       systemctl_cmd disable "$u" 2>/dev/null || warn "could not disable $u (not enabled?)"
@@ -940,10 +987,12 @@ do_uninstall() {
   remove_wants_link "$MULTI_WANTS/oarfish.service" oarfish.service
   remove_wants_link "$SOCKETS_WANTS/oarfish-update-helper.socket" oarfish-update-helper.socket
   remove_wants_link "$MULTI_WANTS/oarfish-update-recover.service" oarfish-update-recover.service
-  for u in "$SOCKET_UNIT" "$HELPER_UNIT" "$RECOVER_UNIT"; do
+  remove_wants_link "$SOCKETS_WANTS/oarfish-broker.socket" oarfish-broker.socket
+  for u in "$SOCKET_UNIT" "$HELPER_UNIT" "$RECOVER_UNIT" "$BROKER_SOCKET_UNIT" "$BROKER_UNIT"; do
     if [ -e "$u" ] || [ -L "$u" ]; then remove_link_into_opt "$u"; RELOAD=1; fi
   done
   remove_link_into_opt "$HELPER_LINK"
+  remove_link_into_opt "$BROKER_LINK"
   if [ -L "$UNIT_PATH" ]; then
     remove_link_into_opt "$UNIT_PATH"
     RELOAD=1
@@ -994,13 +1043,16 @@ print_plan_install() {
   say ""
   say "The bundle shape is only known after the download. For the components shape (with the update helper):"
   say "  3. create $UPDATE_STATE_DIR (root:root, 0700) and take an exclusive lock on it (at most 30 s wait)"
-  say "  5. install the release and the component set (the helper and its units, the broker and its units) below $COMP_DIR/<id>; the broker is stored only, not linked or started"
-  say "  6. replace atomically: $CURRENT_LINK, $COMP_DIR/active and known-good, $HELPER_LINK, $UNIT_PATH"
-  say "     (a regular file there is replaced; oarfish.service.d is kept), the helper units, and the relative"
-  say "     wants links of the three units (systemctl enable is not used)"
-  say "  7. one daemon-reload; if the helper or its socket changed: stop the helper service, restart its socket;"
-  say "     restart oarfish.service when something changed; the recover unit is enabled, not started"
-  say "  8. check $HEALTH_URL and the helper socket; only then move components/known-good"
+  say "  5. install the release and the component set (the helper and its units, the broker and its units) below $COMP_DIR/<id>"
+  say "  6. replace atomically: $CURRENT_LINK, $COMP_DIR/active and known-good, $HELPER_LINK, $BROKER_LINK,"
+  say "     $UNIT_PATH (a regular file there is replaced; oarfish.service.d is kept), the helper and broker units,"
+  say "     and the relative wants links of oarfish.service, the helper socket, the recover unit and the broker socket"
+  say "     (systemctl enable is not used)"
+  say "  7. one daemon-reload; if the helper or its socket changed: stop the helper service, restart its socket; if the"
+  say "     broker socket's text changed or it is not active: stop the broker service, restart the broker socket;"
+  say "     restart oarfish.service when something changed; the recover unit is enabled, not started; the broker"
+  say "     service is neither enabled nor started (its socket starts it on demand)"
+  say "  8. check $HEALTH_URL, the helper socket and the broker socket; only then move components/known-good"
   say "A legacy-shape release is installed as before, and is refused on a device that has the helper layout."
   say ""
 }
@@ -1011,6 +1063,8 @@ print_plan_uninstall() {
   say "  update helper: if present, takes the lock on $UPDATE_STATE_DIR, stops and disables its socket, service and"
   say "                 recover unit, removes their links, the wants links and $HELPER_LINK where they link"
   say "                 into $REAL_OPT (anything else stays and is reported)"
+  say "  broker:        if present, stops and disables its socket and service, removes their links, the wants link of"
+  say "                 the socket and $BROKER_LINK where they link into $REAL_OPT; --purge adds nothing for it"
   if [ "$PURGE" = 1 ]; then
     say "  --purge:     will also remove $ETC_DIR, $STATE_DIR, $UPDATE_STATE_DIR and the user $SERVICE_USER"
   else
