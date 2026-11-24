@@ -96,7 +96,8 @@ type bundleInput struct {
 	Commit  string
 	Epoch   int64
 	// Components is nil for the legacy bundle, the default. When set, the helper
-	// and its three units join the bundle and the manifest gets "components".
+	// and its three units and the broker and its two units join the bundle and
+	// the manifest gets "components".
 	Components *componentsInput
 	// MinInstalledVersion and RequiresHelperProtocol fill the optional
 	// requirements fields of the same names; nil leaves them out.
@@ -114,12 +115,15 @@ func runBundle(args []string) error {
 	commit := fs.String("commit", "", "full 40-character commit hash")
 	epoch := fs.Int64("epoch", -1, "commit timestamp (Unix seconds); used for tar mtimes and build_date")
 	out := fs.String("out", "", "output directory")
-	// The components set is all or nothing: these six flags are given together
+	// The components set is all or nothing: these nine flags are given together
 	// or not at all. Without them the output is the legacy bundle.
 	helper := fs.String("helper", "", "components: path to the linux/arm64 oarfish-update-helper binary")
 	helperService := fs.String("helper-service", "", "components: path to oarfish-update-helper.service")
 	helperSocket := fs.String("helper-socket", "", "components: path to oarfish-update-helper.socket")
 	recoverService := fs.String("recover-service", "", "components: path to oarfish-update-recover.service")
+	broker := fs.String("broker", "", "components: path to the linux/arm64 oarfish-broker binary")
+	brokerService := fs.String("broker-service", "", "components: path to oarfish-broker.service")
+	brokerSocket := fs.String("broker-socket", "", "components: path to oarfish-broker.socket")
 	componentsProtocol := fs.Int("components-protocol", 0, "components: highest protocol the delivered helper implements (at least 1)")
 	componentsKeyID := fs.String("components-key-id", "", "components: 16 lowercase hex digits, the key id embedded in the delivered helper")
 	// Independent of the components set; absent unless given.
@@ -133,7 +137,8 @@ func runBundle(args []string) error {
 	if *binary == "" || *license == "" || *notices == "" || *unit == "" || *out == "" || *epoch < 0 {
 		return errors.New("bundle: -binary, -license, -notices, -unit, -epoch and -out are required")
 	}
-	componentFlags := []string{"helper", "helper-service", "helper-socket", "recover-service", "components-protocol", "components-key-id"}
+	componentFlags := []string{"helper", "helper-service", "helper-socket", "recover-service",
+		"broker", "broker-service", "broker-socket", "components-protocol", "components-key-id"}
 	var missing []string
 	for _, n := range componentFlags {
 		if !given[n] {
@@ -168,6 +173,7 @@ func runBundle(args []string) error {
 		}{
 			{*helper, &c.Helper}, {*helperService, &c.HelperService},
 			{*helperSocket, &c.HelperSocket}, {*recoverService, &c.RecoverService},
+			{*broker, &c.Broker}, {*brokerService, &c.BrokerService}, {*brokerSocket, &c.BrokerSocket},
 		} {
 			if *f.dst, err = os.ReadFile(f.path); err != nil {
 				return err

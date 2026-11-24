@@ -33,6 +33,9 @@ func componentsTestInput() bundleInput {
 		HelperService:  []byte("[Service]\n# helper\n"),
 		HelperSocket:   []byte("[Socket]\n"),
 		RecoverService: []byte("[Service]\n# recover\n"),
+		Broker:         append(armELF(), "broker"...),
+		BrokerService:  []byte("[Service]\n# broker\n"),
+		BrokerSocket:   []byte("[Socket]\n# broker\n"),
 		KeyID:          testKeyID,
 		Protocol:       1,
 	}
@@ -269,8 +272,12 @@ func TestComponentsBundleLayoutAndManifest(t *testing.T) {
 	root := "oarfish_0.1.0-alpha.1_linux_arm64"
 	want := []string{
 		root + "/", root + "/LICENSE", root + "/THIRD_PARTY_NOTICES.txt", root + "/oarfish",
+		root + "/oarfish-broker", root + "/oarfish-broker.service", root + "/oarfish-broker.socket",
 		root + "/oarfish-update-helper", root + "/oarfish-update-helper.service", root + "/oarfish-update-helper.socket",
 		root + "/oarfish-update-recover.service", root + "/oarfish.service",
+	}
+	if len(want) != 12 {
+		t.Fatalf("the components shape has %d entries, want 12 (A20)", len(want))
 	}
 	if got := tarNames(t, tgz); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("entries %v, want %v", got, want)
@@ -291,6 +298,7 @@ func TestComponentsBundleLayoutAndManifest(t *testing.T) {
 	for name, mode := range map[string]string{
 		"oarfish-update-helper": "0755", "oarfish-update-helper.service": "0644",
 		"oarfish-update-helper.socket": "0644", "oarfish-update-recover.service": "0644",
+		"oarfish-broker": "0755", "oarfish-broker.service": "0644", "oarfish-broker.socket": "0644",
 	} {
 		if modes[root+"/"+name] != mode {
 			t.Errorf("%s: mode %q in contents, want %s", name, modes[root+"/"+name], mode)
@@ -404,6 +412,8 @@ func bundleArgs(t *testing.T, out string) []string {
 		"-version", in.Version, "-commit", in.Commit, "-epoch", fmt.Sprint(in.Epoch), "-out", out,
 		"-helper", write("helper", c.Helper), "-helper-service", write("hs", c.HelperService),
 		"-helper-socket", write("hk", c.HelperSocket), "-recover-service", write("rs", c.RecoverService),
+		"-broker", write("broker", c.Broker), "-broker-service", write("bs", c.BrokerService),
+		"-broker-socket", write("bk", c.BrokerSocket),
 		"-components-protocol", "1", "-components-key-id", testKeyID,
 	}
 }
@@ -426,7 +436,8 @@ func TestBundleCommandLineBuildsComponentsBundle(t *testing.T) {
 }
 
 func TestBundleCommandLineRejectsPartialComponents(t *testing.T) {
-	flags := map[string]int{"-helper": 2, "-helper-service": 2, "-helper-socket": 2, "-recover-service": 2, "-components-protocol": 2, "-components-key-id": 2}
+	flags := map[string]int{"-helper": 2, "-helper-service": 2, "-helper-socket": 2, "-recover-service": 2,
+		"-broker": 2, "-broker-service": 2, "-broker-socket": 2, "-components-protocol": 2, "-components-key-id": 2}
 	for flagName := range flags {
 		t.Run("without "+flagName, func(t *testing.T) {
 			out := filepath.Join(t.TempDir(), "out")
@@ -491,10 +502,17 @@ func TestCheckRejectsWrongShape(t *testing.T) {
 		{"components: extra entry", comps, append(filesOf(comps), rawFile{"EXTRA", 0o644, []byte("x")}), nil, "unexpected entry"},
 		{"components: LICENSE missing", comps, withoutFile(filesOf(comps), "LICENSE"), nil, "does not list"},
 		{"components: helper mode 0644", comps, replaceFile(filesOf(comps), helperName, func(f *rawFile) { f.mode = 0o644 }), nil, "has mode 0644, want 0755"},
+		{"components: broker mode 0644", comps, replaceFile(filesOf(comps), brokerName, func(f *rawFile) { f.mode = 0o644 }), nil, "has mode 0644, want 0755"},
+		// The components shape of before A20: the helper files without the broker's.
+		{"components: the nine-entry shape without the broker files", comps,
+			withoutFile(withoutFile(withoutFile(filesOf(comps), brokerName), brokerServiceName), brokerSocketName), nil,
+			"components object is present but contents does not list"},
+		{"legacy: a broker file without the components object", legacy,
+			append(filesOf(legacy), rawFile{brokerSocketName, 0o644, []byte("[Socket]\n")}), nil, "no components object"},
 	}
 	for _, f := range componentLayout {
 		cases = append(cases, tc{"components: " + f.name + " missing", comps, withoutFile(filesOf(comps), f.name), nil, "components object is present but contents does not list"})
-		if f.name != helperName {
+		if f.mode != 0o755 {
 			cases = append(cases, tc{"components: " + f.name + " mode 0755", comps, replaceFile(filesOf(comps), f.name, func(r *rawFile) { r.mode = 0o755 }), nil, "has mode 0755, want 0644"})
 		}
 	}
@@ -516,20 +534,47 @@ func wantRejected(t *testing.T, err error, substr string) {
 }
 
 func TestCheckRejectsHelperThatIsNotArm64ELF(t *testing.T) {
-	mod := func(f func(b []byte) []byte) []rawFile {
-		return replaceFile(filesOf(componentsTestInput()), helperName, func(r *rawFile) { r.data = f(append([]byte(nil), armELF()...)) })
+	for _, prog := range []string{helperName, brokerName} {
+		mod := func(f func(b []byte) []byte) []rawFile {
+			return replaceFile(filesOf(componentsTestInput()), prog, func(r *rawFile) { r.data = f(append([]byte(nil), armELF()...)) })
+		}
+		for name, files := range map[string][]rawFile{
+			"shell script": replaceFile(filesOf(componentsTestInput()), prog, func(r *rawFile) { r.data = []byte("#!/bin/sh\nexit 0\n") }),
+			"32-bit ELF":   mod(func(b []byte) []byte { b[4] = 1; return b }),
+			"big-endian":   mod(func(b []byte) []byte { b[5] = 2; return b }),
+			"x86-64":       mod(func(b []byte) []byte { b[18] = 0x3e; return b }),
+			"machine high": mod(func(b []byte) []byte { b[19] = 1; return b }),
+			"truncated":    mod(func(b []byte) []byte { return b[:12] }),
+		} {
+			t.Run(prog+"/"+name, func(t *testing.T) {
+				wantRejected(t, checkRelease(packRelease(t, componentsTestInput(), files, nil)), prog)
+			})
+		}
 	}
-	for name, files := range map[string][]rawFile{
-		"shell script": replaceFile(filesOf(componentsTestInput()), helperName, func(r *rawFile) { r.data = []byte("#!/bin/sh\nexit 0\n") }),
-		"32-bit ELF":   mod(func(b []byte) []byte { b[4] = 1; return b }),
-		"big-endian":   mod(func(b []byte) []byte { b[5] = 2; return b }),
-		"x86-64":       mod(func(b []byte) []byte { b[18] = 0x3e; return b }),
-		"machine high": mod(func(b []byte) []byte { b[19] = 1; return b }),
-		"truncated":    mod(func(b []byte) []byte { return b[:12] }),
-	} {
+}
+
+// buildBundle refuses a components input whose broker is empty or not an
+// arm64 ELF executable, before it writes anything.
+func TestBuildBundleRejectsBadBroker(t *testing.T) {
+	for name, data := range map[string][]byte{"empty": nil, "shell script": []byte("#!/bin/sh\n"), "x86-64": func() []byte { b := armELF(); b[18] = 0x3e; return b }()} {
 		t.Run(name, func(t *testing.T) {
-			wantRejected(t, checkRelease(packRelease(t, componentsTestInput(), files, nil)), "oarfish-update-helper")
+			in := componentsTestInput()
+			in.Components.Broker = data
+			if _, _, err := buildBundle(in); err == nil || !strings.Contains(err.Error(), brokerName) {
+				t.Fatalf("err = %v, want an error naming %s", err, brokerName)
+			}
 		})
+	}
+	for _, unit := range []string{brokerServiceName, brokerSocketName} {
+		in := componentsTestInput()
+		if unit == brokerServiceName {
+			in.Components.BrokerService = nil
+		} else {
+			in.Components.BrokerSocket = nil
+		}
+		if _, _, err := buildBundle(in); err == nil || !strings.Contains(err.Error(), unit) {
+			t.Fatalf("empty %s: err = %v", unit, err)
+		}
 	}
 }
 

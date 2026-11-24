@@ -127,7 +127,7 @@ check-helper: test-helper build-helper ## Everything CI checks for the update he
 	scripts/check-units.sh
 	scripts/check-units.sh --self-test
 
-build-broker: ## Cross-build the privilege broker, reproducibly, to bin/oarfish-broker-linux-arm64 (not in any release bundle until G7.3)
+build-broker: ## Cross-build the privilege broker, reproducibly, to bin/oarfish-broker-linux-arm64 (part of the default release bundle since G7.3a)
 	scripts/build-broker.sh --twice
 
 test-broker: ## Privilege broker: vet (host, linux/arm64, linux/amd64) and tests with -race

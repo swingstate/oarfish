@@ -7,20 +7,26 @@ import (
 	"strings"
 )
 
-// The bundle has two shapes (ADR 0010, U14 row G6.2):
+// The bundle has two shapes (ADR 0010, U14 row G6.2, A20):
 //
 //	legacy:     the root directory and LICENSE, THIRD_PARTY_NOTICES.txt, oarfish,
 //	            oarfish.service (five entries). The default.
-//	components: the five above plus the update helper and its three unit files
-//	            (nine entries). The manifest then carries the object "components".
+//	components: the five above plus the seven files of the component set: the
+//	            update helper and its three unit files, and the privilege broker
+//	            and its two unit files (twelve entries). The manifest then
+//	            carries the object "components".
 //
-// There is no third shape: a bundle has either all four component files and the
-// "components" object, or none of them.
+// There is no third shape: a bundle has either all seven component files and
+// the "components" object, or none of them. The components shape of before A20
+// (nine entries, without the broker files) is no longer produced or accepted.
 const (
 	helperName         = "oarfish-update-helper"
 	helperServiceName  = "oarfish-update-helper.service"
 	helperSocketName   = "oarfish-update-helper.socket"
 	recoverServiceName = "oarfish-update-recover.service"
+	brokerName         = "oarfish-broker"
+	brokerServiceName  = "oarfish-broker.service"
+	brokerSocketName   = "oarfish-broker.socket"
 )
 
 type layoutFile struct {
@@ -40,6 +46,9 @@ var componentLayout = []layoutFile{
 	{helperServiceName, 0o644},
 	{helperSocketName, 0o644},
 	{recoverServiceName, 0o644},
+	{brokerName, 0o755},
+	{brokerServiceName, 0o644},
+	{brokerSocketName, 0o644},
 }
 
 func isComponentFile(name string) bool {
@@ -64,7 +73,7 @@ func expectedLayout(components bool) []layoutFile {
 var keyIDPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // Components is the manifest object that describes the helper a bundle delivers.
-// It is present if and only if the four component files are in the bundle.
+// It is present if and only if the seven component files are in the bundle.
 type Components struct {
 	// KeyID is the 16-digit id of the key embedded in the delivered helper.
 	KeyID string `json:"key_id"`
@@ -78,6 +87,9 @@ type componentsInput struct {
 	HelperService  []byte
 	HelperSocket   []byte
 	RecoverService []byte
+	Broker         []byte
+	BrokerService  []byte
+	BrokerSocket   []byte
 	KeyID          string
 	Protocol       int
 }
@@ -88,6 +100,9 @@ func (c *componentsInput) files() map[string][]byte {
 		helperServiceName:  c.HelperService,
 		helperSocketName:   c.HelperSocket,
 		recoverServiceName: c.RecoverService,
+		brokerName:         c.Broker,
+		brokerServiceName:  c.BrokerService,
+		brokerSocketName:   c.BrokerSocket,
 	}
 }
 
@@ -97,8 +112,10 @@ func (c *componentsInput) validate() error {
 			return fmt.Errorf("components: %s must not be empty", f.name)
 		}
 	}
-	if err := checkARM64ELF(c.Helper); err != nil {
-		return fmt.Errorf("components: %s: %w", helperName, err)
+	for name, data := range map[string][]byte{helperName: c.Helper, brokerName: c.Broker} {
+		if err := checkARM64ELF(data); err != nil {
+			return fmt.Errorf("components: %s: %w", name, err)
+		}
 	}
 	return nil
 }

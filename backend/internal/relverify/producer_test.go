@@ -60,8 +60,8 @@ func TestProducerCompatibility(t *testing.T) {
 	bundlegen := filepath.Join(tmp, "bundlegen")
 	run(t, filepath.Join(repo, "scripts", "bundlegen"), goBinary(), "build", "-trimpath", "-o", bundlegen, ".")
 
-	// Real ELF headers for the two programs; the bytes after them are text.
-	for _, n := range []string{"oarfish", "helper"} {
+	// Real ELF headers for the three programs; the bytes after them are text.
+	for _, n := range []string{"oarfish", "helper", "broker"} {
 		if err := os.WriteFile(filepath.Join(tmp, n), elfStub(n+" producer test"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -89,6 +89,9 @@ func TestProducerCompatibility(t *testing.T) {
 					"-helper-service", filepath.Join(repo, "install", "oarfish-update-helper.service"),
 					"-helper-socket", filepath.Join(repo, "install", "oarfish-update-helper.socket"),
 					"-recover-service", filepath.Join(repo, "install", "oarfish-update-recover.service"),
+					"-broker", filepath.Join(tmp, "broker"),
+					"-broker-service", filepath.Join(repo, "install", "oarfish-broker.service"),
+					"-broker-socket", filepath.Join(repo, "install", "oarfish-broker.socket"),
 					"-components-protocol", "1", "-components-key-id", "11f1c52777090bfc",
 					"-min-installed-version", "0.1.0-test.0", "-requires-helper-protocol", "1")
 			}
@@ -156,7 +159,7 @@ func TestProducerCompatibility(t *testing.T) {
 			}
 			want := 4
 			if sh.components {
-				want = 8
+				want = 11
 			}
 			if len(sink.finished) != want {
 				t.Fatalf("%d files finished, want %d", len(sink.finished), want)
