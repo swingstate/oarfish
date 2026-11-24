@@ -114,7 +114,6 @@ func TestUpdatePhases(t *testing.T) {
 // Fail closed on every state file that is not one the helper writes.
 func TestUpdateStateFailsClosed(t *testing.T) {
 	cases := map[string]string{
-		"missing file":      "",
 		"empty":             " ",
 		"not json":          "{",
 		"schema 2":          strings.Replace(helperState("idle"), `"schema_version": 1`, `"schema_version": 2`, 1),
@@ -151,6 +150,26 @@ func TestUpdateStateFailsClosed(t *testing.T) {
 	wantCode(t, tb.ask(t, power(opSystemReboot)), codeAccepted, "")
 }
 
+// D-C89 item 8: a missing state.json in an existing directory is no
+// transaction, as the helper treats it. The power operation goes on when the
+// shared lock was obtained; a held LOCK_EX is still update_running.
+func TestUpdateMissingState(t *testing.T) {
+	for _, op := range []string{opSystemReboot, opSystemPoweroff} {
+		tb := newTestBroker(t, &fakeSys{})
+		makeUpdateDir(t, tb.dir, "")
+		wantCode(t, tb.ask(t, power(op)), codeAccepted, "")
+		if len(tb.sys.callList()) != 1 {
+			t.Errorf("%s: systemctl calls %v", op, tb.sys.callList())
+		}
+
+		tb = newTestBroker(t, &fakeSys{})
+		makeUpdateDir(t, tb.dir, "")
+		holdExclusive(t, tb.dir)
+		wantCode(t, tb.ask(t, power(op)), codeUpdateRunning, "")
+		wantCalls(t, tb)
+	}
+}
+
 // The directory and the file are not followed through links, and a file that
 // is not a regular file is refused.
 func TestUpdateLinks(t *testing.T) {
@@ -170,6 +189,15 @@ func TestUpdateLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCode(t, tb.ask(t, power(opSystemReboot)), codeUpdateRunning, "")
+
+	// A dangling link named state.json is not a missing file.
+	tb = newTestBroker(t, &fakeSys{})
+	makeUpdateDir(t, tb.dir, "")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "absent.json"), filepath.Join(tb.dir, "state.json")); err != nil {
+		t.Fatal(err)
+	}
+	wantCode(t, tb.ask(t, power(opSystemReboot)), codeUpdateRunning, "")
+	wantCalls(t, tb)
 
 	tb = newTestBroker(t, &fakeSys{})
 	makeUpdateDir(t, tb.dir, "")

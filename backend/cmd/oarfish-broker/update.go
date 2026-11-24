@@ -54,8 +54,10 @@ func (l *updateLock) release() {
 // and true when a power operation may go on. It returns false (update_running)
 // when the helper holds its lock, when the directory cannot be opened or
 // locked for any reason other than its absence, and when state.json is
-// missing, unreadable, too large, not of schema 1 or names a phase that is
-// not finished. The caller holds the lock until systemctl has returned.
+// unreadable, a link or not a regular file, too large, not of schema 1 or
+// names a phase that is not finished. A missing state.json in the locked
+// directory is no transaction, as the helper treats it (D-C89 item 8). The
+// caller holds the lock until systemctl has returned.
 func checkUpdate(dir string) (*updateLock, bool) {
 	fd, err := openDir(dir)
 	if errors.Is(err, syscall.ENOENT) {
@@ -96,8 +98,16 @@ var errHelperState = errors.New("helper state not readable")
 
 // readHelperPhase reads state.json read-only, without following a link, as a
 // regular file of at most maxHelperState bytes, and returns transaction.phase.
+// A missing file is the phase idle: the helper writes state.json only when a
+// transaction or a recovery first saves its state, and reads a missing file
+// as a fresh idle state (D-C89 item 8). Only ENOENT counts as missing; a link
+// named state.json, dangling or not, fails the open with O_NOFOLLOW and is
+// refused like every other open error.
 func readHelperPhase(dir string) (string, error) {
 	f, err := os.OpenFile(filepath.Join(dir, helperStateFile), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if errors.Is(err, syscall.ENOENT) {
+		return "idle", nil
+	}
 	if err != nil {
 		return "", errHelperState
 	}
