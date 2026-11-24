@@ -2,7 +2,9 @@
 # Enforce and report the size budgets.
 #   ORB-NFR-005: ARM64 release including frontend stays under 35 MB
 #   ORB-NFR-006: compressed initial frontend bundle stays under 750 KB
-#   G3:          install.sh (next to the bundle) stays under 50 KB, so it stays readable
+#   G3:          install.sh (next to the bundle) stays under 80 KB, so it stays readable
+#                (80,000 bytes since D-C89 item 1; it was 50,000; raising it again
+#                needs an owner decision)
 # Sizes use decimal units (1 MB = 1,000,000 bytes), which is the stricter reading.
 # MAX_BUNDLE_BYTES / MAX_FRONTEND_GZIP_BYTES / MAX_INSTALLER_BYTES override the limits (used to test failure).
 #
@@ -15,7 +17,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
 MAX_BUNDLE_BYTES="${MAX_BUNDLE_BYTES:-35000000}"
 MAX_FRONTEND_GZIP_BYTES="${MAX_FRONTEND_GZIP_BYTES:-750000}"
-MAX_INSTALLER_BYTES="${MAX_INSTALLER_BYTES:-50000}"
+MAX_INSTALLER_BYTES="${MAX_INSTALLER_BYTES:-80000}"
 
 BUNDLE="${1:?usage: $0 BUNDLE.tar.gz [HELPER_BINARY]}"
 HELPER="${2:-}"

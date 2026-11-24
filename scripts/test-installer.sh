@@ -572,35 +572,39 @@ pass "no installed file or link remains after purge"
 CKEY="$(sed -n 1p "$ROOT/release/oarfish-release.pub" | sed -n 's/^untrusted comment: minisign public key \([0-9A-F]\{16\}\)$/\1/p' | tr 'A-F' 'a-f')"
 CV1=0.2.0-test.1; CV2=0.2.0-test.2; CV3=0.2.0-test.3
 UNITS3="oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service"
+BUNITS="oarfish-broker.service oarfish-broker.socket"   # the broker's units (ADR 0010 A20)
 
-# make_crelease DIR VERSION [HELPER_TAG] [SOCKET_COMMENT]: signed components release (throwaway key A).
+# make_crelease DIR VERSION [HELPER_TAG] [SOCKET_COMMENT] [BROKER_TAG]: signed components release (throwaway key A).
 make_crelease() {
-  local dir="$1" ver="$2" tag="${3:-a}" sock="${4:-}" ud u
-  ud="$TMP/cunits-$ver-$tag-${sock:-none}"; mkdir -p "$dir" "$ud"
-  fake_elf "$TMP/fake-oarfish" "$ver"; fake_elf "$TMP/fake-helper" "helper $tag"
-  for u in $UNITS3; do cp "$ROOT/install/$u" "$ud/$u"; done
+  local dir="$1" ver="$2" tag="${3:-a}" sock="${4:-}" btag="${5:-a}" ud u
+  ud="$TMP/cunits-$ver-$tag-${sock:-none}-$btag"; mkdir -p "$dir" "$ud"
+  fake_elf "$TMP/fake-oarfish" "$ver"; fake_elf "$TMP/fake-helper" "helper $tag"; fake_elf "$TMP/fake-broker" "broker $btag"
+  for u in $UNITS3 $BUNITS; do cp "$ROOT/install/$u" "$ud/$u"; done
   [ -z "$sock" ] || printf '# %s\n' "$sock" >> "$ud/oarfish-update-helper.socket"
   "$TMP/bundlegen" bundle -binary "$TMP/fake-oarfish" -license "$ROOT/LICENSE" \
     -notices "$ROOT/THIRD_PARTY_NOTICES.txt" -unit "$ROOT/install/oarfish.service" \
     -version "$ver" -commit "$COMMIT" -epoch 1700000000 -out "$dir" \
     -helper "$TMP/fake-helper" -helper-service "$ud/oarfish-update-helper.service" \
     -helper-socket "$ud/oarfish-update-helper.socket" -recover-service "$ud/oarfish-update-recover.service" \
+    -broker "$TMP/fake-broker" -broker-service "$ud/oarfish-broker.service" -broker-socket "$ud/oarfish-broker.socket" \
     -components-protocol 1 -components-key-id "$CKEY" >/dev/null
   "$ROOT/scripts/stamp-installer.sh" "$ver" "$dir/install.sh" >/dev/null
   sign_release_dir "$dir" "oarfish_${ver}_linux_arm64.tar.gz" install.sh manifest.json
 }
 
 echo "== components shape: setup"
-CREL1="$TMP/rel/c1"; CREL2="$TMP/rel/c2"; CREL3="$TMP/rel/c3"; CREL3S="$TMP/rel/c3s"
+CREL1="$TMP/rel/c1"; CREL2="$TMP/rel/c2"; CREL3="$TMP/rel/c3"; CREL3S="$TMP/rel/c3s"; CREL3B="$TMP/rel/c3b"
 make_crelease "$CREL1" "$CV1" a
 make_crelease "$CREL2" "$CV2" a                 # same helper bytes as c1
 make_crelease "$CREL3" "$CV3" b                 # different helper bytes
 make_crelease "$CREL3S" "$CV3" a socket-text-changed   # same helper, different socket text
+make_crelease "$CREL3B" "$CV3" a "" b           # same helper and units, different broker bytes
 make_installer "$CV1" "$TMP/inst-c1.sh"; make_installer "$CV2" "$TMP/inst-c2.sh"; make_installer "$CV3" "$TMP/inst-c3.sh"
 tar -tzf "$CREL1/oarfish_${CV1}_linux_arm64.tar.gz" | sed 's#^[^/]*/##' | grep -v '^$' | LC_ALL=C sort | tr '\n' ' ' > "$TMP/c1-entries"
-[ "$(cat "$TMP/c1-entries")" = "LICENSE THIRD_PARTY_NOTICES.txt oarfish oarfish-update-helper oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service oarfish.service " ] \
+[ "$(cat "$TMP/c1-entries")" = "LICENSE THIRD_PARTY_NOTICES.txt oarfish oarfish-broker oarfish-broker.service oarfish-broker.socket oarfish-update-helper oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service oarfish.service " ] \
   || fail "the components fixture has unexpected entries: $(cat "$TMP/c1-entries")"
-pass "the components fixture holds the nine entries of the contract"
+[ "$(tar -tzf "$CREL1/oarfish_${CV1}_linux_arm64.tar.gz" | wc -l | tr -d ' ')" = 12 ] || fail "the components fixture does not have twelve entries"
+pass "the components fixture holds the twelve entries of the contract (A20: with the broker's three files)"
 
 # resolve ROOT PATH: follow links the way the device would, absolute targets inside ROOT.
 resolve() {
@@ -636,8 +640,9 @@ echo "== bundle shapes: exactly two are accepted, everything else is rejected be
 mkdir -p "$TMP/cbundle-src"
 fake_elf "$TMP/cbundle-src/oarfish" good; chmod 755 "$TMP/cbundle-src/oarfish"
 fake_elf "$TMP/cbundle-src/oarfish-update-helper" helper; chmod 755 "$TMP/cbundle-src/oarfish-update-helper"
+fake_elf "$TMP/cbundle-src/oarfish-broker" broker; chmod 755 "$TMP/cbundle-src/oarfish-broker"
 cp "$ROOT/install/oarfish.service" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.txt" "$TMP/cbundle-src/"
-for u in $UNITS3; do cp "$ROOT/install/$u" "$TMP/cbundle-src/"; done
+for u in $UNITS3 $BUNITS; do cp "$ROOT/install/$u" "$TMP/cbundle-src/"; done
 make_release "$TMP/rel/lcv1" "$CV1"             # a legacy release (and manifest) with the components test version
 custom_bundle() { # custom_bundle NAME VERSION SRCDIR MANIFEST_DIR BUILD-FUNCTION: signed release with a hand-made bundle
   local name="$1" ver="$2" src="$3" mdir="$4" fn="$5" dir work
@@ -659,6 +664,13 @@ c_helper_hardlink() { rm "$1/oarfish-update-helper"; ln "$1/oarfish" "$1/oarfish
 c_helper_text() { echo "not an executable" > "$1/oarfish-update-helper"; }
 c_helper_x86() { fake_elf "$1/oarfish-update-helper" x86 '\076\000'; }
 c_helper_32bit() { printf '\177ELF\001\001\001\000\000\000\000\000\000\000\000\000\002\000\267\000' > "$1/oarfish-update-helper"; }
+c_missing_broker() { rm "$1/oarfish-broker"; }
+c_missing_broker_unit() { rm "$1/oarfish-broker.socket"; }
+c_old_shape() { rm "$1/oarfish-broker" "$1/oarfish-broker.socket" "$1/oarfish-broker.service"; }  # the nine entries of before A20
+c_broker_text() { echo "not an executable" > "$1/oarfish-broker"; }
+c_broker_x86() { fake_elf "$1/oarfish-broker" x86 '\076\000'; }
+c_broker_link() { rm "$1/oarfish-broker"; ln -s /etc/passwd "$1/oarfish-broker"; }
+l_broker_only() { cp "$TMP/cbundle-src/oarfish-broker" "$TMP/cbundle-src/oarfish-broker.socket" "$TMP/cbundle-src/oarfish-broker.service" "$1/"; }
 l_missing() { rm "$1/LICENSE"; }
 l_helper_only() { cp "$TMP/cbundle-src/oarfish-update-helper" "$1/"; }
 
@@ -674,6 +686,13 @@ x="$(custom_bundle c-hard "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_hardlink)"
 x="$(custom_bundle c-text "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_text)";     expect_reject "components bundle with a helper that is not an ELF file" "oarfish-update-helper binary in the bundle is not a 64-bit ARM" "$R" "$TMP/inst-c1.sh" "$x"
 x="$(custom_bundle c-x86 "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_x86)";       expect_reject "components bundle with an x86-64 helper" "oarfish-update-helper binary in the bundle is not a 64-bit ARM" "$R" "$TMP/inst-c1.sh" "$x"
 x="$(custom_bundle c-32 "$CV1" "$TMP/cbundle-src" "$CREL1" c_helper_32bit)";      expect_reject "components bundle with a 32-bit ELF helper" "oarfish-update-helper binary in the bundle is not a 64-bit ARM" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-nobroker "$CV1" "$TMP/cbundle-src" "$CREL1" c_missing_broker)"; expect_reject "components bundle without the broker" "neither the legacy shape" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-nobsock "$CV1" "$TMP/cbundle-src" "$CREL1" c_missing_broker_unit)"; expect_reject "components bundle without the broker socket unit" "neither the legacy shape" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-old "$CV1" "$TMP/cbundle-src" "$CREL1" c_old_shape)";          expect_reject "the components shape of before A20 (nine entries, no broker files)" "neither the legacy shape (five entries) nor the components shape (twelve entries)" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-btext "$CV1" "$TMP/cbundle-src" "$CREL1" c_broker_text)";      expect_reject "components bundle with a broker that is not an ELF file" "oarfish-broker binary in the bundle is not a 64-bit ARM" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-bx86 "$CV1" "$TMP/cbundle-src" "$CREL1" c_broker_x86)";        expect_reject "components bundle with an x86-64 broker" "oarfish-broker binary in the bundle is not a 64-bit ARM" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle c-blink "$CV1" "$TMP/cbundle-src" "$CREL1" c_broker_link)";      expect_reject "components bundle whose broker is a symlink" "regular files" "$R" "$TMP/inst-c1.sh" "$x"
+x="$(custom_bundle l-broker "$CV1" "$TMP/bundle-src" "$TMP/rel/lcv1" l_broker_only)"; expect_reject "legacy bundle plus only the broker files (eight entries)" "neither the legacy shape" "$R" "$TMP/inst-c1.sh" "$x"
 x="$(custom_bundle c-legacy-manifest "$CV1" "$TMP/cbundle-src" "$TMP/rel/lcv1" nothing)"; expect_reject "components bundle with a manifest without a components object" "no components object" "$R" "$TMP/inst-c1.sh" "$x"
 x="$(custom_bundle l-comp-manifest "$CV1" "$TMP/bundle-src" "$CREL1" nothing)";   expect_reject "legacy bundle with a manifest that declares components" "does not carry them" "$R" "$TMP/inst-c1.sh" "$x"
 x="$(custom_bundle l-missing "$CV1" "$TMP/bundle-src" "$TMP/rel/lcv1" l_missing)"; expect_reject "legacy bundle with a missing entry" "neither the legacy shape" "$R" "$TMP/inst-c1.sh" "$x"
@@ -714,10 +733,25 @@ pass "the units reached through the links are the bytes of the bundle"
 mode_is "$R/opt/oarfish/components" rwxr-xr-x && mode_is "$R/opt/oarfish/components/$CV1" rwxr-xr-x || fail "component directory modes"
 mode_is "$R/opt/oarfish/components/$CV1/oarfish-update-helper" rwxr-xr-x || fail "helper mode"
 for u in $UNITS3; do mode_is "$R/opt/oarfish/components/$CV1/$u" rw-r--r-- || fail "$u mode"; done
+mode_is "$R/opt/oarfish/components/$CV1/oarfish-broker" rwxr-xr-x || fail "broker mode"
+for u in $BUNITS; do mode_is "$R/opt/oarfish/components/$CV1/$u" rw-r--r-- || fail "$u mode"; done
 mode_is "$R/usr/libexec" rwxr-xr-x || fail "/usr/libexec mode"
 mode_is "$R/var/lib/oarfish-update" rwx------ || fail "state directory mode"
-pass "modes: components 0755, helper 0755, units 0644, /usr/libexec 0755, /var/lib/oarfish-update 0700"
+pass "modes: components 0755, helper and broker 0755, the five units 0644, /usr/libexec 0755, /var/lib/oarfish-update 0700"
+[ "$(find "$R/opt/oarfish/components/$CV1" -mindepth 1 | wc -l | tr -d ' ')" = 7 ] || fail "components/$CV1 does not hold exactly seven files"
+pass "the new component set holds exactly the seven files"
 assert "the helper in components/<id> equals the bundle's helper" cmp -s "$R/opt/oarfish/components/$CV1/oarfish-update-helper" "$TMP/fake-helper"
+for u in $BUNITS; do cmp -s "$R/opt/oarfish/components/$CV1/$u" "$ROOT/install/$u" || fail "$u in components/<id> is not the repository's"; done
+pass "the broker units in components/<id> are the bytes of install/"
+# The seam of G7.3a: the broker's files are stored and nothing links, enables or starts them (G7.3b adds the links).
+for l in usr/libexec/oarfish-broker etc/systemd/system/oarfish-broker.socket etc/systemd/system/oarfish-broker.service \
+  etc/systemd/system/sockets.target.wants/oarfish-broker.socket etc/systemd/system/multi-user.target.wants/oarfish-broker.service; do
+  [ ! -e "$R/$l" ] && [ ! -L "$R/$l" ] || fail "G7.3a must not create $l"
+done
+grep -q oarfish-broker "$CALLS" && fail "a systemctl call names the broker: $(calls_of "$R")"
+# (install_release copies the whole bundle tree into releases/<version>, as for the helper files since G6.3b.)
+[ -z "$(find "$R" -name 'oarfish-broker*' ! -path "$R/opt/oarfish/*")" ] || fail "a broker file exists outside /opt/oarfish: $(find "$R" -name 'oarfish-broker*')"
+pass "G7.3a stores the broker files and links nothing; G7.3b adds the links (no link, no wants link, no systemctl call)"
 assert "an extra component directory was not created" test "$(find "$R/opt/oarfish/components" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = 3
 assert "no staging or temp leftovers" no_leftovers "$R"
 [ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;restart oarfish.service;" ] \
@@ -774,6 +808,30 @@ for l in etc/systemd/system/oarfish.service etc/systemd/system/oarfish-update-he
   resolve "$R" "$R/$l" >/dev/null || fail "$l no longer resolves after the old directories were removed"
 done
 pass "wants links and unit links resolve with only the active release and set present (the on-device half is the owner stop)"
+
+echo "== components shape: a release that differs only in a broker file"
+R="$(new_root)"; ST="$(state_of "$R")"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"; : > "$ST/calls.log"
+expect_ok "upgrade to a release whose broker bytes differ" "$R" "$TMP/inst-c3.sh" "$CREL3B"
+link_is "$R/opt/oarfish/components/active" "$CV3" && link_is "$R/opt/oarfish/components/known-good" "$CV3" || fail "a changed broker is a new component set"
+cmp -s "$R/opt/oarfish/components/$CV3/oarfish-update-helper" "$R/opt/oarfish/components/$CV1/oarfish-update-helper" || fail "the helper bytes changed"
+cmp -s "$R/opt/oarfish/components/$CV3/oarfish-broker" "$R/opt/oarfish/components/$CV1/oarfish-broker" && fail "the broker bytes did not change"
+grep -qx "restart oarfish-update-helper.socket" "$ST/calls.log" && fail "the helper socket was restarted: $(calls_of "$R")"
+grep -qx "stop oarfish-update-helper.service" "$ST/calls.log" && fail "the helper service was stopped: $(calls_of "$R")"
+grep -q oarfish-broker "$ST/calls.log" && fail "a systemctl call names the broker: $(calls_of "$R")"
+pass "a broker-only difference: new set $CV3, active and known-good moved, the helper socket not restarted (calls: $(calls_of "$R"))"
+snapshot "$R" > "$TMP/snap-b1"; : > "$ST/calls.log"
+expect_ok "the same broker-only release again" "$R" "$TMP/inst-c3.sh" "$CREL3B"
+cmp -s "$TMP/snap-b1" <(snapshot "$R") || fail "the second run changed the installation"
+grep -qE '^(restart|start|stop|enable|disable|daemon-reload)' "$ST/calls.log" && fail "the second run issued: $(calls_of "$R")"
+pass "a second run with identical bytes changes nothing"
+R="$(new_root)"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"
+snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+x="$(custom_bundle c-old-upgrade "$CV3" "$TMP/cbundle-src" "$CREL3" c_old_shape)"
+expect_reject "an installed device refuses the nine-entry shape of before A20" "components shape (twelve entries)" "$R" "$TMP/inst-c3.sh" "$x"
+untouched "$R"
+pass "the old nine-entry shape is refused on an installed device and nothing changed"
 
 echo "== components shape: upgrade whose health check fails is rolled back, known-good stays"
 R="$(new_root)"; ST="$(state_of "$R")"; CALLS="$ST/calls.log"
@@ -946,7 +1004,8 @@ for pth in "/var/lib/oarfish-update" "/opt/oarfish/components" "/usr/libexec"; d
   grep -q "^root:root $R$pth\$" "$ST/chown.log" || fail "chown root:root was not applied to $pth (chown.log: $(tr '\n' ';' < "$ST/chown.log"))"
 done
 # The component files are owned while they are in the staging directory, before the rename.
-for f in "" /oarfish-update-helper /oarfish-update-helper.socket /oarfish-update-helper.service /oarfish-update-recover.service; do
+for f in "" /oarfish-update-helper /oarfish-update-helper.socket /oarfish-update-helper.service /oarfish-update-recover.service \
+  /oarfish-broker /oarfish-broker.socket /oarfish-broker.service; do
   grep -q "^root:root .*/components/\.stage\.[^/]*/set$f\$" "$ST/chown.log" || fail "chown root:root was not applied to the component set path '...set$f' (chown.log: $(tr '\n' ';' < "$ST/chown.log"))"
 done
 pass "chown root:root was applied to the state directory, /usr/libexec, the component directory and every component file"
@@ -954,7 +1013,7 @@ pass "chown root:root was applied to the state directory, /usr/libexec, the comp
 echo "== components shape: dry run and uninstall"
 R="$(new_root)"
 expect_ok "dry run names the lock, the layout and the shape check" "$R" "$TMP/prod/install.sh" "$TMP/rel/empty" --dry-run
-for sx in "components" "legacy" "$R/var/lib/oarfish-update" "exclusive lock" "wants links" "known-good" "after the download" "Dry run: nothing was downloaded or changed"; do
+for sx in "components" "legacy" "$R/var/lib/oarfish-update" "exclusive lock" "wants links" "known-good" "after the download" "the broker is stored only" "Dry run: nothing was downloaded or changed"; do
   out_has "$sx" || fail "the dry run output lacks '$sx'"
 done
 untouched "$R"; pass "the plan lists the new steps and the dry run changed nothing"
