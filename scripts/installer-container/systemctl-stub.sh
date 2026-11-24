@@ -14,22 +14,22 @@ echo "$*" >> "$S/calls.log"
 # below the test root; the same file is reached through the relative link current.
 UNIT="$FAKE_ROOT/opt/oarfish/current/oarfish.service"
 [ -f "$UNIT" ] || UNIT="$FAKE_ROOT/etc/systemd/system/oarfish.service"
-# The helper units (socket, service, recover unit) only keep an "active" and an
-# "enabled" flag; nothing is started for them. As systemd does (ADR 0010, A9, device
-# observation), a socket is not started or restarted while its service is active.
+# The helper units (socket, service, recover unit) and the broker units only keep an
+# "active" and an "enabled" flag; nothing is started for them. As systemd does (ADR 0010,
+# A9, device observation), a socket is not started or restarted while its service is active.
 cmd="$1"
 shift
 unit=''
 for a in "$@"; do case $a in -*) ;; *) unit=$a ;; esac; done
 case $unit in
-  oarfish-update-*)
+  oarfish-update-*|oarfish-broker.*)
     case "$cmd" in
       is-enabled) [ -f "$S/enabled.$unit" ] ;;
       enable) : > "$S/enabled.$unit" ;;
       disable) rm -f "$S/enabled.$unit" ;;
       is-active) [ -f "$S/active.$unit" ] ;;
       start|restart)
-        if [ "$unit" = oarfish-update-helper.socket ] && [ -f "$S/active.oarfish-update-helper.service" ]; then exit 1; fi
+        case $unit in *.socket) if [ -f "$S/active.${unit%.socket}.service" ]; then exit 1; fi ;; esac
         : > "$S/active.$unit" ;;
       stop) rm -f "$S/active.$unit" ;;
       *) exit 1 ;;
