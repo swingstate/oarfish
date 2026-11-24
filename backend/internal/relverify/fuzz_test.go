@@ -228,6 +228,7 @@ func FuzzInspectTar(f *testing.F) {
 	f.Add(makeTar(append(entsOf(leg), tarEnt{name: leg.root + "/link", typ: 50, link: "/etc/passwd"})), false)
 	f.Add(makeTar(editEnt(entsOf(leg), "oarfish", func(e *tarEnt) { e.name = "/oarfish" })), false)
 	f.Add(makeTar(dropEnt(entsOf(com), "oarfish-update-helper.socket")), true)
+	f.Add(makeTar(dropEnt(dropEnt(dropEnt(entsOf(com), "oarfish-broker"), "oarfish-broker.socket"), "oarfish-broker.service")), true)
 	f.Add(append(makeTar(entsOf(leg)), make([]byte, 4096)...), false)
 	f.Fuzz(func(t *testing.T, data []byte, components bool) {
 		m, r := legM, leg

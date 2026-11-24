@@ -23,6 +23,8 @@
 
 - Amendment A19 (G7.0, written 2026-11-23, `docs/DECISIONS.md` D-C87): a decision of intent for G7.3: the Privilege Broker of [ADR 0011](0011-privilege-broker.md) joins the component set, and the broker is a read-only reader of the helper's lock and of `phase`, listed in "Amendment A19 (G7.0, Privilege Broker)" below. It edits no accepted sentence in place except a pointer after the reason of U15 rule 2; nothing of it is implemented yet; the specification follows in version 0.4.3 (8.6).
 
+- Amendment A20 (G7.3a, written 2026-11-24, implements A19.1 under `docs/DECISIONS.md` D-C87 item 2 and applies D-C89 item 1): the broker's three files in the component set, the helper's lists, the lint forms of the two broker units, the reference hash over seven files, the twelve-entry bundle shape and the installer's store of the broker files, listed in "Amendment A20 (G7.3a)" below. It edits no accepted sentence in place except a pointer below the table of U2 and one at the end of A19.1. Its own choices S1 to S6 are proposals for the owner; no decision entry is written for them.
+
 ## How to read this ADR
 
 Every statement carries one of these labels, so that a reader can tell what is known from what is hoped:
@@ -117,6 +119,7 @@ Alternatives considered:
   | Write targets (and nothing else) | below `/opt/oarfish`: `releases/<version>`, `releases/.stage.<id>`, `releases/.trash.<id>`, `current`, `.current.new.<id>`, `components/<id>`, `components/active`, `components/known-good` and their `.new.<id>` temporaries; `/var/lib/oarfish-update/` (state file, lock, temporaries) |
 
   No argument selects an element of any list except `version`, which selects only the name of a directory below `releases/`.
+  (A20: since G7.3a the rows "Unit names" and "Replaceable component files" are those of [A20.1](#a201-the-closed-lists-of-u2); the other rows are unchanged.)
 - **How this differs from the Privilege Broker (G7).** The broker (spec 8.6, ORB-SEC-002, ORB-SEC-003) is a general mechanism: an allowlist of operations such as `service.restart(unit)`, with arguments that name things on the system, and a capability check per caller (G8). The update helper is not general: it has one subject (Oarfish releases and its own components below `/opt/oarfish`), four units it may name in code, no capability model and no plugin-facing API. **The helper never becomes a broker.** Rules: (1) a new request type, program, argument shape, unit name or write target needs an amendment of this ADR; (2) the test above; (3) the helper has no operation whose argument names a unit, a path, a package or a program; (4) every privileged operation outside Oarfish's own release and component lifecycle goes to the broker, which is a separate process with its own socket, unit and code; (5) the two processes share no request-handling code. A future plugin runtime (G8) must keep plugin processes away from the helper socket (for example `InaccessiblePaths=/run/oarfish-update` and a different uid), because the socket accepts every process of the user `oarfish`.
 - **Consequence for a compromised service:** the helper cannot tell whether the administrator clicked. See U9 and the threat model.
 
@@ -1376,9 +1379,178 @@ The accepted text is not rewritten; U14 got a pointer below its table. For every
 
 **A19 (G7.0, 2026-11-23, `docs/DECISIONS.md` D-C87, items 2 and 10; settles the conflicts K1 and K9 of [ADR 0011](0011-privilege-broker.md#conflicts-and-gaps)).** This is a decision of intent. **No code implements it yet:** the broker's reader of the lock and of `phase` is written in step G7.2 of ADR 0011, and the packaging (bundle shape, component set, helper lists and lint forms, installer) in step G7.3. Until G7.3 is merged, every rule of this ADR applies as written, and the helper's closed lists, its lint and its bundle shapes are unchanged. It edits no accepted sentence in place except a pointer after the reason of U15 rule 2.
 
-**A19.1 The broker's files join the component set (layout L1 of ADR 0011 B1).** The broker's three files, the binary `oarfish-broker` and the units `oarfish-broker.socket` and `oarfish-broker.service`, become part of the helper's component set (`components/<id>/`, `active`, `known-good`) and travel only through the component transaction of U15 and A16: second confirmation, password (D7), lint, kept known-good set, rollback. The compared files of U5 and U15 rule 2 grow from five to eight, and the component set from four files to seven; `oarfish.service` still travels with the release. In G7.3 these change with it, each by a further amendment that states the exact text: the lists of U2 (replaceable component files, unit names, and any write target or argument shape the change needs); the accepted canonical forms of D3 for the two broker units (U15 rule 3, A15.3); the reference hash of E2 over the larger known-good set; the bundle shape of U13 F13 and `relverify.layout`. U15 rule 2 "the only files a release is allowed to change that run with more than the service's privileges" then names eight files. The rule of U2 stays: **the helper never becomes a broker.** The helper replaces the broker's files as part of its own component lifecycle; it does not run a broker operation, does not call the broker and shares no request-handling code with it (U2 rules 4 and 5). The bytes of the broker depend only on its code and the toolchain (D-C80, applied to the broker). The first release that carries the broker needs one installer run on every device (D-C87 item 18; ADR 0011 B1, consequence 1).
+**A19.1 The broker's files join the component set (layout L1 of ADR 0011 B1).** The broker's three files, the binary `oarfish-broker` and the units `oarfish-broker.socket` and `oarfish-broker.service`, become part of the helper's component set (`components/<id>/`, `active`, `known-good`) and travel only through the component transaction of U15 and A16: second confirmation, password (D7), lint, kept known-good set, rollback. The compared files of U5 and U15 rule 2 grow from five to eight, and the component set from four files to seven; `oarfish.service` still travels with the release. In G7.3 these change with it, each by a further amendment that states the exact text: the lists of U2 (replaceable component files, unit names, and any write target or argument shape the change needs); the accepted canonical forms of D3 for the two broker units (U15 rule 3, A15.3); the reference hash of E2 over the larger known-good set; the bundle shape of U13 F13 and `relverify.layout`. U15 rule 2 "the only files a release is allowed to change that run with more than the service's privileges" then names eight files. The rule of U2 stays: **the helper never becomes a broker.** The helper replaces the broker's files as part of its own component lifecycle; it does not run a broker operation, does not call the broker and shares no request-handling code with it (U2 rules 4 and 5). The bytes of the broker depend only on its code and the toolchain (D-C80, applied to the broker). The first release that carries the broker needs one installer run on every device (D-C87 item 18; ADR 0011 B1, consequence 1). (A20: G7.3a states these texts and implements them in the helper, `relverify`, `bundlegen` and the installer's store; see [Amendment A20](#amendment-a20-g73a).)
 
 **A19.2 The broker reads the helper's lock and `phase` (ADR 0011 B6).** U8 says the service reads the helper's state only through `status`; that stays. In addition, the broker (a separate root process) is a **read-only reader** of the helper's state directory: before it asks systemd for a reboot or a power-off, it opens `/var/lib/oarfish-update` read-only and takes `LOCK_SH|LOCK_NB` on it; if the helper holds its exclusive lock, the broker refuses with `update_running`; if not, it reads `phase` from `state.json` (bounded, schema-versioned) and refuses every phase of an unfinished transaction, including `c_switched` in the hand-over gap of A16.2, and holds the shared lock until systemd has queued the job. The helper's next `LOCK_EX|LOCK_NB` then answers `busy`. The broker writes nothing in the directory. From A19 on, the lock on `/var/lib/oarfish-update` and the member `phase` of `state.json` with its closed set of values are an **interface for that reader**: a change of the lock, of the name or meaning of `phase` or of its values is a change of the interface and needs an amendment of this ADR and of ADR 0011 B6, in addition to the additive rule of U8 and U15 rule 6. A missing directory (no helper installed) is not an update. The class C tests of this reader (BF24, BF25) belong to G7.2.
+
+## Amendment A20 (G7.3a)
+
+**A20 (G7.3a, 2026-11-24; implements A19.1, `docs/DECISIONS.md` D-C87 item 2; applies D-C89 item 1).** A19.1 decided that the broker's three files join the component set and asked for an amendment with the exact texts. This is that amendment for step G7.3a of [ADR 0011 B10](0011-privilege-broker.md#b10-delivery-split): the helper, the bundle contract, the producer and the installer's store. The installer's links, the start of the broker socket, the uninstall and the health check of the broker are step G7.3b. A20 edits no accepted sentence in place; it adds a pointer below the table of U2 and one at the end of A19.1. Every rule of this ADR that A20 does not name applies as written.
+
+**Evidence.** Class C only (tests and CI against a fake root and a fake `systemctl`). Nothing in G7.3a touched a device; everything device-related is **not verified on a device**.
+
+**Labels.** "Fact" names the file it comes from. S1 to S6 are the baseline proposals of the gate prompt, implemented as written and listed for the owner in A20.10; they are **proposals** until the owner decides them.
+
+### A20.1 The closed lists of U2
+
+**Fact (`backend/cmd/oarfish-update-helper/compare.go`, `unitrules.go`, `sink.go`).** Two rows of the table of U2 change. The test that compares the code with the ADR reads these two rows (`TestComponentNamesMatchTheADR`, `TestUnitNamesMatchTheADR`).
+
+  | List | Content |
+  |---|---|
+  | Unit names | `oarfish.service`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish-broker.socket`, `oarfish-broker.service` |
+  | Replaceable component files | `oarfish-update-helper`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish-broker`, `oarfish-broker.socket`, `oarfish-broker.service` (the first and the fifth are programs, the others are units); `oarfish.service` travels with the release (U15 rule 2) |
+
+- **The order (S2, proposal).** The list of compared files is `oarfish-update-helper`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish-broker`, `oarfish-broker.socket`, `oarfish-broker.service`, `oarfish.service`. The four names of before keep their relative order, and `oarfish.service` stays last, so a record of differing names (D6, `differs` in `state.json`) written by an older helper decodes unchanged. The order is the order of the reference hash (A20.3).
+- **The table in the code.** `componentSet` lists the seven files with one flag each: a program (compared by its digest only) or a unit text (linted, and hashed from the same bytes). Every place that counted four or five files works from that table: the comparison of stage, `setDigests` and `setDigest`, the second check at `activate`, the staging table, the record of D6, and the self-check and the hand-back (which name the helper binary, not an index). The broker binary is a second program and is never linted as a unit text.
+- **The staging table (`sinkTargets`).** `oarfish-broker`, `oarfish-broker.socket` and `oarfish-broker.service` go to `components/` below `.stage.<id>`, like the helper's four files.
+- **Write targets: unchanged.** The broker's files are written only inside `components/<id>` (and its staging directory), which the row already lists.
+- **Programs and argument shapes: unchanged.** The helper starts, stops, restarts and enables no broker unit and gains no argument shape; the five shapes of the row stay (`TestSystemctlShapesMatchTheADR`). Requests: unchanged.
+- **The helper never becomes a broker.** It imports nothing of `backend/cmd/oarfish-broker` (`TestImports` now names that package as forbidden), shares no request handling with it, does not call it and runs no program but `systemctl` with its five shapes (U2 rules 4 and 5).
+
+### A20.2 The accepted forms of the two broker units (D3)
+
+**Fact (`unitrules.go`, `unitlint.go`).** Each broker unit has exactly one accepted canonical form: the text of `install/` as shipped, normalised exactly like the helper forms (comment lines and blank lines removed, the values of `Description=` and `Documentation=` removed, lines joined by a newline, no newline at the end). The broker units have no `Documentation=` line, so a `Documentation=` line added to either is an added directive and is rejected. `TestInstallUnitsAreTheFirstForms` checks that both units of `install/` normalise to these forms.
+
+The unit kinds: `oarfish-broker.socket` may hold the sections `[Unit]`, `[Socket]` and `[Install]`, and `[Install]` only `WantedBy=sockets.target`. `oarfish-broker.service` may hold `[Unit]` and `[Service]` and **no `[Install]` section at all**: the section header itself is `section` (the helper service allows the header and nothing in it, which is `install_section`). The reasons are those of the closed set of A15.3; none is added.
+
+`oarfish-broker.socket`:
+
+```text
+[Unit]
+Description=
+[Socket]
+ListenStream=/run/oarfish-broker/broker.sock
+SocketUser=root
+SocketGroup=oarfish
+SocketMode=0660
+DirectoryMode=0755
+Accept=no
+Backlog=8
+RemoveOnStop=yes
+[Install]
+WantedBy=sockets.target
+```
+
+`oarfish-broker.service`:
+
+```text
+[Unit]
+Description=
+After=oarfish-update-recover.service
+[Service]
+Type=exec
+ExecStart=/usr/libexec/oarfish-broker serve
+Restart=no
+RuntimeMaxSec=300
+User=root
+Group=root
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+MemoryMax=32M
+TasksMax=16
+```
+
+**Tests (fact).** `TestLintBrokerUnits` rejects, with an existing reason each: another `SocketMode`, `SocketGroup`, path, a TCP listener, `Accept=yes`, an added and a repeated directive, a removed directive, another `WantedBy=`, a second section and a `[Service]` section in the socket; an `[Install]` section, a second `[Service]` and a `[Socket]` section in the service, a capability, an ambient capability, a writable path (`ReadWritePaths=`), `ProtectSystem=full`, `NoNewPrivileges=no`, `PrivateNetwork=no`, another address family, another program, a `+` prefix, `Restart=always`, another user, a larger memory limit, `Environment=`, `ExecStartPre=`, a removed dependency; and a helper unit text under a broker name and the other way round. `TestLintHelperUnits` and `TestLintParsing` run their whole tables (every line removed, changed and swapped, every forbidden construct of U15 rule 3) over the five component units.
+
+### A20.3 The reference hash (E2) over seven files
+
+**Proposal S3, implemented (`components.go`).** The reference hash of E2 and the set hash that `stage` records are the SHA-256 over the **seven** file digests (32 bytes each) of the set, concatenated in the order of A20.1, without `oarfish.service`, as 64 lowercase hexadecimal digits. `setDigest` gives no hash for a list of another length.
+
+**No transaction spans a four-file and a seven-file set.** A device gets its first seven-file set from the installer (G7.3b, G7.6: one installer run per device, A19.1), never from a helper transaction. A helper of A20 therefore never accepts a set of the shape before A20 as a seven-file set: a set without the broker files cannot be read as a set (`components_damaged` when `active` or `known-good` names one; an I/O error at `activate` when a staged set lacks a file), and a reference hash or a staged set hash computed over four digests never equals one over seven (`components_damaged` at `stage`, `checksum_mismatch` at `activate`). `TestFourFileSetIsNotASevenFileSet` covers each case. One consequence (**fact**, `rollbackUnprovenSet`): when `state.json` is unreadable and `known-good` names a four-file set, the rebuild counts that set as damaged and switches nothing (E5). That state arises only inside an interrupted installer run of the transition (G7.3b); it is reported, not handled here.
+
+### A20.4 The bundle shape, the compared files and `relverify.layout`
+
+**Proposal S1, implemented (`backend/internal/relverify/layout.go`, `scripts/bundlegen/components.go`, `install/install.sh`).** Exactly two shapes remain, counted as `check_bundle_entries` counts them (the directory entry included):
+
+| Shape | Entries |
+|---|---|
+| legacy (unchanged) | 5: the directory, `LICENSE`, `THIRD_PARTY_NOTICES.txt`, `oarfish` (0755), `oarfish.service` (0644) |
+| components | 12: the five above, `oarfish-update-helper` (0755), `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service` (0644 each), `oarfish-broker` (0755), `oarfish-broker.socket`, `oarfish-broker.service` (0644 each) |
+
+The three programs must be ELF64 little-endian executables for machine 0xB7 (AArch64). The components shape of before A20 (nine entries) is no longer produced and is refused by `relverify` (`manifest_invalid`), `bundlegen check` and the installer, like a bundle with only some of the seven component files. There is no third shape. The manifest object `components` is unchanged (`key_id`, `protocol`, both of the helper). The row F13 of U13 applies to the new shape as written. The golden files of `relverify/testdata` are of the legacy shape and stay valid.
+
+**The compared files are eight.** A release whose bytes differ in any one of the seven files of the set brings a component set and is applied by the component transaction of U15 and A16, also when only a broker file differs: the old helper hands over to the binary that `active` names, which is the same helper binary then, and that process passes the self-check (D1) and commits. `TestComponentComparison` (each of the eight names alone) and `TestComponentTransactionBrokerOnly` cover it.
+
+### A20.5 What the helper does with the broker's files, and the limit (S4)
+
+**Proposal S4, implemented.** The helper replaces the broker's files on disk with the component set; the links of the broker (G7.3b: `/usr/libexec/oarfish-broker` and the two unit links) are meant to name `components/active`, so they follow the active and known-good links. The helper starts, stops, restarts and enables no broker unit. `socket_restart_pending` (D4) stays a flag of the helper socket only.
+
+**Limit (open point for the owner).** A changed broker binary or a changed text of `oarfish-broker.service` takes effect the next time systemd starts the broker (socket activation after its idle exit, at most `RuntimeMaxSec=300` later for a running broker). A changed text of `oarfish-broker.socket` takes effect only at the next restart of that socket or at boot, after a `daemon-reload` (the helper's own reload at `c_switched` and at the commit loads the unit file; it does not re-create a listening socket). Assumption, from the systemd semantics recalled in A9 and D4; not verified on a device. A20 does not remove this limit with new helper code: that would need a new `systemctl` argument shape (U2 rule 1).
+
+### A20.6 The interface of A19.2 is unchanged
+
+**Fact (`interface_test.go`).** The lock on `/var/lib/oarfish-update` (an exclusive `flock` on the directory, `LOCK_EX|LOCK_NB`) and the member `phase` of `state.json` with its closed set `idle`, `staging`, `staged`, `switching`, `verifying`, `committed`, `rolling_back`, `rolled_back`, `rollback_failed`, `c_switching`, `c_switched`, `c_verified`, `c_committed`, `c_rolling_back` are unchanged by A20. `TestBrokerReaderInterface` pins the path, the file name, the phase set as literals, the place of `phase` in `transaction` beside `schema_version` 1, and that a shared lock of a reader and the helper's exclusive lock exclude each other. The broker pins its side in its own tests (ADR 0011 A4.6, BF24, BF25).
+
+### A20.7 The helper protocol stays 1 (S5)
+
+**Finding (proposal S5 holds).** The wire format does not change incompatibly. The requests and their members are unchanged. The answers of `stage` (`differs`) and `status` (`staged_differs`) may name three more strings of the closed list; U8 and U15 rule 6 make a list of names additive, and the service of every released version filters what it gets through its own closed list (`closedNames`, `backend/internal/updater/helper.go`), so an older service drops the broker names and shows the other names. The manifest object `components` is unchanged. `protocolMin` and `protocolMax` stay 1.
+
+### A20.8 The installer in G7.3a, and its budget
+
+**Fact (`install/install.sh`).** `check_bundle_entries` accepts exactly five or twelve entries (and the manifest's `components` object exactly with twelve) and refuses nine and every other count before anything is changed. `COMP_FILES` holds the seven names; `comp_same` and `install_components` work from it; the broker is checked with `check_binary` like the helper; in the new set the broker is 0755, the two broker units 0644, all root-owned. The plan of `--dry-run` says so in one sentence. **The installer stores the broker's files below `components/<id>` and links nothing:** no link in `/usr/libexec`, no unit link, no wants link, no start, no daemon-reload for the broker, no uninstall step and no health check of it (G7.3b). A release that differs only in a broker file gets a new set id and moves `active` without restarting the helper socket, because the helper and its socket are unchanged. `scripts/test-installer.sh` tests each of these, and the seam ("G7.3a stores the broker files and links nothing; G7.3b adds the links").
+
+**Fact (pre-existing, not changed).** `install_release` copies the whole extracted bundle tree into `releases/<version>`, so that directory also holds copies of the component files (the helper's since G6.3b, now the broker's as well). Nothing links to them and the helper's staging does not do this. Reported to the owner; not changed in G7.3a.
+
+**D-C89 item 1 applied.** The installer budget is 80,000 bytes (`scripts/check-budgets.sh`, `docs/DEVELOPMENT.md`, `docs/RELEASING.md`); raising it again needs an owner decision. G7.3a moves `install.sh` from 49,481 to 50,244 bytes.
+
+### A20.9 Not verified, and assumptions
+
+- Nothing on a device: a real component update across a seven-file set, the hand-over with a broker-only difference, the limit of A20.5, the installer's new store on Raspberry Pi OS or Ubuntu. The first seven-file set on a device comes from the installer (G7.3b, G7.6).
+- **Assumption (A20.5):** a changed socket unit text applies only after a restart of the socket or a boot.
+- The lint forms are compared with the shipped unit texts; whether systemd reads the broker units as the lint does is the subject of `scripts/verify-units.sh` (unchanged, green) and of G7.6.
+
+### A20.10 Proposals for the owner (S1 to S6)
+
+| # | Proposal (implemented in G7.3a) |
+|---|---|
+| S1 | Two bundle shapes only: legacy (5 entries) and components (12 entries with the broker's three files); the nine-entry shape is refused everywhere; no third shape, no partial set. |
+| S2 | The closed list of eight compared names in the order of A20.1; the old record of D6 decodes unchanged. |
+| S3 | The reference hash over the seven digests in that order, without `oarfish.service`; no transaction spans a four-file and a seven-file set. |
+| S4 | The helper only replaces the broker's files; no `systemctl` call for the broker and no new argument shape; the limit of A20.5 stays an open point. |
+| S5 | Helper protocol unchanged (1); the names in answers are additive. |
+| S6 | The installer budget 80,000 bytes (D-C89 item 1), applied in G7.3a. |
+
+### Open points of A20
+
+1. The limit of A20.5 (a changed broker socket text waits for a socket restart or a boot): for the owner.
+2. The installer's copy of the component files into `releases/<version>` (A20.8): for the owner.
+3. G7.3b: the broker's links, the wants link of its socket, its start, uninstall, purge and health in the installer.
+
+### Changes made to the accepted text (A20)
+
+| Where | Accepted wording | Now | Source |
+|---|---|---|---|
+| U2, table, rows "Unit names" and "Replaceable component files" | four unit names; four component files | six unit names; seven component files (the pointer below the table) | A20.1 |
+| U5, layout; U15 rule 2 | `components/<id>` holds four files; five compared files | seven files; eight compared files (A19.1, implemented) | A20.1, A20.4 |
+| U15 rule 3, A15.3 | forms for the three helper units | and one form each for the two broker units | A20.2 |
+| A16.1 E2, A16.2 | the set digest over four files | over seven files | A20.3 |
+| U13 F13, U14 row G6.2 (not edited) | the components shape of nine entries | twelve entries; nine are refused | A20.4 |
+| A19.1, A19 intro (not edited except the pointer) | "in G7.3", "no code implements it yet" | the packaging part is implemented by G7.3a; the installer's links are G7.3b | A20 |
 
 ## Evidence and test plan for the later implementation
 

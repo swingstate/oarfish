@@ -77,9 +77,12 @@ type tf struct {
 // that these fixtures do not depend on the repository tree.
 var baseComponents = map[string][]byte{
 	"oarfish-update-helper":          elfStub("helper"),
-	"oarfish-update-helper.service":  []byte("# helper\n" + helperForms[unitHelperService][0] + "\n"),
-	"oarfish-update-helper.socket":   []byte("# socket\n" + helperForms[unitHelperSocket][0] + "\n"),
-	"oarfish-update-recover.service": []byte("# recover\n" + helperForms[unitRecover][0] + "\n"),
+	"oarfish-update-helper.service":  []byte("# helper\n" + unitForms[unitHelperService][0] + "\n"),
+	"oarfish-update-helper.socket":   []byte("# socket\n" + unitForms[unitHelperSocket][0] + "\n"),
+	"oarfish-update-recover.service": []byte("# recover\n" + unitForms[unitRecover][0] + "\n"),
+	"oarfish-broker":                 elfStub("broker"),
+	"oarfish-broker.socket":          []byte("# broker socket\n" + unitForms[unitBrokerSocket][0] + "\n"),
+	"oarfish-broker.service":         []byte("# broker\n" + unitForms[unitBrokerService][0] + "\n"),
 }
 
 var baseServiceUnit = []byte(`# fixture
@@ -142,12 +145,13 @@ func testFiles(version string, components bool) []tf {
 		{"oarfish.service", 0o644, baseServiceUnit},
 	}
 	if components {
-		fs = append(fs,
-			tf{"oarfish-update-helper", 0o755, baseComponents["oarfish-update-helper"]},
-			tf{"oarfish-update-helper.service", 0o644, baseComponents["oarfish-update-helper.service"]},
-			tf{"oarfish-update-helper.socket", 0o644, baseComponents["oarfish-update-helper.socket"]},
-			tf{"oarfish-update-recover.service", 0o644, baseComponents["oarfish-update-recover.service"]},
-		)
+		for _, f := range componentSet {
+			mode := int64(0o644)
+			if !f.unit {
+				mode = 0o755
+			}
+			fs = append(fs, tf{f.name, mode, baseComponents[f.name]})
+		}
 	}
 	sort.Slice(fs, func(i, j int) bool { return fs[i].name < fs[j].name })
 	return fs

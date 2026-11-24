@@ -3,6 +3,7 @@ package relverify
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -20,6 +21,75 @@ func manifestBytes(t testing.TB, edit func(m map[string]any)) []byte {
 	return append(b, '\n')
 }
 
+// brokerFiles are the three files that ADR 0010 A20 adds to the component set.
+var brokerFiles = []string{"oarfish-broker", "oarfish-broker.service", "oarfish-broker.socket"}
+
+// withoutFiles is a components release without the named files, its bundle and
+// manifest rebuilt from what is left: with brokerFiles, the components shape
+// of before A20 (nine entries with the directory).
+func withoutFiles(t testing.TB, version string, names ...string) *release {
+	r := newRelease(t, version, true)
+	var keep []tf
+	for _, f := range r.files {
+		if !slices.Contains(names, f.name) {
+			keep = append(keep, f)
+		}
+	}
+	r.files = keep
+	r.setBundle(defaultEnts(r.root, r.files))
+	return r
+}
+
+// The components shape of before A20 (the helper files without the broker's)
+// and every other partial set of the seven component files are refused, both
+// as a manifest and as a bundle.
+func TestManifestOldComponentsShapeRefused(t *testing.T) {
+	sets := [][]string{brokerFiles}
+	for _, n := range []string{"oarfish-update-helper", "oarfish-update-helper.service", "oarfish-update-helper.socket",
+		"oarfish-update-recover.service", "oarfish-broker", "oarfish-broker.service", "oarfish-broker.socket"} {
+		sets = append(sets, []string{n})
+	}
+	for _, drop := range sets {
+		r := withoutFiles(t, "0.1.0-test.1", drop...)
+		b, _ := json.Marshal(r.man)
+		_, err := ParseManifest(b)
+		wantDetail(t, err, CodeManifestInvalid, "declared bundle shape")
+		if len(drop) == 3 && len(r.files) != 8 {
+			t.Fatalf("the shape of before A20 has %d files, want 8 (nine entries)", len(r.files))
+		}
+	}
+	// A legacy manifest that lists the broker files is refused as well.
+	r := newRelease(t, "0.1.0-test.1", false)
+	r.files = append(r.files, tf{"oarfish-broker", 0o755, elfStub("broker")})
+	r.setBundle(defaultEnts(r.root, r.files))
+	b, _ := json.Marshal(r.man)
+	_, err := ParseManifest(b)
+	wantCode(t, err, CodeManifestInvalid)
+}
+
+// The broker files have the modes of A20: 0755 for the program, 0644 for the
+// two units. Any other mode is refused.
+func TestManifestBrokerModes(t *testing.T) {
+	for name, bad := range map[string]string{"oarfish-broker": "0644", "oarfish-broker.socket": "0755", "oarfish-broker.service": "0755"} {
+		for _, mode := range []string{bad, "0600", "0777"} {
+			r := newRelease(t, "0.1.0-test.1", true)
+			found := false
+			for _, c := range r.man["contents"].([]any) {
+				if strings.HasSuffix(c.(map[string]any)["path"].(string), "/"+name) {
+					c.(map[string]any)["mode"] = mode
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("%s is not in the contents", name)
+			}
+			b, _ := json.Marshal(r.man)
+			_, err := ParseManifest(b)
+			wantCode(t, err, CodeManifestInvalid)
+		}
+	}
+}
+
 func TestManifestValid(t *testing.T) {
 	for _, comps := range []bool{false, true} {
 		r := newRelease(t, "0.1.0-test.1", comps)
@@ -34,7 +104,7 @@ func TestManifestValid(t *testing.T) {
 		if (m.Components != nil) != comps {
 			t.Fatal("components")
 		}
-		if len(m.Contents) != map[bool]int{false: 4, true: 8}[comps] {
+		if len(m.Contents) != map[bool]int{false: 4, true: 11}[comps] {
 			t.Fatalf("%d contents", len(m.Contents))
 		}
 		if m.Requirements.Libc == "" || m.Requirements.CPU == "" || m.Requirements.RuntimeDependencies == nil {

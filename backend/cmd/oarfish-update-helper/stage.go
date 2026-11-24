@@ -257,7 +257,7 @@ func (r *stageRun) build(set *cacheSet, releases *os.File) (stageResponse, error
 	if code != "" {
 		return stageResponse{}, code
 	}
-	// l2. A difference of the four helper files selects the component
+	// l2. A difference of a file of the component set selects the component
 	// transaction (U15 rule 4), and its two rules come before any change: the
 	// delivered helper must embed the key this helper trusts (rule 5), and it
 	// must implement protocol P or P+1 (D5).
@@ -295,7 +295,7 @@ func (r *stageRun) build(set *cacheSet, releases *os.File) (stageResponse, error
 	t.Differs, t.ServiceUnitSHA256 = cmp.differs, hex.EncodeToString(cmp.service[:])
 	if cmp.set {
 		t.ComponentsFrom, t.ComponentsTo = from, r.req.Version
-		t.ComponentsSetSHA256, t.ComponentsHelperSHA256 = setDigest(cmp.staged), hex.EncodeToString(cmp.staged[0][:])
+		t.ComponentsSetSHA256, t.ComponentsHelperSHA256 = setDigest(cmp.staged), hex.EncodeToString(cmp.helper[:])
 	}
 	if err := e.saveState(r.st); err != nil {
 		return stageResponse{}, codeIOError

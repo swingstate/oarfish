@@ -10,8 +10,9 @@ import (
 )
 
 // The component transaction of ADR 0010 U15 rule 4 (owner decisions D1 to D6 of
-// A15 and E1 to E4 of A16). A staged release whose four helper files differ from
-// the installed ones is applied in two parts with one transaction id:
+// A15 and E1 to E4 of A16). A staged release whose component files (the seven
+// of componentSet, A20) differ from the installed ones is applied in two parts
+// with one transaction id:
 //
 //	the helper that received `activate` (the old one)
 //	  c_switching   intent, with everything the next process needs (E3)
@@ -66,25 +67,32 @@ func (e *env) linkID(link string) string {
 	return target
 }
 
-// setDigests reads the SHA-256 of the four files of a component set, in the
-// fixed order of U2. dir is components/<id> or a staging directory.
-func (e *env) setDigests(dir string) ([4][sha256.Size]byte, error) {
-	var d [4][sha256.Size]byte
-	for i := range d {
-		sum, err := fileDigest(e.opt, dir+"/"+componentNames[i])
+// setDigests reads the SHA-256 of every file of a component set, in the fixed
+// order of componentSet. dir is components/<id> or a staging directory. A set
+// that lacks one of the files (a set of the four-file shape before A20) can not
+// be read.
+func (e *env) setDigests(dir string) ([]digest, error) {
+	d := make([]digest, 0, len(componentSet))
+	for _, f := range componentSet {
+		sum, err := fileDigest(e.opt, dir+"/"+f.name)
 		if err != nil {
-			return d, err
+			return nil, err
 		}
-		d[i] = sum
+		d = append(d, sum)
 	}
 	return d, nil
 }
 
-// setDigest is the one hash of a component set (E2): the SHA-256 over the four
-// file digests, each 32 bytes, concatenated in the fixed order of U2 (the
-// helper, the socket unit, the helper service unit, the recover unit), as 64
-// lowercase hexadecimal digits.
-func setDigest(d [4][sha256.Size]byte) string {
+// setDigest is the one hash of a component set (E2, A20): the SHA-256 over the
+// seven file digests, each 32 bytes, concatenated in the fixed order of
+// componentSet (the helper, its socket unit, its service unit, the recover
+// unit, the broker, its socket unit, its service unit), as 64 lowercase
+// hexadecimal digits. A list of another length has no hash: "" never equals a
+// recorded one.
+func setDigest(d []digest) string {
+	if len(d) != len(componentSet) {
+		return ""
+	}
 	h := sha256.New()
 	for i := range d {
 		h.Write(d[i][:])
@@ -256,7 +264,7 @@ func (r *txnRun) selfCheck() string {
 	if t.ComponentsTo == "" || t.ComponentsHelperSHA256 == "" || e.linkID(linkActive) != t.ComponentsTo {
 		return reasonHelperMismatch
 	}
-	onDisk, err := fileDigest(e.opt, "components/"+linkActive+"/"+componentNames[0])
+	onDisk, err := fileDigest(e.opt, "components/"+linkActive+"/"+helperBinary)
 	if err != nil || hex.EncodeToString(onDisk[:]) != t.ComponentsHelperSHA256 {
 		return reasonHelperMismatch
 	}
@@ -452,7 +460,7 @@ func (r *txnRun) handBack() {
 	}
 	own, err := r.h.ownImageHash()
 	if err == nil {
-		if d, derr := fileDigest(r.e.opt, "components/"+linkActive+"/"+componentNames[0]); derr == nil && hex.EncodeToString(d[:]) == own {
+		if d, derr := fileDigest(r.e.opt, "components/"+linkActive+"/"+helperBinary); derr == nil && hex.EncodeToString(d[:]) == own {
 			return
 		}
 	}

@@ -106,6 +106,9 @@ func testFiles(version string, components bool) []tf {
 			tf{"oarfish-update-helper.service", 0o644, []byte("[Service]\n# helper\n")},
 			tf{"oarfish-update-helper.socket", 0o644, []byte("[Socket]\n# socket\n")},
 			tf{"oarfish-update-recover.service", 0o644, []byte("[Service]\n# recover\n")},
+			tf{"oarfish-broker", 0o755, elfStub("broker")},
+			tf{"oarfish-broker.service", 0o644, []byte("[Service]\n# broker\n")},
+			tf{"oarfish-broker.socket", 0o644, []byte("[Socket]\n# broker socket\n")},
 		)
 	}
 	sort.Slice(fs, func(i, j int) bool { return fs[i].name < fs[j].name })

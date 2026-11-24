@@ -248,8 +248,8 @@ func TestDurabilityOrder(t *testing.T) {
 			}
 		}
 	}
-	if len(created) != 3+1+4+4 {
-		t.Errorf("%d files created, want 12", len(created))
+	if len(created) != 3+1+4+7 {
+		t.Errorf("%d files created, want 15", len(created))
 	}
 	stage := ops[renameRelease].Path[:strings.LastIndex(ops[renameRelease].Path, "/")]
 	for _, d := range []string{stage + "/release", stage + "/components", stage} {

@@ -85,10 +85,10 @@ const (
 //     the manifest; the owner, group and mode of the tar header are ignored.
 //   - The found files are exactly those of contents. Because contents is exactly
 //     the file set of the shape the components object declares (ParseManifest
-//     checks that, and Inspect checks it again), the four component files are in
+//     checks that, and Inspect checks it again), the seven component files are in
 //     the bundle if and only if the manifest has a components object.
-//   - oarfish and oarfish-update-helper start with an ELF64 little-endian header
-//     for machine 0xB7.
+//   - oarfish, oarfish-update-helper and oarfish-broker start with an ELF64
+//     little-endian header for machine 0xB7.
 //   - The stream is one gzip member with nothing after it. The decompressed size
 //     is bounded by the sum of the manifest sizes plus 1 MiB, so a decompression
 //     bomb stops at that limit, whatever it hides in padding or in a header. Bytes

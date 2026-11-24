@@ -290,7 +290,7 @@ type statusResponse struct {
 }
 
 // stageResponse is the answer to a successful `stage`. ComponentsDiffer is true
-// when any of the five compared files differs from the installed one, and
+// when any of the eight compared files (A20) differs from the installed one, and
 // Differs names them, from the closed list of U2 in its fixed order (D6). Both
 // say that `activate` needs components_confirmed.
 type stageResponse struct {

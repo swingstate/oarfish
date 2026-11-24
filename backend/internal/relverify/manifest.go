@@ -48,7 +48,8 @@ type Manifest struct {
 	Bundle        BundleInfo
 	Contents      []Entry
 	// Components is non-nil exactly for the components shape: the bundle then
-	// delivers the update helper and its three units.
+	// delivers the update helper and its three units and the privilege broker
+	// and its two units (ADR 0010 A20).
 	Components *Components
 }
 
@@ -167,8 +168,9 @@ type rawComponents struct {
 // bundle.sha256 and a positive bundle.size; and contents: exactly the files of
 // the legacy shape (LICENSE, THIRD_PARTY_NOTICES.txt, oarfish, oarfish.service)
 // or, if and only if the components object is present, of the components shape
-// (plus the helper and its three units), each once, below the top-level
-// directory, with the mode 0644 (0755 for the two programs), a size and a
+// (plus the helper and its three units and the broker and its two units),
+// each once, below the top-level directory, with the mode 0644 (0755 for the
+// three programs), a size and a
 // SHA-256, adding up to at most 128 MiB.
 //
 // Every other failure is a *Error with CodeManifestInvalid.
