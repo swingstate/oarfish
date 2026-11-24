@@ -317,9 +317,10 @@ func TestArchitectureMetricsSystemCallIsConfinedToStatfs(t *testing.T) {
 
 // No Go file of the product (tests excluded) runs an external program, ADR 0007
 // and D-C19. Test helpers that are only imported by tests are excluded too.
-// The one exception is the single function of the update helper that runs
-// /usr/bin/systemctl (ADR 0010 U2, G6.6); the helper's own tests pin os/exec
-// to that file.
+// The exceptions are the single function of the update helper that runs
+// /usr/bin/systemctl (ADR 0010 U2, G6.6) and the single function of the
+// privilege broker that runs it (ADR 0011 B2, G7.2); the tests of each
+// program pin os/exec to that one file.
 func TestArchitectureNoProductCodeRunsAProgram(t *testing.T) {
 	root := backendDir(t)
 	checked := 0
@@ -341,7 +342,8 @@ func TestArchitectureNoProductCodeRunsAProgram(t *testing.T) {
 		for _, imp := range parsed.Imports {
 			if p, _ := strconv.Unquote(imp.Path.Value); p == "os/exec" {
 				rel, _ := filepath.Rel(root, path)
-				if filepath.ToSlash(rel) == "cmd/oarfish-update-helper/systemctl.go" {
+				switch filepath.ToSlash(rel) {
+				case "cmd/oarfish-update-helper/systemctl.go", "cmd/oarfish-broker/systemctl.go":
 					continue
 				}
 				t.Errorf("%s imports os/exec", rel)

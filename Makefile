@@ -16,7 +16,8 @@ FUZZTIME ?= 10s
 .PHONY: help dev dev-backend dev-frontend deps test test-backend test-frontend test-release-tools \
 	lint lint-backend lint-frontend fuzz frontend-build build build-arm64 bench-arm64 \
 	release-bundle check-reproducible test-signing test-installer lint-shell clean \
-	build-helper test-helper check-helper test-relverify-producer
+	build-helper test-helper check-helper test-relverify-producer \
+	build-broker test-broker check-broker
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -58,7 +59,7 @@ lint-backend:
 lint-frontend:
 	cd frontend && npm run check
 
-fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash, update-helper request, update service and release-verification parsers (FUZZTIME=10s each)
+fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash, update-helper request, broker request, update service and release-verification parsers (FUZZTIME=10s each)
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseOSRelease$$' -fuzztime $(FUZZTIME) ./internal/platform/operating_system
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseCompatible$$' -fuzztime $(FUZZTIME) ./internal/platform/hardware
 	@for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes; do \
@@ -67,6 +68,9 @@ fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash, update-helper
 	cd backend && go test -run '^$$' -fuzz '^FuzzParsePHC$$' -fuzztime $(FUZZTIME) ./internal/auth
 	@for f in FuzzDecodeRequest FuzzDecodeActivate FuzzDecodeAck FuzzDecodeState FuzzHealthzBody FuzzUnitLint; do \
 		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./cmd/oarfish-update-helper) || exit 1; \
+	done
+	@for f in FuzzDecodeRequest FuzzParseShow FuzzUnitName FuzzHelperPhase; do \
+		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./cmd/oarfish-broker) || exit 1; \
 	done
 	@for f in FuzzHelperResponse FuzzReleaseList FuzzPlainNotes; do \
 		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./internal/updater) || exit 1; \
@@ -120,6 +124,20 @@ check-helper: test-helper build-helper ## Everything CI checks for the update he
 	scripts/check-helper-independent.sh
 	scripts/check-helper-key.sh
 	scripts/check-helper-hooks.sh bin/oarfish-update-helper-linux-arm64
+	scripts/check-units.sh
+	scripts/check-units.sh --self-test
+
+build-broker: ## Cross-build the privilege broker, reproducibly, to bin/oarfish-broker-linux-arm64 (not in any release bundle until G7.3)
+	scripts/build-broker.sh --twice
+
+test-broker: ## Privilege broker: vet (host, linux/arm64, linux/amd64) and tests with -race
+	cd backend && go vet ./cmd/oarfish-broker
+	cd backend && GOOS=linux GOARCH=arm64 go vet ./cmd/oarfish-broker
+	cd backend && GOOS=linux GOARCH=amd64 go vet ./cmd/oarfish-broker
+	cd backend && go test -race -count=1 ./cmd/oarfish-broker
+
+check-broker: test-broker build-broker ## Everything CI checks for the privilege broker (tests, reproducible build, bytes independent of the release version, unit texts and their mutation test)
+	scripts/check-broker-independent.sh
 	scripts/check-units.sh
 	scripts/check-units.sh --self-test
 
