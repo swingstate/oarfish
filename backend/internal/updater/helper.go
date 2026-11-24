@@ -128,9 +128,12 @@ var (
 	phaseNames    = map[string]bool{"idle": true, "staging": true, "staged": true, "switching": true, "verifying": true, "committed": true, "rolling_back": true, "rolled_back": true, "rollback_failed": true,
 		// The component phases of ADR 0010 U15 rule 4 (G6.10 step b).
 		"c_switching": true, "c_switched": true, "c_verified": true, "c_committed": true, "c_rolling_back": true}
-	outcomeNames   = map[string]bool{"success": true, "rolled_back": true, "components_rolled_back": true, "rollback_failed": true, "aborted": true}
-	componentNames = map[string]bool{"oarfish-update-helper": true, "oarfish-update-helper.socket": true, "oarfish-update-helper.service": true, "oarfish-update-recover.service": true, "oarfish.service": true}
-	helperCodes    = map[Code]bool{
+	outcomeNames = map[string]bool{"success": true, "rolled_back": true, "components_rolled_back": true, "rollback_failed": true, "aborted": true}
+	// The eight compared files of ADR 0010 U5 (A20): the seven of the component
+	// set, the broker's three since G7.3a, and oarfish.service.
+	componentNames = map[string]bool{"oarfish-update-helper": true, "oarfish-update-helper.socket": true, "oarfish-update-helper.service": true, "oarfish-update-recover.service": true,
+		"oarfish-broker": true, "oarfish-broker.socket": true, "oarfish-broker.service": true, "oarfish.service": true}
+	helperCodes = map[Code]bool{
 		CodeBadRequest: true, CodeBusy: true, CodeNotFound: true, CodeSignatureInvalid: true, CodeChecksumMismatch: true,
 		CodeManifestInvalid: true, CodeDowngradeRefused: true, CodeAlreadyInstalled: true, CodeRequirementsNotMet: true,
 		CodeHelperTooOld: true, CodeInstallerRequired: true, CodeConfirmationRequired: true, CodeKeyChanged: true,

@@ -615,6 +615,9 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `updComponent.oarfish-update-helper.socket` | Socket-Unit des Update Helpers | Socket unit of the update helper |
 | `updComponent.oarfish-update-helper.service` | Dienst-Unit des Update Helpers | Service unit of the update helper |
 | `updComponent.oarfish-update-recover.service` | Wiederherstellungs-Unit des Update Helpers | Recovery unit of the update helper |
+| `updComponent.oarfish-broker` | Privilege Broker | Privilege broker |
+| `updComponent.oarfish-broker.socket` | Socket-Unit des Privilege Brokers | Socket unit of the privilege broker |
+| `updComponent.oarfish-broker.service` | Dienst-Unit des Privilege Brokers | Service unit of the privilege broker |
 | `updComponent.oarfish.service` | Dienstdefinition von Oarfish | Service definition of Oarfish |
 | `updComponentsFailService` | Schlägt das Update fehl, stellt Oarfish die bisherige Version mit ihrer Dienstdefinition wieder her. | If the update fails, Oarfish restores the previous version with its service definition. |
 | `updComponentsPasswordHelp` | Für diesen Schritt fragt Oarfish Ihr Passwort noch einmal ab. | For this step, Oarfish asks for your password once more. |

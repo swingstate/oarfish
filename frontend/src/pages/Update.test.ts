@@ -716,7 +716,15 @@ describe('structure', () => {
 
 describe('component update', () => {
   const words = (id: string) => Array.from(byTestId(id).querySelectorAll('li')).map((li) => li.textContent?.replace(/\s+/g, ' ').trim());
-  const helperFiles = ['oarfish-update-helper', 'oarfish-update-helper.socket', 'oarfish-update-helper.service', 'oarfish-update-recover.service'];
+  const helperFiles = [
+    'oarfish-update-helper',
+    'oarfish-update-helper.socket',
+    'oarfish-update-helper.service',
+    'oarfish-update-recover.service',
+    'oarfish-broker',
+    'oarfish-broker.socket',
+    'oarfish-broker.service',
+  ];
 
   for (const language of ['de', 'en'] as const) {
     it(`the second confirmation names every staged component in plain words (${language})`, async () => {
