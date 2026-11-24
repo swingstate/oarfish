@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1209,6 +1210,7 @@ func TestSocketRestartPending(t *testing.T) {
 		// The installed socket unit is an older text; installed units are not linted.
 		p := filepath.Join(v.root, "components", "1.0.0", unitHelperSocket)
 		os.WriteFile(p, bytes.Replace(baseComponents[unitHelperSocket], []byte("Backlog=8"), []byte("Backlog=4"), 1), 0o644)
+		v.expectSet("1.0.0", diskSetDigest(t, v, "1.0.0")) // the set as the installer left it
 		s := &supervisor{v: v}
 		v.place(newVersion, v.componentRelease(newVersion).build())
 		wantOK(t, v.stage(newVersion))
@@ -1240,6 +1242,7 @@ func TestSocketRestartPending(t *testing.T) {
 		v.fakeSystemd()
 		p := filepath.Join(v.root, "components", "1.0.0", unitHelperSocket)
 		os.WriteFile(p, bytes.Replace(baseComponents[unitHelperSocket], []byte("Description="), []byte("Description=an older text"), 1), 0o644)
+		v.expectSet("1.0.0", diskSetDigest(t, v, "1.0.0")) // the set as the installer left it
 		s := &supervisor{v: v}
 		v.place(newVersion, v.componentRelease(newVersion, unitHelperSocket).build())
 		wantOK(t, v.stage(newVersion))
@@ -1255,6 +1258,7 @@ func TestSocketRestartPending(t *testing.T) {
 		v.fakeSystemd()
 		p := filepath.Join(v.root, "components", "1.0.0", unitHelperSocket)
 		os.WriteFile(p, bytes.Replace(baseComponents[unitHelperSocket], []byte("Backlog=8"), []byte("Backlog=4"), 1), 0o644)
+		v.expectSet("1.0.0", diskSetDigest(t, v, "1.0.0")) // the set as the installer left it
 		s := &supervisor{v: v, mutate: func(h *handler, image string) {
 			if isNewImage(image) {
 				h.keyID = otherKeyID
@@ -1556,6 +1560,152 @@ func TestComponentRowC5VerifiedNotCommitted(t *testing.T) {
 			t.Fatalf("result %+v", st.Last)
 		}
 	})
+}
+
+// A22 (H1): a file of components/<to> that changes, or can no longer be read,
+// after activate checked the set never becomes known-good. The new helper
+// compares the set with the hash that stage recorded before known-good moves,
+// and a resumed commit (row c5) does the same; a difference or a read failure
+// rolls the components back with the reason helper_mismatch, and known-good
+// names the set it named before the transaction.
+func TestComponentSetChangedBeforeCommit(t *testing.T) {
+	changes := []struct {
+		name string
+		do   func(t *testing.T, dir string)
+	}{
+		{"a broker file changed", func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, brokerBinary), elfStub("broker changed after activate"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a helper unit changed", func(t *testing.T, dir string) {
+			p := filepath.Join(dir, unitHelperService)
+			b, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, append(b, "# changed after activate\n"...), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"a broker file unreadable", func(t *testing.T, dir string) {
+			if err := os.Remove(filepath.Join(dir, brokerBinary)); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	newSet := func(v *tenv) string { return filepath.Join(v.root, "components", newVersion) }
+	wantRolledBack := func(t *testing.T, v *tenv) {
+		t.Helper()
+		st := checkSettled(t, v, false)
+		if st.Last == nil || st.Last.Outcome != outcomeComponentsRolledBack || st.Last.ReasonCode != reasonHelperMismatch || st.Last.ComponentsUpdated {
+			t.Fatalf("result %+v", st.Last)
+		}
+		if v.link(linkActive) != "1.0.0" || v.link(linkKnownGood) != "1.0.0" || v.current() != "1.0.0" {
+			t.Fatalf("active %s known-good %s current %s", v.link(linkActive), v.link(linkKnownGood), v.current())
+		}
+		// The reference is still the one of the set known-good names.
+		if st.Txn.KnownGoodID != "1.0.0" || st.Txn.KnownGoodSHA256 != baseSetDigest() {
+			t.Fatalf("known-good record %s %s", st.Txn.KnownGoodID, st.Txn.KnownGoodSHA256)
+		}
+		if !slices.Contains(journalLines(v), "phase=components_rolled_back to=1.1.0 from=1.0.0 cid="+testCID+" result=helper_mismatch") {
+			t.Fatalf("journal:\n%s", v.journal.String())
+		}
+	}
+	for _, c := range changes {
+		t.Run(c.name+" after activate: the new helper rolls back, known-good never moves", func(t *testing.T) {
+			v, s := newComponentEnv(t)
+			var knownGoodMoves atomic.Int64
+			v.h.wrapFS = func(inner fsops) fsops {
+				f := newTestFS(noSyncFS{inner})
+				f.before = func(op fsOp) error {
+					if op.Kind == "rename" && op.Path2 == "components/"+linkKnownGood {
+						knownGoodMoves.Add(1)
+					}
+					return nil
+				}
+				return f
+			}
+			// The change happens after activate's second check and before the
+			// new helper's first start.
+			s.mutate = func(h *handler, image string) {
+				if isNewImage(image) {
+					c.do(t, newSet(v))
+					s.mutate = nil
+				}
+			}
+			wantOK(t, v.confirm(newVersion))
+			s.settle()
+			wantRolledBack(t, v)
+			if n := knownGoodMoves.Load(); n != 0 {
+				t.Fatalf("known-good moved %d times", n)
+			}
+			// The self-check passed (the helper binary is the staged one), and
+			// the comparison came after c_verified.
+			if !slices.Contains(journalLines(v), "phase=c_verified to=1.1.0 from=1.0.0 cid="+testCID+" result=ok") {
+				t.Fatalf("journal:\n%s", v.journal.String())
+			}
+		})
+		for _, mode := range []string{"boot", "serve"} {
+			t.Run("row c5, both links new, "+c.name+", "+mode+": known-good goes back and the components roll back", func(t *testing.T) {
+				v, s := atPhase(t, phaseCVerified, newVersion, newVersion)
+				c.do(t, newSet(v))
+				if mode == "boot" {
+					if code := s.recover(false); code != 0 {
+						t.Fatalf("exit %d", code)
+					}
+				} else {
+					s.nextStart()
+				}
+				wantRolledBack(t, v)
+				// A second recovery changes nothing.
+				before, _ := os.ReadFile(filepath.Join(v.stateDir, stateFile))
+				s.nextStart()
+				if after, _ := os.ReadFile(filepath.Join(v.stateDir, stateFile)); string(before) != string(after) {
+					t.Fatalf("not idempotent:\n%s\n%s", before, after)
+				}
+			})
+		}
+	}
+	t.Run("c_rolling_back with known-good on the failed set: the rollback finishes on the old set", func(t *testing.T) {
+		// A crash after the intent of the rollback and before known-good went
+		// back (row c8).
+		v, s := atPhase(t, phaseCRollingBack, newVersion, newVersion)
+		st, _ := v.readState()
+		st.Txn.RollbackReason = reasonHelperMismatch
+		v.writeState(st)
+		c := changes[0]
+		c.do(t, newSet(v))
+		if code := s.recover(false); code != 0 {
+			t.Fatalf("exit %d", code)
+		}
+		wantRolledBack(t, v)
+	})
+}
+
+// The invariant of the crash sweeps sees a set that holds a file of another
+// set (F6.1): every set has bytes of its own, and setComplete compares the set
+// hash with the one a fixture or stage recorded.
+func TestSetInvariantSeesAMixedSet(t *testing.T) {
+	v := newTenv(t)
+	v.makeSet("0.8.0")
+	if !setComplete(v, "0.8.0") || !setComplete(v, "1.0.0") {
+		t.Fatal("a complete set is not complete")
+	}
+	for _, n := range []string{brokerBinary, unitBrokerSocket, unitRecover} {
+		v := newTenv(t)
+		v.makeSet("0.8.0")
+		b, err := os.ReadFile(filepath.Join(v.root, "components", "1.0.0", n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(v.root, "components", "0.8.0", n), b, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if setComplete(v, "0.8.0") {
+			t.Fatalf("0.8.0 with the %s of 1.0.0 counts as complete", n)
+		}
+	}
 }
 
 // Row c6: c_committed, the release phases not started. At boot the release is
@@ -1937,6 +2087,70 @@ func TestFourFileSetIsNotASevenFileSet(t *testing.T) {
 		if v.link(linkActive) != "1.0.0" || v.link(linkKnownGood) != "1.0.0" {
 			t.Fatal("a link moved")
 		}
+	})
+	// The state that an interrupted installer run of the transition can leave
+	// (A21.5, A22): active names a seven-file set, known-good still the
+	// four-file set. Only the helper of A20 is run here; at boot the recover
+	// unit runs the helper of the set known-good names, which for this state
+	// is the helper before A20 (described in A22, not modelled).
+	interrupted := func(t *testing.T) *tenv {
+		v := newTenv(t)
+		v.installOarfish()
+		v.fakeSystemd()
+		v.makeSet("0.9.0")
+		for _, n := range brokerFiles {
+			os.Remove(filepath.Join(v.root, "components", "0.9.0", n))
+		}
+		os.Remove(filepath.Join(v.root, "components", linkKnownGood))
+		os.Symlink("0.9.0", filepath.Join(v.root, "components", linkKnownGood))
+		return v
+	}
+	for _, mode := range []string{"boot", "live"} {
+		t.Run("state.json unreadable, known-good names a four-file set, "+mode+": rollback_failed, nothing switched", func(t *testing.T) {
+			v := interrupted(t)
+			os.WriteFile(filepath.Join(v.stateDir, stateFile), []byte("{ not json"), 0o600)
+			v.sd.calls = nil
+			before := snapshot(t, v.root)
+			if mode == "boot" {
+				if code := v.recoverBoot(); code != 1 {
+					t.Fatalf("exit %d, want 1", code)
+				}
+			} else {
+				v.recoverLive()
+			}
+			st, ok := v.readState()
+			if !ok || st.Txn.Phase != phaseRollbackFailed || !st.NeedsAttention || st.Last == nil ||
+				st.Last.Outcome != outcomeRollbackFailed || st.Last.ReasonCode != reasonKnownGoodDamaged || st.Txn.To != "1.0.0" {
+				t.Fatalf("state %+v last %+v", st.Txn, st.Last)
+			}
+			if d := diffSnapshots(before, snapshot(t, v.root)); len(d) != 0 || v.link(linkActive) != "1.0.0" || v.link(linkKnownGood) != "0.9.0" {
+				t.Fatalf("active %s known-good %s, changed %v", v.link(linkActive), v.link(linkKnownGood), d)
+			}
+			if got := v.sd.acting(); len(got) != 0 {
+				t.Fatalf("systemctl calls %v, want none", got)
+			}
+		})
+	}
+	t.Run("state.json missing, known-good names a four-file set: a fresh state, nothing switched", func(t *testing.T) {
+		// Missing is not unreadable: loadState gives a fresh idle state and no
+		// rebuild runs. This is the state after the repair of A22 (state.json
+		// removed); the installer run that follows moves known-good.
+		v := interrupted(t)
+		v.sd.calls = nil
+		before := snapshot(t, v.root)
+		if code := v.recoverBoot(); code != 0 {
+			t.Fatalf("exit %d", code)
+		}
+		v.recoverLive()
+		if st, ok := v.readState(); ok && (st.Txn.Phase != phaseIdle || st.NeedsAttention) {
+			t.Fatalf("state %+v", st.Txn)
+		}
+		if d := diffSnapshots(before, snapshot(t, v.root)); len(d) != 0 || len(v.sd.acting()) != 0 {
+			t.Fatalf("changed %v, calls %v", d, v.sd.acting())
+		}
+		// A component update is refused until the installer moved known-good.
+		v.place(newVersion, v.componentRelease(newVersion).build())
+		wantErrCode(t, v.stage(newVersion), codeComponentsDamaged)
 	})
 	t.Run("a staged set without a broker file ends the staged release at activate", func(t *testing.T) {
 		v, _ := newComponentEnv(t)
