@@ -1024,7 +1024,7 @@ The fake `systemctl` exists twice: a Go stand-in for the runner (`fakeSys`, used
 ### A4.7 What is not verified
 
 - Everything on a device: the production broker under the sandbox of B8, `systemctl` behind the shapes, the real `SO_PEERCRED` of the service user, the update check against a real helper, a real reboot and shutdown, the cold-boot order, memory (BF31). Class D and T rows stay open for G7.6.
-- `systemd-analyze security --offline` is printed by CI in the job `helper-units` for information; it is a property of the unit text, not of a running process. G7.1 observed 0.9 SAFE on the device for the same text (A2.3).
+- `systemd-analyze security --offline` is printed by CI in the job `helper-units` for information; it is a property of the unit text, not of a running process. Recorded from the CI run of the G7.2 pull request (#57, systemd 255 of the runner): `oarfish-broker.service` **0.9 SAFE**, at or below the target of B8 (the helper's 1.7); the helper and recover services 1.7 OK in the same run. G7.1 observed 0.9 SAFE on the device for the same text (A2.3).
 - `RefuseManualStart=yes` (assumption of A3.4 rule 9, tested only against the fake).
 - Ubuntu Server (G12).
 
