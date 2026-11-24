@@ -30,7 +30,12 @@ func TestImports(t *testing.T) {
 	}
 	// The broker's files are part of the component set since A20, but the
 	// helper never becomes a broker: it imports nothing of it and shares no
-	// request handling with it (U2 rules 4 and 5).
+	// request handling with it (U2 rules 4 and 5). The entry for
+	// cmd/oarfish-broker documents that intent only and cannot fail: it is a
+	// main package, and Go never lets another package import one. What catches
+	// broker code in the helper is the allow-list above: broker code moved into
+	// a shared package of this repository is neither the standard library nor
+	// one of the three allowed packages (ADR 0010 A22).
 	forbidden := []string{"net/http", "plugin", modulePath + "internal/version", modulePath + "cmd/oarfish-broker"}
 	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
 	if _, err := os.Stat(goTool); err != nil {

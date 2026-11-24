@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,6 +34,13 @@ type tenv struct {
 
 	installed string
 	sd        *fakeSystemd
+
+	// sets is the set hash each component set must have on the disk (A22):
+	// the installed set, every set makeSet wrote, and the set of every stage
+	// that recorded one. A set whose files are mixed with another set's, or
+	// that differs from what stage recorded, does not have it.
+	setsMu sync.Mutex
+	sets   map[string]string
 }
 
 type syncBuffer struct {
@@ -78,6 +86,7 @@ func newTenv(t *testing.T) *tenv {
 	for n, d := range baseComponents {
 		must(os.WriteFile(filepath.Join(v.root, "components", v.installed, n), d, 0o755))
 	}
+	v.expectSet(v.installed, baseSetDigest())
 	must(os.Symlink(v.installed, filepath.Join(v.root, "components", "active")))
 	must(os.Symlink(v.installed, filepath.Join(v.root, "components", "known-good")))
 	must(os.Chmod(v.stateDir, 0o700))
@@ -169,7 +178,54 @@ func (v *tenv) request(line []byte) []byte {
 	return v.h.respond(l)
 }
 
-func (v *tenv) stage(version string) []byte { return v.request(stageLine(version, testCID)) }
+// stage sends stage and notes the set hash that it recorded, if any.
+func (v *tenv) stage(version string) []byte {
+	out := v.request(stageLine(version, testCID))
+	v.noteStagedSet()
+	return out
+}
+
+// expectSet records the set hash that components/<id> must have.
+func (v *tenv) expectSet(id, sum string) {
+	v.setsMu.Lock()
+	defer v.setsMu.Unlock()
+	if v.sets == nil {
+		v.sets = map[string]string{}
+	}
+	v.sets[id] = sum
+}
+
+// expectedSet is the hash recorded for components/<id>; ok false for a set
+// that no fixture and no stage named.
+func (v *tenv) expectedSet(id string) (sum string, ok bool) {
+	v.setsMu.Lock()
+	defer v.setsMu.Unlock()
+	sum, ok = v.sets[id]
+	return sum, ok
+}
+
+// noteStagedSet takes the set hash of a staged component set from the state:
+// the hash that stage recorded and activate and the commit compare (A22).
+func (v *tenv) noteStagedSet() {
+	data, err := os.ReadFile(filepath.Join(v.stateDir, stateFile))
+	if err != nil {
+		return
+	}
+	if st, err := decodeState(data); err == nil && st.Txn.ComponentsTo != "" && st.Txn.ComponentsSetSHA256 != "" {
+		v.expectSet(st.Txn.ComponentsTo, st.Txn.ComponentsSetSHA256)
+	}
+}
+
+// filesSetDigest is the set hash of the given bytes per file name.
+func filesSetDigest(files map[string][]byte) string {
+	d := make([]digest, 0, len(componentSet))
+	for _, f := range componentSet {
+		d = append(d, sha256.Sum256(files[f.name]))
+	}
+	return setDigest(d)
+}
+
+func baseSetDigest() string { return filesSetDigest(baseComponents) }
 
 func (v *tenv) status() reply { return parseReply(v.t, v.request([]byte(okStatus))) }
 

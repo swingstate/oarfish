@@ -62,21 +62,32 @@ func newComponentEnv(t *testing.T, alsoChanged ...string) (*tenv, *supervisor) {
 	return v, &supervisor{v: v}
 }
 
-// makeSet writes a complete component set components/<id>.
+// makeSet writes a complete component set components/<id>. Every file has
+// bytes of its own set: the two programs name the id, and each unit has a
+// comment line with it (the lint accepts a comment). A set that holds a file
+// of another set therefore has another set hash (A22).
 func (v *tenv) makeSet(id string) {
 	v.t.Helper()
 	dir := filepath.Join(v.root, "components", id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		v.t.Fatal(err)
 	}
+	files := map[string][]byte{}
 	for n, d := range baseComponents {
-		if n == "oarfish-update-helper" {
+		switch n {
+		case helperBinary:
 			d = elfStub("helper " + id)
+		case brokerBinary:
+			d = elfStub("broker " + id)
+		default:
+			d = append(append([]byte(nil), d...), "# set "+id+"\n"...)
 		}
+		files[n] = d
 		if err := os.WriteFile(filepath.Join(dir, n), d, 0o755); err != nil {
 			v.t.Fatal(err)
 		}
 	}
+	v.expectSet(id, filesSetDigest(files))
 }
 
 func withoutSync(inner fsops) fsops { return noSyncFS{inner} }
@@ -211,7 +222,8 @@ func (s *supervisor) nextStart() {
 
 // setComplete: components/<id> holds the seven files, the helper with the
 // bytes of that set, the broker as a regular file and units that the lint
-// accepts.
+// accepts; and, for a set whose hash a fixture or a stage recorded, the files
+// give that hash: no file of another set, no file that changed since stage.
 func setComplete(v *tenv, id string) bool {
 	want := elfStub("helper " + id)
 	if id == v.installed {
@@ -223,6 +235,7 @@ func setComplete(v *tenv, id string) bool {
 		(string(got) != string(want) && string(got) != string(baseComponents["oarfish-update-helper"])) {
 		return false
 	}
+	files := map[string][]byte{}
 	for _, f := range componentSet {
 		text, err := os.ReadFile(filepath.Join(dir, f.name))
 		if err != nil {
@@ -232,6 +245,10 @@ func setComplete(v *tenv, id string) bool {
 		if f.unit && id != v.installed && !lintUnit(f.name, text).Accepted {
 			return false
 		}
+		files[f.name] = text
+	}
+	if want, ok := v.expectedSet(id); ok && filesSetDigest(files) != want {
+		return false
 	}
 	return true
 }
@@ -287,10 +304,12 @@ func checkSettled(t *testing.T, v *tenv, stagedAllowed bool) *state {
 		t.Fatalf("current names %s without a committed update (components %s): %+v", cur, a, st.Last)
 	}
 	if a == newVersion {
-		// The components committed: the reference hash is the new set's, and the
-		// result says that the components were updated.
-		if st.Txn.KnownGoodID != newVersion || st.Txn.KnownGoodSHA256 != diskSetDigest(t, v, newVersion) {
-			t.Fatalf("known-good record %s %s", st.Txn.KnownGoodID, st.Txn.KnownGoodSHA256)
+		// The components committed: the reference hash is the hash that stage
+		// recorded for the new set, and the set on the disk still has it (A22);
+		// the result says that the components were updated.
+		staged, ok := v.expectedSet(newVersion)
+		if !ok || st.Txn.KnownGoodID != newVersion || st.Txn.KnownGoodSHA256 != staged || st.Txn.KnownGoodSHA256 != diskSetDigest(t, v, newVersion) {
+			t.Fatalf("known-good record %s %s, staged %s", st.Txn.KnownGoodID, st.Txn.KnownGoodSHA256, staged)
 		}
 		if st.Last == nil || !st.Last.ComponentsUpdated || st.ComponentsPrevious != v.installed {
 			t.Fatalf("committed components without a result that says so: %+v, previous %q", st.Last, st.ComponentsPrevious)

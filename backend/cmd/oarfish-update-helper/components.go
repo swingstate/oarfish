@@ -20,7 +20,9 @@ import (
 //	  c_switched    daemon-reload, then the process ends with exit code 75
 //	the helper that systemd starts next (the new one), before it serves a request
 //	  self-check    D1, rule 5, rule 6; a failure switches active back
-//	  c_verified    components/known-good -> the new set, daemon-reload (D2)
+//	  c_verified    the set compared with the staged one (A22); a difference
+//	                switches active back; components/known-good -> the new
+//	                set, daemon-reload (D2)
 //	  c_committed   the components' own commit point
 //	  switching ... the release phases of U5 and U6, by the new helper
 //
@@ -309,38 +311,57 @@ func (r *txnRun) runComponents() {
 
 // ---- the new helper ------------------------------------------------------------
 
-// verifyComponents runs after a passed self-check: c_verified, the switch of
-// known-good, the commit. It returns "" when c_committed is durable.
-func (r *txnRun) verifyComponents() errorCode {
+// stagedSetIntact is the comparison of A22 (H1): the seven files of
+// components/<to>, read now, give the set hash that stage recorded and
+// activate checked. A file that changed or cannot be read since then makes the
+// set one that never proved itself, and it must not become known-good.
+func (r *txnRun) stagedSetIntact() bool {
+	t := r.st.Txn
+	d, err := r.e.setDigests(componentPath(t.ComponentsTo))
+	return err == nil && t.ComponentsSetSHA256 != "" && setDigest(d) == t.ComponentsSetSHA256
+}
+
+// verifyComponents runs after a passed self-check: c_verified, the comparison
+// with the staged set (A22), the switch of known-good, the commit. committed is
+// true when c_committed is durable; otherwise the transaction stops here, with
+// code, or ended in the rollback that a changed or unreadable set starts
+// (reason helper_mismatch: the new set failed its proof at its first start).
+func (r *txnRun) verifyComponents() (code errorCode, committed bool) {
 	if r.st.Txn.Phase != phaseCVerified {
 		r.st.Txn.Phase = phaseCVerified
 		if err := r.e.saveState(r.st); err != nil {
 			r.log(phaseCVerified, string(codeIOError))
-			return codeIOError
+			return codeIOError, false
 		}
 		r.log(phaseCVerified, "ok")
 	}
+	if !r.stagedSetIntact() {
+		return r.rollbackComponents(reasonHelperMismatch), false
+	}
 	if to := r.st.Txn.ComponentsTo; r.e.linkID(linkKnownGood) != to {
 		if err := r.e.switchComponentLink(linkKnownGood, to); err != nil {
-			return codeIOError
+			return codeIOError, false
 		}
 	}
-	return r.commitComponents()
+	if code := r.commitComponents(); code != "" {
+		return code, false
+	}
+	return "", true
 }
 
 // commitComponents is the commit point of the components (row c5): both links
-// name the new set. daemon-reload makes systemd read the recover unit of the
-// new set (D2); when it fails the loaded text stays until the next reload or
-// boot, and the commit is still right, because the disk is the truth.
+// name the new set, and the caller compared it with the staged set (A22). The
+// reference hash is the set hash that was compared, not a second read of the
+// disk: a file that changes after the comparison is found by the next
+// comparison with the reference (E2, E5), never recorded as good.
+// daemon-reload makes systemd read the recover unit of the new set (D2); when
+// it fails the loaded text stays until the next reload or boot, and the commit
+// is still right, because the disk is the truth.
 func (r *txnRun) commitComponents() errorCode {
 	h, e := r.h, r.e
 	t := &r.st.Txn
 	h.systemctl(sysDaemonReload...)
-	d, err := e.setDigests(componentPath(t.ComponentsTo))
-	if err != nil {
-		return codeIOError
-	}
-	t.KnownGoodSHA256, t.KnownGoodID = setDigest(d), t.ComponentsTo
+	t.KnownGoodSHA256, t.KnownGoodID = t.ComponentsSetSHA256, t.ComponentsTo
 	t.Phase, t.ComponentsUpdated = phaseCCommitted, true
 	if t.ComponentsFrom != t.ComponentsTo {
 		r.st.ComponentsPrevious = t.ComponentsFrom
@@ -392,6 +413,9 @@ func (r *txnRun) releasePhases() {
 // transaction with components_rolled_back. A damaged rollback target is never
 // switched to (E5): when the set differs or cannot be read, the transaction
 // ends in rollback_failed and nothing else is touched, not even daemon-reload.
+// The set that is rolled back is never the target (A22): when known-good names
+// it (the comparison failed after known-good moved, row c5), known-good is
+// first made to name the set it named before the transaction.
 // The release was never activated, so its directory and the new set are
 // removed. In a serve process the helper then hands back when it is not the
 // binary that active names.
@@ -411,10 +435,20 @@ func (r *txnRun) rollbackComponents(reason string) errorCode {
 		r.log(phaseCRollingBack, "ok")
 	}
 	t := r.st.Txn
+	k := e.linkID(linkKnownGood)
+	if k != "" && k == t.ComponentsTo && t.ComponentsFrom != k {
+		if !validVersion(t.ComponentsFrom) {
+			r.rollbackFailed(reasonKnownGoodDamaged)
+			return ""
+		}
+		if err := e.switchComponentLink(linkKnownGood, t.ComponentsFrom); err != nil {
+			return codeIOError // the intent stays; the next start repeats this
+		}
+		k = t.ComponentsFrom
+	}
 	// E5: the target is compared before active may name it (P1: only when the
 	// reference names the set that known-good names; an unreadable link or set
 	// counts as damaged).
-	k := e.linkID(linkKnownGood)
 	if ok, _ := e.knownGood(r.st, false); k == "" || !ok {
 		r.rollbackFailed(reasonKnownGoodDamaged)
 		return ""
@@ -491,13 +525,18 @@ func (r *txnRun) recoverComponents(installed string) errorCode {
 		if reason := r.selfCheck(); reason != "" {
 			return r.rollbackComponents(reason)
 		}
-		if code := r.verifyComponents(); code != "" {
+		if code, committed := r.verifyComponents(); !committed {
 			return code
 		}
 	case phaseCVerified:
 		switch {
 		case a == t.ComponentsTo && k == t.ComponentsTo:
-			// Row c5: the disk is the truth.
+			// Row c5: the disk is the truth, once the set is still the one
+			// that was staged (A22); otherwise it is rolled back, and known-good
+			// goes back first.
+			if !r.stagedSetIntact() {
+				return r.rollbackComponents(reasonHelperMismatch)
+			}
 			if code := r.commitComponents(); code != "" {
 				return code
 			}
@@ -505,7 +544,7 @@ func (r *txnRun) recoverComponents(installed string) errorCode {
 			if reason := r.selfCheck(); reason != "" {
 				return r.rollbackComponents(reason)
 			}
-			if code := r.verifyComponents(); code != "" {
+			if code, committed := r.verifyComponents(); !committed {
 				return code
 			}
 		default:
