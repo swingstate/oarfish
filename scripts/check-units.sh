@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # The three update-helper units must keep the directives that ADR 0010 gives them
 # (U2 socket lines, U10 sandbox, amendment A1) and must not gain forbidden ones.
+# The two privilege-broker units (ADR 0011 B8, A3 P-B8-1, G7.2) must keep every
+# line of B8 and must not gain one that loosens it.
 # This checks the text of the repository files; systemd-analyze verify (CI) checks
 # that systemd accepts them.
 #
@@ -23,11 +25,18 @@
 # ordered Before= the helper socket, and the default After=basic.target of a service
 # would make an ordering cycle through sockets.target (scripts/verify-units.sh
 # verifies the boot transaction; this check keeps the text that avoids the cycle).
+# The broker service has no [Install] section and no writable path, directory,
+# Before= or OnFailure= (B8: the broker writes no file and needs no recovery), and
+# no IPAddressAllow= (B8: no network at all). The broker socket has no ordering
+# (After=, Before=) at all: B8 gives it the default dependencies only, so that no
+# chain through sockets.target can form (the A14 situation).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ROOT="$(repo_root)"
 
-UNITS="oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service"
+UNITS="oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service oarfish-broker.socket oarfish-broker.service"
+BROKER_SERVICE_FORBIDDEN="ReadWritePaths ReadOnlyPaths StateDirectory RuntimeDirectory CacheDirectory LogsDirectory ConfigurationDirectory Before OnFailure IPAddressAllow"
+BROKER_SOCKET_FORBIDDEN="After Before"
 FORBIDDEN_KEYS="Requires Requisite BindsTo PartOf Wants Upholds Conflicts Environment EnvironmentFile PassEnvironment ExecStartPre ExecStartPost ExecStop ExecStopPost ExecReload ExecCondition SupplementaryGroups"
 RECOVER_BEFORE='Unit|Before=oarfish-update-helper.socket oarfish.service'
 
@@ -102,6 +111,61 @@ Service|RuntimeMaxSec=900
 EOF
       sandbox
       ;;
+    oarfish-broker.socket)
+      cat <<'EOF2'
+Unit|Description=Oarfish privilege broker socket
+Socket|ListenStream=/run/oarfish-broker/broker.sock
+Socket|SocketUser=root
+Socket|SocketGroup=oarfish
+Socket|SocketMode=0660
+Socket|DirectoryMode=0755
+Socket|Accept=no
+Socket|Backlog=8
+Socket|RemoveOnStop=yes
+Install|WantedBy=sockets.target
+EOF2
+      ;;
+    oarfish-broker.service)
+      cat <<'EOF2'
+Unit|Description=Oarfish privilege broker
+Unit|After=oarfish-update-recover.service
+Service|Type=exec
+Service|ExecStart=/usr/libexec/oarfish-broker serve
+Service|Restart=no
+Service|RuntimeMaxSec=300
+Service|User=root
+Service|Group=root
+Service|UMask=0077
+Service|NoNewPrivileges=yes
+Service|CapabilityBoundingSet=
+Service|AmbientCapabilities=
+Service|ProtectSystem=strict
+Service|ProtectHome=yes
+Service|PrivateTmp=yes
+Service|PrivateDevices=yes
+Service|PrivateNetwork=yes
+Service|ProtectKernelTunables=yes
+Service|ProtectKernelModules=yes
+Service|ProtectKernelLogs=yes
+Service|ProtectControlGroups=yes
+Service|ProtectClock=yes
+Service|ProtectHostname=yes
+Service|ProtectProc=invisible
+Service|ProcSubset=pid
+Service|RestrictNamespaces=yes
+Service|RestrictRealtime=yes
+Service|RestrictSUIDSGID=yes
+Service|LockPersonality=yes
+Service|MemoryDenyWriteExecute=yes
+Service|RestrictAddressFamilies=AF_UNIX
+Service|IPAddressDeny=any
+Service|SystemCallArchitectures=native
+Service|SystemCallFilter=@system-service
+Service|SystemCallErrorNumber=EPERM
+Service|MemoryMax=32M
+Service|TasksMax=16
+EOF2
+      ;;
     oarfish-update-recover.service)
       echo "$RECOVER_BEFORE"
       cat <<'EOF'
@@ -152,6 +216,17 @@ check_unit() {
   case "$name" in
     oarfish-update-helper.service) grep -q '^Install|' <<<"$norm" && { echo "$name: must not have an [Install] section (socket-activated)"; bad=1; } ;;
     oarfish-update-recover.service) grep -qxF -- 'RemainAfterExit' <<<"$keys" && { echo "$name: forbidden directive RemainAfterExit="; bad=1; } ;;
+    oarfish-broker.service)
+      grep -q '^Install|' <<<"$norm" && { echo "$name: must not have an [Install] section (socket-activated)"; bad=1; }
+      for key in $BROKER_SERVICE_FORBIDDEN; do
+        if grep -qxF -- "$key" <<<"$keys"; then echo "$name: forbidden directive $key="; bad=1; fi
+      done
+      ;;
+    oarfish-broker.socket)
+      for key in $BROKER_SOCKET_FORBIDDEN; do
+        if grep -qxF -- "$key" <<<"$keys"; then echo "$name: forbidden directive $key="; bad=1; fi
+      done
+      ;;
   esac
 
   # oarfish.service as a token of any directive value. The one allowed place
@@ -187,7 +262,7 @@ self_test() {
       echo "self-test: NOT DETECTED: $2"; failed=1
     fi
   }
-  fresh() { rm -rf "$tmp/m"; mkdir "$tmp/m"; cp "$src"/oarfish-update-*.s* "$tmp/m/"; }
+  fresh() { rm -rf "$tmp/m"; mkdir "$tmp/m"; cp "$src"/oarfish-update-*.s* "$src"/oarfish-broker.s* "$tmp/m/"; }
   # Insert LINE after the header of SECTION in unit NAME of the mutant.
   insert() {
     awk -v sec="[$2]" -v add="$3" '{ print } $0 == sec { print add }' "$tmp/m/$1" > "$tmp/m/$1.new" && mv "$tmp/m/$1.new" "$tmp/m/$1"
@@ -224,6 +299,20 @@ self_test() {
   fresh; insert oarfish-update-recover.service Service 'RemainAfterExit=yes'; mutant oarfish-update-recover.service "recover unit with RemainAfterExit="
   fresh; sed 's/^Before=.*/Before=oarfish-update-helper.socket/' "$src/oarfish-update-recover.service" > "$tmp/m/oarfish-update-recover.service"; mutant oarfish-update-recover.service "recover unit without Before=oarfish.service"
   fresh; rm "$tmp/m/oarfish-update-helper.socket"; mutant oarfish-update-helper.socket "socket unit missing"
+  # The broker units (ADR 0011 B8).
+  for key in $BROKER_SERVICE_FORBIDDEN; do
+    fresh; insert oarfish-broker.service Service "$key=/var/lib/oarfish-update"; mutant oarfish-broker.service "broker service with $key="
+  done
+  for key in $BROKER_SOCKET_FORBIDDEN; do
+    fresh; insert oarfish-broker.socket Unit "$key=oarfish-update-recover.service"; mutant oarfish-broker.socket "broker socket with $key="
+  done
+  fresh; printf '[Install]\nWantedBy=multi-user.target\n' >> "$tmp/m/oarfish-broker.service"; mutant oarfish-broker.service "broker service with [Install]"
+  fresh; insert oarfish-broker.service Service 'CapabilityBoundingSet=CAP_SYS_BOOT'; mutant oarfish-broker.service "broker service: a capability after the empty set"
+  fresh; insert oarfish-broker.service Service 'AmbientCapabilities=CAP_SYS_ADMIN'; mutant oarfish-broker.service "broker service: an ambient capability"
+  fresh; insert oarfish-broker.service Service 'PrivateNetwork=no'; mutant oarfish-broker.service "broker service: PrivateNetwork=no after the required line"
+  fresh; insert oarfish-broker.service Service 'User=oarfish'; mutant oarfish-broker.service "broker service: a second User="
+  fresh; rm "$tmp/m/oarfish-broker.service"; mutant oarfish-broker.service "broker service missing"
+  fresh; rm "$tmp/m/oarfish-broker.socket"; mutant oarfish-broker.socket "broker socket missing"
 
   [ "$failed" -eq 0 ] || die "self-test: a mutation was not detected"
   echo "check-units self-test: $n mutations, every one detected"
@@ -236,8 +325,9 @@ main() {
       local dir="${1:-$ROOT/install}"
       if check_dir "$dir"; then
         echo "update-helper units OK: socket, service and recover unit keep their required directives and have no forbidden one"
+        echo "privilege-broker units OK: socket and service keep every line of ADR 0011 B8 and have no forbidden one"
       else
-        die "update-helper units: see the problems above"
+        die "update-helper or privilege-broker units: see the problems above"
       fi
       ;;
   esac

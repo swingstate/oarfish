@@ -308,6 +308,44 @@ jobs:
       - name: systemd-analyze verify (temporary root) and security (informational)
         run: scripts/verify-units.sh
 
+  # The privilege broker (ADR 0011, G7.2): a root program of its own, not in any
+  # release bundle yet (G7.3). The unit checks of the job above cover its two
+  # units since G7.2; this job adds the broker's own checks.
+  broker:
+    name: Privilege broker (not shipped)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+      # Vet for the host, linux/arm64 and linux/amd64; tests with the race
+      # detector (the import check, the shapes, B3 rules, the update check
+      # against a fake root, the socket and the re-executed serve process);
+      # two clean builds; two builds with different VERSION and COMMIT; the
+      # unit texts and their mutation test.
+      - name: make check-broker
+        run: make check-broker
+      # -v puts the names of the tests that take the Linux-only paths (SO_PEERCRED
+      # of a real connection, the serve process, a crash during an operation) into the log.
+      - name: Broker process tests (verbose)
+        working-directory: backend
+        run: go test -count=1 -v -run '^(TestServeProcess|TestServeWithoutUser|TestCrashDuringOperation|TestActivationRequired)$' ./cmd/oarfish-broker
+      - name: Fuzz the broker request decoder, show parser, unit-name rule and helper-state reader
+        working-directory: backend
+        run: |
+          for f in FuzzDecodeRequest FuzzParseShow FuzzUnitName FuzzHelperPhase; do
+            go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./cmd/oarfish-broker
+          done
+      # The boot-transaction check must fail on an ordering cycle through the
+      # broker socket (ADR 0011 B8, BF30 class C).
+      - name: The boot-transaction check fails on an injected ordering cycle
+        run: scripts/verify-units.sh --cycle-self-test
+
   # The installer and the real linux/arm64 binary in plain arm64 container images
   # under qemu-user. No systemd inside, so this is not a Raspberry Pi OS or Ubuntu
   # Server test; docs/INSTALL.md says what it does and does not cover.
