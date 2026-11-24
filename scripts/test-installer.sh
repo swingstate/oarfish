@@ -65,7 +65,9 @@ fi
 # start/restart writes it, unless the version that "current" points to is listed
 # in $state/unhealthy, in which case it is removed, as a service that fails to come up.
 # Like systemd (ADR 0010 A9, device observation), it refuses to start or restart the
-# helper socket while the helper service is active. A file $state/block-daemon-reload
+# helper socket or the broker socket while the socket's service is active. The broker
+# socket reports itself not active while components/active names a set id listed in
+# $state/broker-dead (a socket that came up and failed). A file $state/block-daemon-reload
 # makes daemon-reload wait (until $state/proceed exists) and announce itself with
 # $state/blocked, so a test can hold an installer run while it holds the lock.
 cat > "$TMP/shim/systemctl-stub" <<'EOF'
@@ -87,11 +89,16 @@ case "$cmd" in
   enable)     : > "$S/enabled$sfx" ;;
   disable)    rm -f "$S/enabled$sfx"
               case " $* " in *" --now "*) rm -f "$S/active$sfx"; [ -n "$sfx" ] || rm -f "$S/healthz" ;; esac ;;
-  is-active)  [ -f "$S/active$sfx" ] ;;
+  is-active)  [ -f "$S/active$sfx" ] || exit 1
+              if [ "$unit" = oarfish-broker.socket ] && [ -f "$S/broker-dead" ]; then
+                ! grep -qx "$(readlink "$FAKE_ROOT/opt/oarfish/components/active")" "$S/broker-dead"
+              fi ;;
   start|restart)
-              if [ "$unit" = oarfish-update-helper.socket ] && [ -f "$S/active.oarfish-update-helper.service" ]; then
-                echo "Socket service oarfish-update-helper.service already active, refusing." >&2; exit 1
-              fi
+              case $unit in oarfish-update-helper.socket|oarfish-broker.socket)
+                if [ -f "$S/active.${unit%.socket}.service" ]; then
+                  echo "Socket service ${unit%.socket}.service already active, refusing." >&2; exit 1
+                fi ;;
+              esac
               [ -f "$S/fail-start$sfx" ] && exit 1
               : > "$S/active$sfx"; [ -n "$sfx" ] || set_health ;;
   stop)       rm -f "$S/active$sfx"; [ -n "$sfx" ] || rm -f "$S/healthz" ;;
@@ -574,13 +581,16 @@ CV1=0.2.0-test.1; CV2=0.2.0-test.2; CV3=0.2.0-test.3
 UNITS3="oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service"
 BUNITS="oarfish-broker.service oarfish-broker.socket"   # the broker's units (ADR 0010 A20)
 
-# make_crelease DIR VERSION [HELPER_TAG] [SOCKET_COMMENT] [BROKER_TAG]: signed components release (throwaway key A).
+# make_crelease DIR VERSION [HELPER_TAG] [SOCKET_COMMENT] [BROKER_TAG] [BROKER_SERVICE_COMMENT] [BROKER_SOCKET_COMMENT]:
+# signed components release (throwaway key A). A comment changes the bytes of a unit, not its meaning.
 make_crelease() {
-  local dir="$1" ver="$2" tag="${3:-a}" sock="${4:-}" btag="${5:-a}" ud u
-  ud="$TMP/cunits-$ver-$tag-${sock:-none}-$btag"; mkdir -p "$dir" "$ud"
+  local dir="$1" ver="$2" tag="${3:-a}" sock="${4:-}" btag="${5:-a}" bsvc="${6:-}" bsock="${7:-}" ud u
+  ud="$TMP/cunits-$ver-$tag-${sock:-none}-$btag-${bsvc:-none}-${bsock:-none}"; mkdir -p "$dir" "$ud"
   fake_elf "$TMP/fake-oarfish" "$ver"; fake_elf "$TMP/fake-helper" "helper $tag"; fake_elf "$TMP/fake-broker" "broker $btag"
   for u in $UNITS3 $BUNITS; do cp "$ROOT/install/$u" "$ud/$u"; done
   [ -z "$sock" ] || printf '# %s\n' "$sock" >> "$ud/oarfish-update-helper.socket"
+  [ -z "$bsvc" ] || printf '# %s\n' "$bsvc" >> "$ud/oarfish-broker.service"
+  [ -z "$bsock" ] || printf '# %s\n' "$bsock" >> "$ud/oarfish-broker.socket"
   "$TMP/bundlegen" bundle -binary "$TMP/fake-oarfish" -license "$ROOT/LICENSE" \
     -notices "$ROOT/THIRD_PARTY_NOTICES.txt" -unit "$ROOT/install/oarfish.service" \
     -version "$ver" -commit "$COMMIT" -epoch 1700000000 -out "$dir" \
@@ -594,11 +604,14 @@ make_crelease() {
 
 echo "== components shape: setup"
 CREL1="$TMP/rel/c1"; CREL2="$TMP/rel/c2"; CREL3="$TMP/rel/c3"; CREL3S="$TMP/rel/c3s"; CREL3B="$TMP/rel/c3b"
+CREL3BS="$TMP/rel/c3bs"; CREL3BK="$TMP/rel/c3bk"
 make_crelease "$CREL1" "$CV1" a
 make_crelease "$CREL2" "$CV2" a                 # same helper bytes as c1
 make_crelease "$CREL3" "$CV3" b                 # different helper bytes
 make_crelease "$CREL3S" "$CV3" a socket-text-changed   # same helper, different socket text
 make_crelease "$CREL3B" "$CV3" a "" b           # same helper and units, different broker bytes
+make_crelease "$CREL3BS" "$CV3" a "" a broker-service-text-changed   # only the broker service text differs
+make_crelease "$CREL3BK" "$CV3" a "" a "" broker-socket-text-changed # only the broker socket text differs
 make_installer "$CV1" "$TMP/inst-c1.sh"; make_installer "$CV2" "$TMP/inst-c2.sh"; make_installer "$CV3" "$TMP/inst-c3.sh"
 tar -tzf "$CREL1/oarfish_${CV1}_linux_arm64.tar.gz" | sed 's#^[^/]*/##' | grep -v '^$' | LC_ALL=C sort | tr '\n' ' ' > "$TMP/c1-entries"
 [ "$(cat "$TMP/c1-entries")" = "LICENSE THIRD_PARTY_NOTICES.txt oarfish oarfish-broker oarfish-broker.service oarfish-broker.socket oarfish-update-helper oarfish-update-helper.service oarfish-update-helper.socket oarfish-update-recover.service oarfish.service " ] \
@@ -743,20 +756,28 @@ pass "the new component set holds exactly the seven files"
 assert "the helper in components/<id> equals the bundle's helper" cmp -s "$R/opt/oarfish/components/$CV1/oarfish-update-helper" "$TMP/fake-helper"
 for u in $BUNITS; do cmp -s "$R/opt/oarfish/components/$CV1/$u" "$ROOT/install/$u" || fail "$u in components/<id> is not the repository's"; done
 pass "the broker units in components/<id> are the bytes of install/"
-# The seam of G7.3a: the broker's files are stored and nothing links, enables or starts them (G7.3b adds the links).
-for l in usr/libexec/oarfish-broker etc/systemd/system/oarfish-broker.socket etc/systemd/system/oarfish-broker.service \
-  etc/systemd/system/sockets.target.wants/oarfish-broker.socket etc/systemd/system/multi-user.target.wants/oarfish-broker.service; do
-  [ ! -e "$R/$l" ] && [ ! -L "$R/$l" ] || fail "G7.3a must not create $l"
+# G7.3b replaces the seam of G7.3a ("stores the broker files and links nothing"): the broker is linked like the helper.
+link_is "$R/usr/libexec/oarfish-broker" "/opt/oarfish/components/active/oarfish-broker" || fail "broker libexec link"
+link_is "$R/etc/systemd/system/oarfish-broker.socket" "/opt/oarfish/components/active/oarfish-broker.socket" || fail "broker socket link"
+link_is "$R/etc/systemd/system/oarfish-broker.service" "/opt/oarfish/components/active/oarfish-broker.service" || fail "broker service link"
+link_is "$R/etc/systemd/system/sockets.target.wants/oarfish-broker.socket" "../oarfish-broker.socket" || fail "broker socket wants link"
+pass "the broker link, its two unit links (into components/active) and the relative wants link of its socket have the exact targets (P1, P2)"
+for l in usr/libexec/oarfish-broker etc/systemd/system/oarfish-broker.socket etc/systemd/system/oarfish-broker.service etc/systemd/system/sockets.target.wants/oarfish-broker.socket; do
+  resolve "$R" "$R/$l" >/dev/null || fail "$l does not resolve"
 done
-grep -q oarfish-broker "$CALLS" && fail "a systemctl call names the broker: $(calls_of "$R")"
-# (install_release copies the whole bundle tree into releases/<version>, as for the helper files since G6.3b.)
-[ -z "$(find "$R" -name 'oarfish-broker*' ! -path "$R/opt/oarfish/*")" ] || fail "a broker file exists outside /opt/oarfish: $(find "$R" -name 'oarfish-broker*')"
-pass "G7.3a stores the broker files and links nothing; G7.3b adds the links (no link, no wants link, no systemctl call)"
+cmp -s "$(resolve "$R" "$R/usr/libexec/oarfish-broker")" "$TMP/fake-broker" || fail "the broker link does not reach the bundle's broker"
+cmp -s "$(resolve "$R" "$R/etc/systemd/system/sockets.target.wants/oarfish-broker.socket")" "$ROOT/install/oarfish-broker.socket" || fail "the broker wants link does not reach the socket unit"
+pass "the four broker links resolve to the bytes of the bundle"
+[ -z "$(find "$R/etc/systemd/system" -name 'oarfish-broker.service' -path '*.wants/*')" ] || fail "the broker service has a wants link"
+grep -qE '^(enable|start|restart) oarfish-broker.service' "$CALLS" && fail "the broker service was enabled or started: $(calls_of "$R")"
+assert "the stub's broker service is neither active nor enabled" test ! -e "$(state_of "$R")/active.oarfish-broker.service" -a ! -e "$(state_of "$R")/enabled.oarfish-broker.service"
+assert "the stub's broker socket is active" test -e "$(state_of "$R")/active.oarfish-broker.socket"
+pass "only the broker socket is enabled (wants link) and started; the broker service has no wants link and was not started (P2, P3)"
 assert "an extra component directory was not created" test "$(find "$R/opt/oarfish/components" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = 3
 assert "no staging or temp leftovers" no_leftovers "$R"
-[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;restart oarfish.service;" ] \
+[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;stop oarfish-broker.service;restart oarfish-broker.socket;restart oarfish.service;" ] \
   || fail "unexpected systemctl calls on a fresh installation: $(calls_of "$R")"
-pass "systemctl calls (fresh): daemon-reload; stop helper service; restart helper socket; restart oarfish.service"
+pass "systemctl calls (fresh): daemon-reload; stop helper service; restart helper socket; broker socket not active: stop broker service, restart broker socket; restart oarfish.service"
 grep -qE '^(enable|disable|is-enabled)' "$CALLS" && fail "systemctl enable was used"
 pass "no enable call: the wants links enable the units"
 grep -qE 'oarfish-update-recover' "$CALLS" && fail "the recover unit was started"
@@ -770,13 +791,14 @@ snapshot "$R" > "$TMP/snap2"
 cmp -s "$TMP/snap1" "$TMP/snap2" || { diff "$TMP/snap1" "$TMP/snap2" || true; fail "the re-run changed the installation"; }
 pass "re-run changed nothing (files, modes, inodes, link targets)"
 grep -qE '^(restart|start|stop|enable|disable|daemon-reload)' "$CALLS" && fail "the re-run issued: $(calls_of "$R")"
-pass "re-run restarted, stopped, enabled and reloaded nothing (calls: $(calls_of "$R"))"
+[ "$(calls_of "$R")" = "is-active --quiet oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;is-active --quiet oarfish.service;" ] || fail "re-run calls: $(calls_of "$R")"
+pass "re-run restarted, stopped, enabled and reloaded nothing, the broker socket included (calls: $(calls_of "$R"))"
 out_has "nothing to restart" || fail "re-run output"
 
 echo "== components shape: a helper stopped from the stub makes a second run restart the socket"
 rm -f "$(state_of "$R")/active.oarfish-update-helper.socket"; : > "$CALLS"
 expect_ok "re-run with the helper socket not active" "$R" "$TMP/inst-c1.sh" "$CREL1"
-[ "$(calls_of "$R")" = "is-active --quiet oarfish-update-helper.socket;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish.service;" ] \
+[ "$(calls_of "$R")" = "is-active --quiet oarfish-update-helper.socket;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;is-active --quiet oarfish.service;" ] \
   || fail "unexpected calls for an inactive socket: $(calls_of "$R")"
 pass "an inactive socket is started again (stop service, restart socket), oarfish.service untouched: $(calls_of "$R")"
 
@@ -786,7 +808,7 @@ expect_ok "upgrade c1 -> c2 (same helper and units)" "$R" "$TMP/inst-c2.sh" "$CR
 link_is "$R/opt/oarfish/current" "releases/$CV2" || fail "current"
 link_is "$R/opt/oarfish/components/active" "$CV1" && link_is "$R/opt/oarfish/components/known-good" "$CV1" || fail "active must stay"
 assert "no components/$CV2 directory" test ! -e "$R/opt/oarfish/components/$CV2"
-[ "$(calls_of "$R")" = "is-active --quiet oarfish-update-helper.socket;restart oarfish.service;" ] || fail "calls: $(calls_of "$R")"
+[ "$(calls_of "$R")" = "is-active --quiet oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;restart oarfish.service;" ] || fail "calls: $(calls_of "$R")"
 pass "identical helper bytes: active stays on $CV1, only oarfish.service restarts (calls: $(calls_of "$R"))"
 
 echo "== components shape: upgrade with different helper bytes, health passes"
@@ -795,9 +817,9 @@ INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_ok "upgrade c2 -> c3 (n
 assert "a new component set components/$CV3 exists" test -x "$R/opt/oarfish/components/$CV3/oarfish-update-helper"
 link_is "$R/opt/oarfish/components/active" "$CV3" && link_is "$R/opt/oarfish/components/known-good" "$CV3" || fail "active and known-good after a healthy upgrade"
 assert "the old component set is kept" test -x "$R/opt/oarfish/components/$CV1/oarfish-update-helper"
-[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;restart oarfish.service;is-active --quiet oarfish.service;is-active --quiet oarfish-update-helper.socket;" ] \
+[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;restart oarfish.service;is-active --quiet oarfish.service;is-active --quiet oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;" ] \
   || fail "unexpected calls for an upgrade with new helper bytes: $(calls_of "$R")"
-pass "systemctl calls (upgrade, new helper bytes): daemon-reload; stop service; restart socket; restart oarfish; health needs oarfish.service and the socket active"
+pass "systemctl calls (upgrade, new helper bytes): daemon-reload; stop service; restart socket; restart oarfish; health needs oarfish.service, the helper socket and the broker socket active (P4)"
 pass "the socket restart was accepted because the stub's helper service had been stopped first (the stub refuses otherwise, as systemd does, A9)"
 echo "-- layout after the upgrade --"; print_layout "$R"
 
@@ -818,8 +840,9 @@ cmp -s "$R/opt/oarfish/components/$CV3/oarfish-update-helper" "$R/opt/oarfish/co
 cmp -s "$R/opt/oarfish/components/$CV3/oarfish-broker" "$R/opt/oarfish/components/$CV1/oarfish-broker" && fail "the broker bytes did not change"
 grep -qx "restart oarfish-update-helper.socket" "$ST/calls.log" && fail "the helper socket was restarted: $(calls_of "$R")"
 grep -qx "stop oarfish-update-helper.service" "$ST/calls.log" && fail "the helper service was stopped: $(calls_of "$R")"
-grep -q oarfish-broker "$ST/calls.log" && fail "a systemctl call names the broker: $(calls_of "$R")"
-pass "a broker-only difference: new set $CV3, active and known-good moved, the helper socket not restarted (calls: $(calls_of "$R"))"
+grep -qE '^(stop|start|restart) oarfish-broker' "$ST/calls.log" && fail "the broker socket or service was restarted: $(calls_of "$R")"
+[ "$(calls_of "$R")" = "daemon-reload;is-active --quiet oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;restart oarfish.service;" ] || fail "calls: $(calls_of "$R")"
+pass "a broker-binary difference: new set $CV3, active and known-good moved, neither the helper socket nor the broker socket restarted (calls: $(calls_of "$R"))"
 snapshot "$R" > "$TMP/snap-b1"; : > "$ST/calls.log"
 expect_ok "the same broker-only release again" "$R" "$TMP/inst-c3.sh" "$CREL3B"
 cmp -s "$TMP/snap-b1" <(snapshot "$R") || fail "the second run changed the installation"
@@ -843,17 +866,17 @@ link_is "$R/opt/oarfish/components/active" "$CV1" || fail "components/active mus
 link_is "$R/opt/oarfish/components/known-good" "$CV1" || fail "known-good must not have moved"
 pass "rollback: current and components/active are back on $CV1, known-good never moved"
 assert "the layout created in this run stays (components/$CV3 kept)" test -x "$R/opt/oarfish/components/$CV3/oarfish-update-helper"
-[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;restart oarfish.service;daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;reset-failed oarfish.service;restart oarfish.service;is-active --quiet oarfish.service;is-active --quiet oarfish-update-helper.socket;" ] \
+[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;restart oarfish.service;daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;reset-failed oarfish.service;restart oarfish.service;is-active --quiet oarfish.service;is-active --quiet oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;" ] \
   || fail "unexpected calls for the rollback: $(calls_of "$R")"
 pass "systemctl calls (rollback): daemon-reload; stop service; restart socket; reset-failed; restart oarfish; health on the restored release"
 
 echo "== components shape: first installation whose health check fails"
 R="$(new_root)"; ST="$(state_of "$R")"; echo "$CV1" > "$ST/unhealthy"
 INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "first components installation never becomes healthy" "stopped and disabled" "$R" "$TMP/inst-c1.sh" "$CREL1"
-for c in "disable --now oarfish.service" "disable --now oarfish-update-helper.socket" "disable oarfish-update-recover.service"; do
+for c in "disable --now oarfish.service" "disable --now oarfish-update-helper.socket" "disable oarfish-update-recover.service" "disable --now oarfish-broker.socket" "stop oarfish-broker.service"; do
   grep -qx "$c" "$ST/calls.log" || fail "missing call: $c (calls: $(tr '\n' ';' < "$ST/calls.log"))"
 done
-pass "oarfish.service, the helper socket and the recover unit were disabled"
+pass "oarfish.service, the helper socket, the recover unit and the broker socket were disabled, the broker service stopped (P4)"
 assert "the files and links are kept" test -x "$R/opt/oarfish/releases/$CV1/oarfish" -a -L "$R/opt/oarfish/components/active" -a -L "$R/etc/systemd/system/oarfish.service"
 assert "the lock is free after a failed run" lock_is_free "$R/var/lib/oarfish-update"
 
@@ -882,7 +905,7 @@ make_crelease "$TMP/rel/cv1" "$V1" a; make_installer "$V1" "$TMP/inst-cv1.sh"
 expect_ok "legacy install of $V1" "$R" "$TMP/inst-v1.sh" "$REL1"; : > "$ST/calls.log"
 expect_ok "components release with the same version" "$R" "$TMP/inst-cv1.sh" "$TMP/rel/cv1"
 link_is "$R/opt/oarfish/components/active" "$V1" && link_is "$R/etc/systemd/system/oarfish.service" "/opt/oarfish/current/oarfish.service" || fail "layout not created"
-[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish.service;" ] || fail "calls: $(calls_of "$R")"
+[ "$(calls_of "$R")" = "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;stop oarfish-broker.service;restart oarfish-broker.socket;is-active --quiet oarfish.service;" ] || fail "calls: $(calls_of "$R")"
 pass "same version: the layout is created, oarfish.service is not restarted (calls: $(calls_of "$R"))"
 
 echo "== components shape: the socket text changed, the helper did not"
@@ -892,6 +915,119 @@ expect_ok "upgrade to a release whose socket unit text differs" "$R" "$TMP/inst-
 link_is "$R/opt/oarfish/components/active" "$CV3" || fail "a changed socket unit is a new component set"
 grep -qx "restart oarfish-update-helper.socket" "$ST/calls.log" && grep -qx "stop oarfish-update-helper.service" "$ST/calls.log" || fail "the socket must be restarted: $(calls_of "$R")"
 pass "a changed socket text alone makes the installer stop the helper service and restart the socket"
+
+echo "== components shape (G7.3b): a release that differs only in the broker service text (P3)"
+R="$(new_root)"; ST="$(state_of "$R")"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"; : > "$ST/calls.log"
+expect_ok "upgrade to a release whose oarfish-broker.service text differs" "$R" "$TMP/inst-c3.sh" "$CREL3BS"
+link_is "$R/opt/oarfish/components/active" "$CV3" && link_is "$R/opt/oarfish/components/known-good" "$CV3" || fail "a changed broker service is a new component set"
+cmp -s "$R/opt/oarfish/components/$CV3/oarfish-broker.service" "$R/opt/oarfish/components/$CV1/oarfish-broker.service" && fail "the broker service bytes did not change"
+[ "$(calls_of "$R")" = "daemon-reload;is-active --quiet oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;restart oarfish.service;" ] || fail "calls: $(calls_of "$R")"
+pass "a broker-service difference: new set $CV3, active moved, one daemon-reload, neither socket restarted (calls: $(calls_of "$R"))"
+
+echo "== components shape (G7.3b): a release that differs in the broker socket text (P3)"
+R="$(new_root)"; ST="$(state_of "$R")"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"; : > "$ST/calls.log"
+: > "$ST/active.oarfish-broker.service"   # a broker is running: the stub refuses a socket restart until it is stopped (A9)
+expect_ok "upgrade to a release whose oarfish-broker.socket text differs, the broker service is running" "$R" "$TMP/inst-c3.sh" "$CREL3BK"
+link_is "$R/opt/oarfish/components/active" "$CV3" || fail "a changed broker socket is a new component set"
+[ "$(calls_of "$R")" = "daemon-reload;is-active --quiet oarfish-update-helper.socket;stop oarfish-broker.service;restart oarfish-broker.socket;restart oarfish.service;" ] || fail "calls: $(calls_of "$R")"
+out_has "broker socket (re)started" || fail "the output does not say that the broker socket was restarted"
+pass "a changed broker socket text: stop the broker service, then restart the broker socket; the helper socket untouched (calls: $(calls_of "$R"))"
+
+echo "== components shape (G7.3b): the bootstrap of a device with a four-file helper set (P6)"
+# four_file_layout ROOT: turn a c1 installation into the layout of a device of before A20 (v0.1.0-alpha.12):
+# a four-file set in active and known-good, no broker link, unit link, wants link or socket.
+four_file_layout() {
+  local r="$1" st f; st="$(state_of "$r")"
+  for f in oarfish-broker oarfish-broker.socket oarfish-broker.service; do rm -f "$r/opt/oarfish/components/$CV1/$f" "$r/opt/oarfish/releases/$CV1/$f"; done
+  rm -f "$r/usr/libexec/oarfish-broker" "$r/etc/systemd/system/oarfish-broker.socket" "$r/etc/systemd/system/oarfish-broker.service" "$r/etc/systemd/system/sockets.target.wants/oarfish-broker.socket"
+  rm -f "$st/active.oarfish-broker.socket"; : > "$st/calls.log"
+  [ "$(find "$r/opt/oarfish/components/$CV1" -mindepth 1 | wc -l | tr -d ' ')" = 4 ] || fail "the fixture is not a four-file set"
+}
+R="$(new_root)"; ST="$(state_of "$R")"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_ok "install c1 with the health check on (made a four-file layout below)" "$R" "$TMP/inst-c1.sh" "$CREL1"
+four_file_layout "$R"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_ok "the bootstrap: c2 over a four-file layout" "$R" "$TMP/inst-c2.sh" "$CREL2"
+[ "$(find "$R/opt/oarfish/components/$CV2" -mindepth 1 | wc -l | tr -d ' ')" = 7 ] || fail "the new set does not hold seven files"
+link_is "$R/opt/oarfish/components/active" "$CV2" && link_is "$R/opt/oarfish/components/known-good" "$CV2" || fail "active and known-good after the bootstrap"
+link_is "$R/usr/libexec/oarfish-broker" "/opt/oarfish/components/active/oarfish-broker" && link_is "$R/etc/systemd/system/oarfish-broker.socket" "/opt/oarfish/components/active/oarfish-broker.socket" \
+  && link_is "$R/etc/systemd/system/oarfish-broker.service" "/opt/oarfish/components/active/oarfish-broker.service" && link_is "$R/etc/systemd/system/sockets.target.wants/oarfish-broker.socket" "../oarfish-broker.socket" \
+  || fail "the broker layout was not created"
+[ "$(calls_of "$R")" = "daemon-reload;is-active --quiet oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;stop oarfish-broker.service;restart oarfish-broker.socket;restart oarfish.service;is-active --quiet oarfish.service;is-active --quiet oarfish-update-helper.socket;is-active --quiet oarfish-broker.socket;" ] \
+  || fail "calls: $(calls_of "$R")"
+[ "$(line_of "components/active -> $CV2" "$TMP/out")" -lt "$(line_of '^    healthy$' "$TMP/out")" ] && [ "$(line_of '^    healthy$' "$TMP/out")" -lt "$(line_of "components/known-good -> $CV2" "$TMP/out")" ] \
+  || fail "the order active, health check, known-good is not kept"
+pass "bootstrap: the seven-file set is stored, active moves, the broker is linked and its socket started, known-good moves only after the health check (calls: $(calls_of "$R"))"
+
+R="$(new_root)"; ST="$(state_of "$R")"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_ok "install c1 with the health check on (made a four-file layout below)" "$R" "$TMP/inst-c1.sh" "$CREL1"
+four_file_layout "$R"; echo "$CV2" > "$ST/broker-dead"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "a bootstrap whose broker socket is not active is rolled back" "previous version $CV1 is active again and healthy" "$R" "$TMP/inst-c2.sh" "$CREL2"
+link_is "$R/opt/oarfish/current" "releases/$CV1" && link_is "$R/opt/oarfish/components/active" "$CV1" && link_is "$R/opt/oarfish/components/known-good" "$CV1" || fail "the rollback did not restore current and active, or known-good moved"
+calls_of "$R" | grep -q "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;stop oarfish-broker.socket;stop oarfish-broker.service;reset-failed oarfish.service;restart oarfish.service;" \
+  || fail "rollback calls: $(calls_of "$R")"
+assert "the broker socket is stopped after the rollback to a set without the broker" test ! -e "$ST/active.oarfish-broker.socket"
+grep -c '^is-active --quiet oarfish-broker.socket' "$ST/calls.log" | grep -qx 3 || fail "the restored release's health check must not ask for the broker socket: $(calls_of "$R")"
+pass "rollback to the four-file set: the broker socket and service are stopped, and the health check of the restored set does not require the broker (P4)"
+
+echo "== components shape (G7.3b): the broker socket fails to start or is not active (P3, P4)"
+R="$(new_root)"; ST="$(state_of "$R")"; : > "$ST/fail-start.oarfish-broker.socket"
+expect_reject "first installation, the broker socket fails to start" "could not (re)start oarfish-broker.socket" "$R" "$TMP/inst-c1.sh" "$CREL1"
+out_has "systemctl status oarfish-broker.socket oarfish-broker.service and journalctl -u oarfish-broker.socket" || fail "the message does not name the commands"
+grep -q '^restart oarfish.service' "$ST/calls.log" && fail "oarfish.service was started after the broker socket failed"
+assert "the lock is free after the failed run" lock_is_free "$R/var/lib/oarfish-update"
+R="$(new_root)"; ST="$(state_of "$R")"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"; : > "$ST/fail-start.oarfish-broker.socket"
+expect_reject "update with a changed broker socket text that fails to start" "could not (re)start oarfish-broker.socket" "$R" "$TMP/inst-c3.sh" "$CREL3BK"
+link_is "$R/opt/oarfish/components/known-good" "$CV1" || fail "known-good moved although the run failed"
+pass "a broker socket that fails to start ends the run with the commands to look at, before oarfish.service is restarted, as for the helper socket; known-good stays"
+R="$(new_root)"; ST="$(state_of "$R")"; echo "$CV1" > "$ST/broker-dead"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "first installation, the broker socket is not active at the health check" "helper or broker socket is not active" "$R" "$TMP/inst-c1.sh" "$CREL1"
+for c in "disable --now oarfish-broker.socket" "stop oarfish-broker.service" "disable --now oarfish-update-helper.socket" "disable --now oarfish.service"; do
+  grep -qx "$c" "$ST/calls.log" || fail "missing call: $c (calls: $(calls_of "$R"))"
+done
+pass "first installation with an inactive broker socket: everything is stopped and disabled, files and links kept (P4)"
+R="$(new_root)"; ST="$(state_of "$R")"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_ok "install c1 with the health check on" "$R" "$TMP/inst-c1.sh" "$CREL1"
+echo "$CV3" > "$ST/broker-dead"; : > "$ST/calls.log"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "update whose new broker socket is not active is rolled back" "previous version $CV1 is active again and healthy" "$R" "$TMP/inst-c3.sh" "$CREL3BK"
+link_is "$R/opt/oarfish/components/active" "$CV1" && link_is "$R/opt/oarfish/components/known-good" "$CV1" || fail "active must be restored, known-good must stay"
+calls_of "$R" | grep -q "daemon-reload;stop oarfish-update-helper.service;restart oarfish-update-helper.socket;stop oarfish-broker.service;restart oarfish-broker.socket;reset-failed oarfish.service;" \
+  || fail "the rollback must restart the broker socket with the restored text: $(calls_of "$R")"
+pass "update with an inactive broker socket: rolled back, active restored, the broker socket restarted from the restored set (P4)"
+: > "$ST/calls.log"; echo "$CV1" > "$ST/broker-dead"
+INST_HEALTHCHECK='' INST_ENV="$(HEALTH_ENV "$R")" expect_reject "a re-run without a version switch whose broker socket is not active" "or the broker socket is not active" "$R" "$TMP/inst-c1.sh" "$CREL1"
+out_lacks "rolling back" || fail "a run without a switch has nothing to roll back"
+rm -f "$ST/broker-dead"
+
+echo "== components shape (G7.3b): refusals at the four broker paths, before anything is changed"
+R="$(new_root)"
+expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"
+foreign_file() { echo foreign > "$1"; }
+foreign_link() { ln -s /opt/elsewhere/x "$1"; }
+refuse_at() { # refuse_at NAME PATTERN PATH MAKER: something foreign at PATH must be refused with exit 1 and change nothing
+  local p="$R/$3" orig; orig="$(readlink "$p")"; rm -f "$p"; "$4" "$p"
+  snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+  expect_reject "$1" "$2" "$R" "$TMP/inst-c3.sh" "$CREL3"; untouched "$R"
+  [ "$RC" = 1 ] || fail "[$N] $1: exit status $RC, expected 1"
+  rm -f "$p"; ln -s "$orig" "$p"
+}
+for b in oarfish-broker:usr/libexec oarfish-broker.socket:etc/systemd/system oarfish-broker.service:etc/systemd/system; do
+  f="${b%%:*}"; d="${b#*:}"
+  refuse_at "a foreign file at /$d/$f" "/$d/$f exists and is not a link to /opt/oarfish/components/active/$f (a foreign file). Nothing was changed." "$d/$f" foreign_file
+  refuse_at "a foreign link at /$d/$f" "/$d/$f is a link to '/opt/elsewhere/x', not to /opt/oarfish/components/active/$f. Nothing was changed." "$d/$f" foreign_link
+done
+refuse_at "a foreign file at the broker socket's wants link" "sockets.target.wants/oarfish-broker.socket exists and is not a symbolic link. Nothing was changed." etc/systemd/system/sockets.target.wants/oarfish-broker.socket foreign_file
+refuse_at "a foreign link at the broker socket's wants link" "sockets.target.wants/oarfish-broker.socket is a link to '/opt/elsewhere/x', not to oarfish-broker.socket. Nothing was changed." etc/systemd/system/sockets.target.wants/oarfish-broker.socket foreign_link
+pass "each of the four broker paths refuses a foreign file and a foreign link with exit status 1, and nothing changed (P1, P2)"
+rm "$R/etc/systemd/system/sockets.target.wants/oarfish-broker.socket"; ln -s /etc/systemd/system/oarfish-broker.socket "$R/etc/systemd/system/sockets.target.wants/oarfish-broker.socket"
+expect_ok "a wants link as systemctl enable writes it (absolute, naming the socket) is accepted" "$R" "$TMP/inst-c3.sh" "$CREL3"
+link_is "$R/etc/systemd/system/sockets.target.wants/oarfish-broker.socket" ../oarfish-broker.socket || fail "the absolute wants link was not replaced by the relative one"
+pass "an absolute wants link that names oarfish-broker.socket is replaced by the relative one (A5)"
+R="$(new_root)"; mkdir -p "$R/usr/libexec"; echo foreign > "$R/usr/libexec/oarfish-broker"; snapshot "$R" > "$TMP/roots/$(basename "$R").snap"
+expect_reject "a fresh device with a foreign /usr/libexec/oarfish-broker" "a foreign file" "$R" "$TMP/inst-c1.sh" "$CREL1"; untouched "$R"
+pass "on a fresh device the refusal comes before the state directory, the user or any link is created"
 
 echo "== components shape: refusals before anything is changed"
 R="$(new_root)"
@@ -1013,10 +1149,11 @@ pass "chown root:root was applied to the state directory, /usr/libexec, the comp
 echo "== components shape: dry run and uninstall"
 R="$(new_root)"
 expect_ok "dry run names the lock, the layout and the shape check" "$R" "$TMP/prod/install.sh" "$TMP/rel/empty" --dry-run
-for sx in "components" "legacy" "$R/var/lib/oarfish-update" "exclusive lock" "wants links" "known-good" "after the download" "the broker is stored only" "Dry run: nothing was downloaded or changed"; do
+for sx in "components" "legacy" "$R/var/lib/oarfish-update" "exclusive lock" "wants links" "known-good" "after the download" "$R/usr/libexec/oarfish-broker" "the broker socket" "service is neither enabled nor started" "Dry run: nothing was downloaded or changed"; do
   out_has "$sx" || fail "the dry run output lacks '$sx'"
 done
-untouched "$R"; pass "the plan lists the new steps and the dry run changed nothing"
+out_lacks "stored only" || fail "the plan still says that the broker is stored only"
+untouched "$R"; pass "the plan lists the new steps, the broker's links, socket and health check (P5), and the dry run changed nothing"
 R="$(new_root)"; ST="$(state_of "$R")"
 expect_ok "install c1" "$R" "$TMP/inst-c1.sh" "$CREL1"
 echo '{"keep":"me"}' > "$R/etc/oarfish/config.json"; echo state > "$R/var/lib/oarfish-update/state.json"
@@ -1024,31 +1161,42 @@ snapshot "$R" > "$TMP/snap-installed"
 expect_ok "uninstall dry run" "$R" "$TMP/inst-c1.sh" "$CREL1" --uninstall --dry-run
 cmp -s <(snapshot "$R") "$TMP/snap-installed" || fail "uninstall dry run changed something"
 out_has "$R/var/lib/oarfish-update" || fail "the uninstall plan does not name the lock directory"
-pass "uninstall --dry-run lists the helper layout and changes nothing"
+out_has "broker:        if present, stops and disables its socket and service" && out_has "$R/usr/libexec/oarfish-broker where they link" || fail "the uninstall plan does not describe the broker"
+pass "uninstall --dry-run lists the helper layout and the broker, and changes nothing"
 # a foreign regular file at a unit path and a foreign link are left alone and reported
 rm "$R/etc/systemd/system/oarfish-update-helper.service"; echo foreign > "$R/etc/systemd/system/oarfish-update-helper.service"
 rm "$R/usr/libexec/oarfish-update-helper"; ln -s /usr/bin/env "$R/usr/libexec/oarfish-update-helper"
 mkdir -p "$R/etc/systemd/system/oarfish.service.d"; echo '[Service]' > "$R/etc/systemd/system/oarfish.service.d/o.conf"
+rm "$R/etc/systemd/system/oarfish-broker.service"; echo foreign > "$R/etc/systemd/system/oarfish-broker.service"
+rm "$R/usr/libexec/oarfish-broker"; ln -s /usr/bin/env "$R/usr/libexec/oarfish-broker"
 : > "$ST/calls.log"
 expect_ok "uninstall of the components layout" "$R" "$TMP/inst-c1.sh" "$CREL1" --uninstall
 out_has "left $R/etc/systemd/system/oarfish-update-helper.service alone" || fail "the foreign file is not reported"
 out_has "left $R/usr/libexec/oarfish-update-helper alone" || fail "the foreign link is not reported"
 assert "the foreign regular file is still there" test -f "$R/etc/systemd/system/oarfish-update-helper.service" -a "$(cat "$R/etc/systemd/system/oarfish-update-helper.service")" = foreign
 assert "the foreign link is still there" link_is "$R/usr/libexec/oarfish-update-helper" /usr/bin/env
+out_has "left $R/etc/systemd/system/oarfish-broker.service alone: it is not a link into /opt/oarfish" || fail "the foreign broker unit is not reported"
+out_has "left $R/usr/libexec/oarfish-broker alone: it is a link to '/usr/bin/env'" || fail "the foreign broker link is not reported"
+assert "the foreign broker unit file is still there" test "$(cat "$R/etc/systemd/system/oarfish-broker.service")" = foreign
+assert "the foreign broker link is still there" link_is "$R/usr/libexec/oarfish-broker" /usr/bin/env
 assert "the drop-in directory is untouched" test -f "$R/etc/systemd/system/oarfish.service.d/o.conf"
 for l in etc/systemd/system/oarfish.service etc/systemd/system/oarfish-update-helper.socket etc/systemd/system/oarfish-update-recover.service \
-  etc/systemd/system/multi-user.target.wants/oarfish.service etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service; do
+  etc/systemd/system/multi-user.target.wants/oarfish.service etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service \
+  etc/systemd/system/oarfish-broker.socket etc/systemd/system/sockets.target.wants/oarfish-broker.socket; do
   [ ! -e "$R/$l" ] && [ ! -L "$R/$l" ] || fail "$l was not removed"
 done
-pass "the unit links and the three wants links into /opt/oarfish were removed"
+out_has "removed $R/etc/systemd/system/oarfish-broker.socket" && out_has "removed $R/etc/systemd/system/sockets.target.wants/oarfish-broker.socket" || fail "the removal of the broker links is not reported"
+pass "the unit links and the four wants links into /opt/oarfish were removed, the broker's included (P5)"
 assert "/opt/oarfish and the cache are gone" test ! -e "$R/opt/oarfish" -a ! -e "$R/var/cache/oarfish"
 assert "the state directory and configuration are kept without --purge" test -f "$R/var/lib/oarfish-update/state.json" -a -f "$R/etc/oarfish/config.json"
 out_has "kept the update state and lock directory" || fail "the message does not say that the state directory is kept"
-for c in "stop oarfish.service" "stop oarfish-update-helper.socket" "stop oarfish-update-helper.service" "stop oarfish-update-recover.service" "disable oarfish-update-helper.socket" "disable oarfish-update-recover.service"; do
+for c in "stop oarfish.service" "stop oarfish-update-helper.socket" "stop oarfish-update-helper.service" "stop oarfish-update-recover.service" "disable oarfish-update-helper.socket" "disable oarfish-update-recover.service" \
+  "stop oarfish-broker.socket" "disable oarfish-broker.socket" "stop oarfish-broker.service" "disable oarfish-broker.service"; do
   grep -qx "$c" "$ST/calls.log" || fail "missing call: $c (calls: $(tr '\n' ';' < "$ST/calls.log"))"
 done
-grep -qx daemon-reload "$ST/calls.log" || fail "no daemon-reload after removing the links"
-pass "uninstall stopped and disabled all four units and reloaded systemd"
+[ "$(grep -cx daemon-reload "$ST/calls.log")" = 1 ] || fail "uninstall must reload systemd exactly once: $(tr '\n' ';' < "$ST/calls.log")"
+[ "$(line_of '^stop oarfish-broker.socket' "$ST/calls.log")" -lt "$(line_of '^daemon-reload' "$ST/calls.log")" ] || fail "the broker units must be stopped before the reload"
+pass "uninstall stopped and disabled all six units, the broker socket and service included, then reloaded systemd once"
 assert "the lock is free after the uninstall" lock_is_free "$R/var/lib/oarfish-update"
 expect_ok "uninstall --purge" "$R" "$TMP/inst-c1.sh" "$CREL1" --uninstall --purge
 assert "purge removed the update state directory" test ! -e "$R/var/lib/oarfish-update" -a ! -e "$R/etc/oarfish" -a ! -e "$R/var/lib/oarfish"
@@ -1067,7 +1215,7 @@ R="$(new_root)"
 expect_ok "install c1 for the unit verification" "$R" "$TMP/inst-c1.sh" "$CREL1"
 if command -v systemd-analyze >/dev/null 2>&1; then
   "$ROOT/scripts/verify-units.sh" --installed "$R" || fail "systemd-analyze verify rejected the installed layout"
-  pass "systemd-analyze verify accepts oarfish.service and the three helper units as installed links"
+  pass "systemd-analyze verify accepts oarfish.service, the three helper units and the two broker units as installed links"
 else
   echo "SKIP  systemd-analyze is not available on this host; CI runs it (scripts/verify-units.sh --installed)"
 fi

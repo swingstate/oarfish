@@ -15,13 +15,12 @@
 #   no threshold applies.
 #   --cycle-self-test      mutation test of the boot-transaction check: an ordering
 #                          cycle through the broker socket (After=basic.target added to a
-#                          copy) must make the check fail. The broker units are not
-#                          installed by install.sh in G7.2, so --installed does not
-#                          name them.
-#   --installed FAKE_ROOT  verify the units as the installer links them (G6.3b): FAKE_ROOT
-#                          is a test root after a components-shape install. It is copied
-#                          (links stay links), the runner's base units are added, and
-#                          oarfish.service and the three helper units are verified by their
+#                          copy) must make the check fail.
+#   --installed FAKE_ROOT  verify the units as the installer links them (G6.3b, and the
+#                          broker's since G7.3b): FAKE_ROOT is a test root after a
+#                          components-shape install. It is copied (links stay links), the
+#                          runner's base units are added, and oarfish.service, the three
+#                          helper units and the two broker units are verified by their
 #                          paths in /etc/systemd/system, which are links into /opt/oarfish.
 #                          systemd-analyze opens ROOT/path on the host's file system, so an
 #                          absolute link target such as /opt/oarfish/current/oarfish.service
@@ -74,8 +73,8 @@ mkdir -p "$R/usr/lib/systemd"
 cp -R "$SYSTEM_UNITS" "$R/usr/lib/systemd/system"
 UNITS="oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service"
 BROKER_UNITS="oarfish-broker.socket oarfish-broker.service"
+UNITS="$UNITS $BROKER_UNITS"
 if [ -z "$INSTALLED" ]; then
-  UNITS="$UNITS $BROKER_UNITS"
   for u in $UNITS; do cp "$DIR/$u" "$R$UNITDIR/$u"; done
   # The recover unit is ordered before oarfish.service; give systemd the unit it names.
   cp "$ROOT/install/oarfish.service" "$R$UNITDIR/oarfish.service"
@@ -87,7 +86,7 @@ systemd-analyze --version | head -1
 # runs through basic.target, so this verifies multi-user.target with the units
 # enabled the way the installer enables them (wants links of the recover unit and
 # of the helper socket) and, for the broker, as B8 names it (the wants link of the
-# broker socket in sockets.target.wants; G7.3 makes the installer create it).
+# broker socket in sockets.target.wants, which the installer creates since G7.3b).
 # systemd breaks a cycle by deleting a job and only warns, so the output is
 # searched as well as the exit status (ADR 0010 A14, ADR 0011 B8).
 boot_check() { # root
@@ -129,7 +128,7 @@ if [ -n "$INSTALLED" ]; then
 fi
 systemd-analyze verify --root="$R" "${args[@]}"
 if [ -n "$INSTALLED" ]; then
-  echo "systemd-analyze verify: oarfish.service and the three update-helper units are accepted as installed links"
+  echo "systemd-analyze verify: oarfish.service, the three update-helper units and the two privilege-broker units are accepted as installed links"
   exit 0
 fi
 echo "systemd-analyze verify: the three update-helper units and the two privilege-broker units are accepted"

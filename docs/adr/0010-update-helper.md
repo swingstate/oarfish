@@ -23,7 +23,9 @@
 
 - Amendment A19 (G7.0, written 2026-11-23, `docs/DECISIONS.md` D-C87): a decision of intent for G7.3: the Privilege Broker of [ADR 0011](0011-privilege-broker.md) joins the component set, and the broker is a read-only reader of the helper's lock and of `phase`, listed in "Amendment A19 (G7.0, Privilege Broker)" below. It edits no accepted sentence in place except a pointer after the reason of U15 rule 2; nothing of it is implemented yet; the specification follows in version 0.4.3 (8.6).
 
-- Amendment A20 (G7.3a, written 2026-11-24, implements A19.1 under `docs/DECISIONS.md` D-C87 item 2 and applies D-C89 item 1): the broker's three files in the component set, the helper's lists, the lint forms of the two broker units, the reference hash over seven files, the twelve-entry bundle shape and the installer's store of the broker files, listed in "Amendment A20 (G7.3a)" below. It edits no accepted sentence in place except a pointer below the table of U2 and one at the end of A19.1. Its own choices S1 to S6 are proposals for the owner; no decision entry is written for them.
+- Amendment A20 (G7.3a, written 2026-11-24, implements A19.1 under `docs/DECISIONS.md` D-C87 item 2 and applies D-C89 item 1): the broker's three files in the component set, the helper's lists, the lint forms of the two broker units, the reference hash over seven files, the twelve-entry bundle shape and the installer's store of the broker files, listed in "Amendment A20 (G7.3a)" below. It edits no accepted sentence in place except a pointer below the table of U2 and one at the end of A19.1. Its own choices S1 to S6 are proposals for the owner; no decision entry is written for them. (Pointer, G7.3b: D-C90 decided S1 to S6 on 2026-11-24, as proposed.)
+
+- Amendment A21 (G7.3b, written 2026-11-24, under `docs/DECISIONS.md` D-C87 item 2 and D-C90): the installer links the broker, enables and starts its socket, checks it in the health check, rolls it back and removes it on uninstall; the bootstrap from a four-file set and the window between the moves of `active` and `known-good`, listed in "Amendment A21 (G7.3b)" below. It edits no accepted sentence in place except pointers in A20 (D-C90, A20.5, A20.8 and the open points); the specification is not changed.
 
 ## How to read this ADR
 
@@ -1389,7 +1391,7 @@ The accepted text is not rewritten; U14 got a pointer below its table. For every
 
 **Evidence.** Class C only (tests and CI against a fake root and a fake `systemctl`). Nothing in G7.3a touched a device; everything device-related is **not verified on a device**.
 
-**Labels.** "Fact" names the file it comes from. S1 to S6 are the baseline proposals of the gate prompt, implemented as written and listed for the owner in A20.10; they are **proposals** until the owner decides them.
+**Labels.** "Fact" names the file it comes from. S1 to S6 are the baseline proposals of the gate prompt, implemented as written and listed for the owner in A20.10; they are **proposals** until the owner decides them. (Pointer, G7.3b: D-C90 decided S1 to S6 on 2026-11-24, as proposed.)
 
 ### A20.1 The closed lists of U2
 
@@ -1400,7 +1402,7 @@ The accepted text is not rewritten; U14 got a pointer below its table. For every
   | Unit names | `oarfish.service`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish-broker.socket`, `oarfish-broker.service` |
   | Replaceable component files | `oarfish-update-helper`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish-broker`, `oarfish-broker.socket`, `oarfish-broker.service` (the first and the fifth are programs, the others are units); `oarfish.service` travels with the release (U15 rule 2) |
 
-- **The order (S2, proposal).** The list of compared files is `oarfish-update-helper`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish-broker`, `oarfish-broker.socket`, `oarfish-broker.service`, `oarfish.service`. The four names of before keep their relative order, and `oarfish.service` stays last, so a record of differing names (D6, `differs` in `state.json`) written by an older helper decodes unchanged. The order is the order of the reference hash (A20.3).
+- **The order (S2, proposal).** The list of compared files is `oarfish-update-helper`, `oarfish-update-helper.socket`, `oarfish-update-helper.service`, `oarfish-update-recover.service`, `oarfish-broker`, `oarfish-broker.socket`, `oarfish-broker.service`, `oarfish.service`. The four names of before keep their relative order, and `oarfish.service` stays last, so a record of differing names (D6, `differs` in `state.json`) written by an older helper decodes unchanged. The order is the order of the reference hash (A20.3). (Pointer, G7.3b: D-C90 decided S1 to S6 on 2026-11-24, as proposed.)
 - **The table in the code.** `componentSet` lists the seven files with one flag each: a program (compared by its digest only) or a unit text (linted, and hashed from the same bytes). Every place that counted four or five files works from that table: the comparison of stage, `setDigests` and `setDigest`, the second check at `activate`, the staging table, the record of D6, and the self-check and the hand-back (which name the helper binary, not an index). The broker binary is a second program and is never linted as a unit text.
 - **The staging table (`sinkTargets`).** `oarfish-broker`, `oarfish-broker.socket` and `oarfish-broker.service` go to `components/` below `.stage.<id>`, like the helper's four files.
 - **Write targets: unchanged.** The broker's files are written only inside `components/<id>` (and its staging directory), which the row already lists.
@@ -1479,13 +1481,13 @@ TasksMax=16
 
 ### A20.3 The reference hash (E2) over seven files
 
-**Proposal S3, implemented (`components.go`).** The reference hash of E2 and the set hash that `stage` records are the SHA-256 over the **seven** file digests (32 bytes each) of the set, concatenated in the order of A20.1, without `oarfish.service`, as 64 lowercase hexadecimal digits. `setDigest` gives no hash for a list of another length.
+**Proposal S3, implemented (`components.go`).** (Pointer, G7.3b: D-C90 decided S1 to S6 on 2026-11-24, as proposed.) The reference hash of E2 and the set hash that `stage` records are the SHA-256 over the **seven** file digests (32 bytes each) of the set, concatenated in the order of A20.1, without `oarfish.service`, as 64 lowercase hexadecimal digits. `setDigest` gives no hash for a list of another length.
 
 **No transaction spans a four-file and a seven-file set.** A device gets its first seven-file set from the installer (G7.3b, G7.6: one installer run per device, A19.1), never from a helper transaction. A helper of A20 therefore never accepts a set of the shape before A20 as a seven-file set: a set without the broker files cannot be read as a set (`components_damaged` when `active` or `known-good` names one; an I/O error at `activate` when a staged set lacks a file), and a reference hash or a staged set hash computed over four digests never equals one over seven (`components_damaged` at `stage`, `checksum_mismatch` at `activate`). `TestFourFileSetIsNotASevenFileSet` covers each case. One consequence (**fact**, `rollbackUnprovenSet`): when `state.json` is unreadable and `known-good` names a four-file set, the rebuild counts that set as damaged and switches nothing (E5). That state arises only inside an interrupted installer run of the transition (G7.3b); it is reported, not handled here.
 
 ### A20.4 The bundle shape, the compared files and `relverify.layout`
 
-**Proposal S1, implemented (`backend/internal/relverify/layout.go`, `scripts/bundlegen/components.go`, `install/install.sh`).** Exactly two shapes remain, counted as `check_bundle_entries` counts them (the directory entry included):
+**Proposal S1, implemented (`backend/internal/relverify/layout.go`, `scripts/bundlegen/components.go`, `install/install.sh`).** (Pointer, G7.3b: D-C90 decided S1 to S6 on 2026-11-24, as proposed.) Exactly two shapes remain, counted as `check_bundle_entries` counts them (the directory entry included):
 
 | Shape | Entries |
 |---|---|
@@ -1498,9 +1500,9 @@ The three programs must be ELF64 little-endian executables for machine 0xB7 (AAr
 
 ### A20.5 What the helper does with the broker's files, and the limit (S4)
 
-**Proposal S4, implemented.** The helper replaces the broker's files on disk with the component set; the links of the broker (G7.3b: `/usr/libexec/oarfish-broker` and the two unit links) are meant to name `components/active`, so they follow the active and known-good links. The helper starts, stops, restarts and enables no broker unit. `socket_restart_pending` (D4) stays a flag of the helper socket only.
+**Proposal S4, implemented.** (Pointer, G7.3b: D-C90 decided S1 to S6 on 2026-11-24, as proposed.) The helper replaces the broker's files on disk with the component set; the links of the broker (G7.3b: `/usr/libexec/oarfish-broker` and the two unit links) are meant to name `components/active`, so they follow the active and known-good links. The helper starts, stops, restarts and enables no broker unit. `socket_restart_pending` (D4) stays a flag of the helper socket only.
 
-**Limit (open point for the owner).** A changed broker binary or a changed text of `oarfish-broker.service` takes effect the next time systemd starts the broker (socket activation after its idle exit, at most `RuntimeMaxSec=300` later for a running broker). A changed text of `oarfish-broker.socket` takes effect only at the next restart of that socket or at boot, after a `daemon-reload` (the helper's own reload at `c_switched` and at the commit loads the unit file; it does not re-create a listening socket). Assumption, from the systemd semantics recalled in A9 and D4; not verified on a device. A20 does not remove this limit with new helper code: that would need a new `systemctl` argument shape (U2 rule 1).
+**Limit (open point for the owner).** A changed broker binary or a changed text of `oarfish-broker.service` takes effect the next time systemd starts the broker (socket activation after its idle exit, at most `RuntimeMaxSec=300` later for a running broker). A changed text of `oarfish-broker.socket` takes effect only at the next restart of that socket or at boot, after a `daemon-reload` (the helper's own reload at `c_switched` and at the commit loads the unit file; it does not re-create a listening socket). Assumption, from the systemd semantics recalled in A9 and D4; not verified on a device. A20 does not remove this limit with new helper code: that would need a new `systemctl` argument shape (U2 rule 1). (Pointer, G7.3b: for an installer run the limit no longer holds, because the installer restarts a broker socket whose text changed; for a GUI update it stays, D-C90 item 4. See [A21.2](#a212-the-start-rule-and-what-it-changes-in-a205-p3).)
 
 ### A20.6 The interface of A19.2 is unchanged
 
@@ -1508,11 +1510,11 @@ The three programs must be ELF64 little-endian executables for machine 0xB7 (AAr
 
 ### A20.7 The helper protocol stays 1 (S5)
 
-**Finding (proposal S5 holds).** The wire format does not change incompatibly. The requests and their members are unchanged. The answers of `stage` (`differs`) and `status` (`staged_differs`) may name three more strings of the closed list; U8 and U15 rule 6 make a list of names additive, and the service of every released version filters what it gets through its own closed list (`closedNames`, `backend/internal/updater/helper.go`), so an older service drops the broker names and shows the other names. The manifest object `components` is unchanged. `protocolMin` and `protocolMax` stay 1.
+**Finding (proposal S5 holds).** (Pointer, G7.3b: D-C90 decided S1 to S6 on 2026-11-24, as proposed.) The wire format does not change incompatibly. The requests and their members are unchanged. The answers of `stage` (`differs`) and `status` (`staged_differs`) may name three more strings of the closed list; U8 and U15 rule 6 make a list of names additive, and the service of every released version filters what it gets through its own closed list (`closedNames`, `backend/internal/updater/helper.go`), so an older service drops the broker names and shows the other names. The manifest object `components` is unchanged. `protocolMin` and `protocolMax` stay 1.
 
 ### A20.8 The installer in G7.3a, and its budget
 
-**Fact (`install/install.sh`).** `check_bundle_entries` accepts exactly five or twelve entries (and the manifest's `components` object exactly with twelve) and refuses nine and every other count before anything is changed. `COMP_FILES` holds the seven names; `comp_same` and `install_components` work from it; the broker is checked with `check_binary` like the helper; in the new set the broker is 0755, the two broker units 0644, all root-owned. The plan of `--dry-run` says so in one sentence. **The installer stores the broker's files below `components/<id>` and links nothing:** no link in `/usr/libexec`, no unit link, no wants link, no start, no daemon-reload for the broker, no uninstall step and no health check of it (G7.3b). A release that differs only in a broker file gets a new set id and moves `active` without restarting the helper socket, because the helper and its socket are unchanged. `scripts/test-installer.sh` tests each of these, and the seam ("G7.3a stores the broker files and links nothing; G7.3b adds the links").
+**Fact (`install/install.sh`).** `check_bundle_entries` accepts exactly five or twelve entries (and the manifest's `components` object exactly with twelve) and refuses nine and every other count before anything is changed. `COMP_FILES` holds the seven names; `comp_same` and `install_components` work from it; the broker is checked with `check_binary` like the helper; in the new set the broker is 0755, the two broker units 0644, all root-owned. The plan of `--dry-run` says so in one sentence. **The installer stores the broker's files below `components/<id>` and links nothing:** no link in `/usr/libexec`, no unit link, no wants link, no start, no daemon-reload for the broker, no uninstall step and no health check of it (G7.3b). (Pointer, G7.3b: the installer now links, starts, checks and removes the broker, [A21](#amendment-a21-g73b); the store is unchanged.) A release that differs only in a broker file gets a new set id and moves `active` without restarting the helper socket, because the helper and its socket are unchanged. `scripts/test-installer.sh` tests each of these, and the seam ("G7.3a stores the broker files and links nothing; G7.3b adds the links").
 
 **Fact (pre-existing, not changed).** `install_release` copies the whole extracted bundle tree into `releases/<version>`, so that directory also holds copies of the component files (the helper's since G6.3b, now the broker's as well). Nothing links to them and the helper's staging does not do this. Reported to the owner; not changed in G7.3a.
 
@@ -1526,6 +1528,8 @@ The three programs must be ELF64 little-endian executables for machine 0xB7 (AAr
 
 ### A20.10 Proposals for the owner (S1 to S6)
 
+(Pointer, G7.3b: D-C90 decided S1 to S6 on 2026-11-24, as proposed, and confirmed the agent's own choices of G7.3a.)
+
 | # | Proposal (implemented in G7.3a) |
 |---|---|
 | S1 | Two bundle shapes only: legacy (5 entries) and components (12 entries with the broker's three files); the nine-entry shape is refused everywhere; no third shape, no partial set. |
@@ -1537,9 +1541,9 @@ The three programs must be ELF64 little-endian executables for machine 0xB7 (AAr
 
 ### Open points of A20
 
-1. The limit of A20.5 (a changed broker socket text waits for a socket restart or a boot): for the owner.
-2. The installer's copy of the component files into `releases/<version>` (A20.8): for the owner.
-3. G7.3b: the broker's links, the wants link of its socket, its start, uninstall, purge and health in the installer.
+1. The limit of A20.5 (a changed broker socket text waits for a socket restart or a boot): for the owner. (Pointer: D-C90 item 4 keeps it as a known limit for GUI updates; an installer run applies the text since G7.3b, A21.2.)
+2. The installer's copy of the component files into `releases/<version>` (A20.8): for the owner. (Pointer: left open by D-C90 item 8.)
+3. G7.3b: the broker's links, the wants link of its socket, its start, uninstall, purge and health in the installer. (Pointer: done in [A21](#amendment-a21-g73b).)
 
 ### Changes made to the accepted text (A20)
 
@@ -1551,6 +1555,86 @@ The three programs must be ELF64 little-endian executables for machine 0xB7 (AAr
 | A16.1 E2, A16.2 | the set digest over four files | over seven files | A20.3 |
 | U13 F13, U14 row G6.2 (not edited) | the components shape of nine entries | twelve entries; nine are refused | A20.4 |
 | A19.1, A19 intro (not edited except the pointer) | "in G7.3", "no code implements it yet" | the packaging part is implemented by G7.3a; the installer's links are G7.3b | A20 |
+
+## Amendment A21 (G7.3b)
+
+**A21 (G7.3b, 2026-11-24; implements the installer part of A19.1 and of ADR 0011 B1, consequence 2, under `docs/DECISIONS.md` D-C87 item 2 and D-C90).** G7.3a stored the broker's three files in the component set and linked nothing (A20.8). G7.3b makes the installer link the broker, enable and start its socket, check the socket in the health check, roll it back with `active` and remove it on uninstall. Nothing of the helper changes (`backend/` is not touched). A21 edits no accepted sentence in place; it adds pointers in A20 (D-C90 on S1 to S6, A20.5, A20.8 and the open points of A20).
+
+**Evidence.** Class C only: `scripts/test-installer.sh` against a fake root with a stub `systemctl`, the arm64 container test (`scripts/installer-container/run.sh`, no systemd), and `systemd-analyze verify` of the installed link layout on the CI runner (`scripts/verify-units.sh --installed`, now with the two broker units). Nothing touched a device; everything device-related is **not verified on a device**.
+
+**Labels.** "Fact" names the file. P1 to P6 are the baseline proposals of the gate prompt, implemented as written and listed for the owner in A21.7; they are **proposals** until the owner decides them.
+
+### A21.1 The broker's links (P1, P2)
+
+**Fact (`install/install.sh`, `install_layout`, `preflight_components`).** In the components shape the installer creates, with the same atomic `link_step` as the helper's links and from its own path variables (never from the bundle or the manifest):
+
+| Path | Target |
+|---|---|
+| `/usr/libexec/oarfish-broker` | `/opt/oarfish/components/active/oarfish-broker` |
+| `/etc/systemd/system/oarfish-broker.socket` | `/opt/oarfish/components/active/oarfish-broker.socket` |
+| `/etc/systemd/system/oarfish-broker.service` | `/opt/oarfish/components/active/oarfish-broker.service` |
+| `/etc/systemd/system/sockets.target.wants/oarfish-broker.socket` | `../oarfish-broker.socket` (relative, A5) |
+
+Nothing of the broker names `known-good`: the broker has no recover unit (ADR 0011 B1). The broker service has no `[Install]` section (A20.2) and gets no wants link; `systemctl enable` is never used. Before the lock and again under it, each of the four paths must be absent or the expected link; the three links refuse a foreign file or a link to another target with the texts of the helper's links (`check_unit_link`). The wants link refuses a file or directory (as the helper's) and, new for the broker only, a link whose target is not a file named `oarfish-broker.socket` (the rule by which `--uninstall` removes a wants link); a link written by `systemctl enable` (absolute, to a file of that name) is accepted and replaced by the relative one. The helper's wants links keep their rule (any link).
+
+### A21.2 The start rule, and what it changes in A20.5 (P3)
+
+**Fact (`do_install`, `restart_socket`).** After the single `daemon-reload` (a changed link or a moved `active`, which covers a changed unit text), and after the rule for the helper socket: when the text of `oarfish-broker.socket` in the new set differs from the one in the active set, or `oarfish-broker.socket` is not active, the installer runs `systemctl stop oarfish-broker.service` and then `systemctl restart oarfish-broker.socket` (A9: a socket cannot be restarted while its service is active). `restart_helper_socket` became `restart_socket NAME`, used for both. A difference in the broker binary or in `oarfish-broker.service` alone restarts neither socket; the next start of the broker by its socket uses the new files. The broker service is never started, enabled or restarted by the installer. A failure to (re)start the socket ends the run with a message that names `systemctl status oarfish-broker.socket oarfish-broker.service` and `journalctl -u oarfish-broker.socket`, before `oarfish.service` is restarted and without a rollback, exactly as for the helper socket since G6.3b.
+
+**What this changes in A20.5.** For an installer run the limit of A20.5 no longer holds: the installer applies a changed broker socket text. For a GUI update it holds as before (S4, D-C90 item 4): the helper replaces the file and restarts no broker unit.
+
+### A21.3 Health, rollback and the first installation (P4)
+
+**Fact (`health_check`, `roll_back`, `do_install`).** For the components shape the health check also requires `systemctl is-active oarfish-broker.socket`, **where the active set carries `oarfish-broker.socket`**; it never talks to the broker. The condition keeps the behaviour for a set without the broker files: after a rollback to a four-file set (A21.5) the check asks only what it asked before G7.3b. In `roll_back`, when `active` moved in the run: if the active set before the run had no broker (the bootstrap), the broker socket and then the broker service are stopped; if the broker socket text changed in the run, the broker socket is restarted from the restored set (stop service, restart socket); otherwise nothing is done for the broker. The links created in the run stay, as for the helper (after a rollback to a four-file set the broker's links point to files that set does not have, until the next installer run). On a first installation whose health check fails, the installer also runs `systemctl disable --now oarfish-broker.socket` and `systemctl stop oarfish-broker.service`. The final messages name the broker socket. A legacy-shape run is not affected by any of this.
+
+### A21.4 Uninstall and purge (P5)
+
+**Fact (`do_uninstall`).** When present, `oarfish-broker.socket` and `oarfish-broker.service` are stopped and disabled (socket first) with the helper units; the wants link of the socket is removed if it names `oarfish-broker.socket`; the two unit links and `/usr/libexec/oarfish-broker` are removed only where they link into `/opt/oarfish`; anything else is left alone and reported; then the single `daemon-reload`. `--purge` removes nothing more for the broker, which keeps no state. `/run/oarfish-broker` belongs to the socket unit (`DirectoryMode=`, `RemoveOnStop=yes`); the installer creates and removes nothing there. The plans of `--dry-run` and `--uninstall` say so; the sentence "the broker is stored only, not linked or started" is gone.
+
+### A21.5 The bootstrap from a four-file set, and the window (P6)
+
+**Fact (`preflight_components`, `install_layout`, `move_known_good`).** A device of `v0.1.0-alpha.12` has a four-file set in `active` and `known-good`. The installer of a release with the broker finds that `comp_same` fails (the broker files are missing), stores the seven-file set as `components/<version>`, moves `active` at once, links the broker, starts its socket (it is not active) and moves `known-good` only after the health check. A device that already has the broker layout is a no-op for the broker unless bytes changed (A21.2). Tested on the fake root with a four-file fixture made from a seven-file installation.
+
+**The window between the move of `active` and the move of `known-good`.** Answered from the code of the helper, which G7.3b does not change:
+
+1. **While the installer runs, no helper path can act in the window.** The installer takes `flock -x` on `/var/lib/oarfish-update` before its first change and holds it until it exits (`take_lock`, descriptor 9). Every helper path that reads or switches a set takes `LOCK_EX|LOCK_NB` on the same directory first and gives up with `busy` when it is held: the recover subcommand (`recoverBoot`, `recover.go`; also when `OnFailure=` starts it), the recovery at `serve` start (`startupRecovery`, which defers to the next request), and `stage`, `discard`, `activate` and `ack` (`lockState`, `handler.go`). `status` takes no lock (except for an expired staged release, where it tries the lock) and reads no component set. So the lock closes the window for a running installer.
+2. **It does not close it for an interrupted installer** (power loss or kill between the two moves): the lock ends with the process, and `active` names the seven-file set while `known-good` names the four-file set. At the next boot the recover unit, a link into `known-good`, runs `/opt/oarfish/components/known-good/oarfish-update-helper recover`, the helper of the **four-file** set (the code of `v0.1.0-alpha.12`). With a readable `state.json` it switches no link (`recoverPhase`; `sweepComponents` keeps the sets that `active` and `known-good` name, `componentKeep`). With an unreadable `state.json` it rebuilds and, in `rollbackUnprovenSet`, finds its own four-file `known-good` readable and switches `active` back to it: the broker's links then point to missing files, and the seven-file set is swept later. In the first case the new helper (`serve`, through `/usr/libexec` and `active`) answers `components_damaged` to a component update (A20.3), and its own rebuild would record `known_good_damaged`. In every case another installer run completes the bootstrap (it finds the seven-file set in `active`, or the four-file set again, and moves `known-good` after its health check).
+3. The same window exists for every installer run that moves `active` since G6.3b; G7.3b does not widen it. It is the state that A20.3 names ("arises only inside an interrupted installer run of the transition"). It is reported here and not handled in code; the helper is not changed.
+
+### A21.6 Not verified, and assumptions
+
+- Nothing on a device: the broker socket under a real systemd started by the installer, a restart of a changed broker socket text, the bootstrap of a device of `v0.1.0-alpha.12`, the rollback and first-installation failure paths with the broker, the boot with the broker's wants link, uninstall and purge of the broker layout, Raspberry Pi OS and Ubuntu (G7.6).
+- **Assumption:** after the rollback to a four-file set, `systemctl stop` of the broker socket and service works although their unit links point to missing files after the `daemon-reload` (a loaded unit can be stopped); and the dangling links and wants link do not disturb the boot (a missing wanted unit is skipped). Neither was observed.
+- **Assumption:** `systemctl disable oarfish-broker.service`, a unit without `[Install]`, does not fail at `--uninstall`; if it does, it is a warning only.
+
+### A21.7 Proposals for the owner (P1 to P6), and the choices of the implementation
+
+| # | Proposal (implemented in G7.3b) |
+|---|---|
+| P1 | The three broker links name `components/active`, built like the helper's; nothing of the broker names `known-good`. |
+| P2 | Only the socket is enabled, by the relative wants link; no wants link and no `[Install]` for the broker service; no `systemctl enable`. |
+| P3 | Start the broker socket when it is not active; restart it (stop the broker service first) when its text changed; a failure is an error naming the commands. For installer runs this lifts the limit of A20.5. |
+| P4 | The health check requires the broker socket where the active set carries it; rollback and first-installation paths extended; the health check never talks to the broker. |
+| P5 | Uninstall stops and disables both broker units and removes the four links under the existing rules; `--purge` adds nothing; nothing in `/run/oarfish-broker`. |
+| P6 | The bootstrap from a four-file set as in A21.5; the window is closed by the lock for a running installer, not for an interrupted one (A21.5 item 2). |
+
+Choices of the implementation, for the owner: (a) "not active" is handled like the helper's socket, by stopping the broker service and restarting the socket, not by a plain `start`; (b) a socket start failure ends the run without a rollback, as for the helper socket; (c) the broker's wants link refuses a link to a file of another name, the helper's wants links are unchanged; (d) the health check asks for the broker socket only where the active set has `oarfish-broker.socket`; (e) after a rollback to a set without the broker, the broker socket and service are stopped and the links stay; (f) `restart_helper_socket` became `restart_socket NAME`; (g) `scripts/verify-units.sh --installed` now also verifies the two broker units as installed links. `install.sh` grew from 50,244 to 54,304 bytes (limit 80,000, D-C89 item 1).
+
+### Open points of A21
+
+1. The limit of A20.5 for GUI updates (D-C90 item 4).
+2. The copy of the component files into `releases/<version>` (D-C90 item 8).
+3. The window of an interrupted bootstrap (A21.5 item 2): whether release notes or the update page should name the repair (another installer run) is for G7.6.
+4. Device evidence of A21.1 to A21.5: G7.6.
+
+### Changes made to the accepted text (A21)
+
+| Where | Accepted wording | Now | Source |
+|---|---|---|---|
+| A20.5, limit | a changed broker socket text waits for a socket restart or a boot | still for a GUI update; an installer run restarts the socket | A21.2 |
+| A20.8 | the installer stores the broker's files and links nothing | the installer links, starts, checks, rolls back and removes the broker; the store is unchanged | A21.1 to A21.4 |
+| A20 labels, A20.1, A20.3, A20.4, A20.5, A20.7, A20.10 | S1 to S6 are proposals | decided by D-C90 (pointers) | D-C90 |
+| Open points of A20, item 3 | G7.3b open | done (pointer) | A21 |
 
 ## Evidence and test plan for the later implementation
 

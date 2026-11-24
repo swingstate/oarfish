@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the privilege broker (ADR 0011, B1) for linux/arm64 with the flags of
-# the update helper (scripts/build-helper.sh). G7.2: the broker is not in any
-# release bundle yet; packaging is step G7.3.
+# the update helper (scripts/build-helper.sh). Since G7.3a the broker is part of
+# the components bundle (ADR 0010 A20); since G7.3b the installer links it.
 #
 # The broker's bytes depend only on its code and the toolchain, never on the
 # release version or the commit (D-C80 applied to the broker, ADR 0011 B1):

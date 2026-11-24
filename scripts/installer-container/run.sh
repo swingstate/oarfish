@@ -150,17 +150,24 @@ if [ "$SHAPE" = components ]; then
   chk_link "$R/etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket" ../oarfish-update-helper.socket
   chk_link "$R/etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service" ../oarfish-update-recover.service
   ok "the helper link, the four unit links and the three relative wants links have the exact targets"
+  chk_link "$R/usr/libexec/oarfish-broker" /opt/oarfish/components/active/oarfish-broker
+  chk_link "$R/etc/systemd/system/oarfish-broker.socket" /opt/oarfish/components/active/oarfish-broker.socket
+  chk_link "$R/etc/systemd/system/oarfish-broker.service" /opt/oarfish/components/active/oarfish-broker.service
+  chk_link "$R/etc/systemd/system/sockets.target.wants/oarfish-broker.socket" ../oarfish-broker.socket
+  if [ -e "$R/etc/systemd/system/multi-user.target.wants/oarfish-broker.service" ] || [ -L "$R/etc/systemd/system/multi-user.target.wants/oarfish-broker.service" ]; then fail "the broker service has a wants link"; fi
+  ok "the broker link, its two unit links and the relative wants link of its socket have the exact targets; the broker service has no wants link"
   cmp -s "$R/opt/oarfish/current/oarfish.service" "$R/opt/oarfish/releases/$VER/oarfish.service" || fail "oarfish.service reached through current differs from the release's"
   cmp -s "$R/opt/oarfish/components/known-good/oarfish-update-recover.service" "$R/opt/oarfish/components/$VER/oarfish-update-recover.service" || fail "known-good does not reach the set"
   [ "$(own "$R/opt/oarfish/components")" = "root:root 755" ] || fail "components is $(own "$R/opt/oarfish/components")"
   [ "$(own "$R/opt/oarfish/components/$VER")" = "root:root 755" ] || fail "components/$VER is $(own "$R/opt/oarfish/components/$VER")"
   [ "$(own "$R/opt/oarfish/components/$VER/oarfish-update-helper")" = "root:root 755" ] || fail "the helper is $(own "$R/opt/oarfish/components/$VER/oarfish-update-helper")"
-  for f in oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service; do
+  [ "$(own "$R/opt/oarfish/components/$VER/oarfish-broker")" = "root:root 755" ] || fail "the broker is $(own "$R/opt/oarfish/components/$VER/oarfish-broker")"
+  for f in oarfish-update-helper.socket oarfish-update-helper.service oarfish-update-recover.service oarfish-broker.socket oarfish-broker.service; do
     [ "$(own "$R/opt/oarfish/components/$VER/$f")" = "root:root 644" ] || fail "$f is $(own "$R/opt/oarfish/components/$VER/$f")"
   done
   [ "$(own "$R/var/lib/oarfish-update")" = "root:root 700" ] || fail "/var/lib/oarfish-update is $(own "$R/var/lib/oarfish-update")"
   [ "$(own "$R/usr/libexec")" = "root:root 755" ] || fail "/usr/libexec is $(own "$R/usr/libexec")"
-  ok "ownership and modes of the component set, the helper, the units, /usr/libexec and /var/lib/oarfish-update"
+  ok "ownership and modes of the component set, the helper, the broker, the units, /usr/libexec and /var/lib/oarfish-update"
   # The helper is a real arm64 program here (the whole container is emulated).
   # It has fixed production paths, and the installer ran under the fake root $R,
   # so /var/lib/oarfish-update does not exist where the helper looks: `recover`
@@ -179,6 +186,9 @@ if [ "$SHAPE" = components ]; then
   if grep -qE '^(enable|is-enabled) ' /tmp/fake-systemd/calls.log && [ "$HAVE_LEGACY" = 0 ]; then fail "systemctl enable was used"; fi
   if grep -qE '^(start|restart) oarfish-update-recover' /tmp/fake-systemd/calls.log; then fail "the recover unit was started"; fi
   ok "the helper socket was started, the recover unit was not"
+  [ -f /tmp/fake-systemd/active.oarfish-broker.socket ] || fail "the broker socket was not started"
+  if grep -qE '^(enable|start|restart) oarfish-broker.service' /tmp/fake-systemd/calls.log; then fail "the broker service was enabled or started"; fi
+  ok "the broker socket was started, the broker service was neither enabled nor started"
   if [ "$HAVE_LEGACY" = 1 ]; then
     [ -L "$R/etc/systemd/system/oarfish.service" ] || fail "the alpha-style unit file was not replaced by a link"
     [ "$(sha256sum "$R/etc/systemd/system/oarfish.service.d/override.conf")" = "$dropin_sum" ] || fail "the drop-in changed"
@@ -204,12 +214,13 @@ sh /work/install.sh --uninstall > /tmp/un.out 2>&1 || { cat /tmp/un.out; fail "u
 if [ -e "$R/opt/oarfish" ] || [ -e "$R/etc/systemd/system/oarfish.service" ] || [ -L "$R/etc/systemd/system/oarfish.service" ]; then fail "uninstall left files"; fi
 if [ "$SHAPE" = components ]; then
   for l in usr/libexec/oarfish-update-helper etc/systemd/system/oarfish-update-helper.socket etc/systemd/system/oarfish-update-helper.service etc/systemd/system/oarfish-update-recover.service \
-    etc/systemd/system/multi-user.target.wants/oarfish.service etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service; do
+    etc/systemd/system/multi-user.target.wants/oarfish.service etc/systemd/system/sockets.target.wants/oarfish-update-helper.socket etc/systemd/system/multi-user.target.wants/oarfish-update-recover.service \
+    usr/libexec/oarfish-broker etc/systemd/system/oarfish-broker.socket etc/systemd/system/oarfish-broker.service etc/systemd/system/sockets.target.wants/oarfish-broker.socket; do
     if [ -e "$R/$l" ] || [ -L "$R/$l" ]; then fail "uninstall left $l"; fi
   done
   [ -f "$R/etc/systemd/system/oarfish.service.d/override.conf" ] || [ "$HAVE_LEGACY" = 0 ] || fail "uninstall removed the drop-in"
   [ -d "$R/var/lib/oarfish-update" ] || fail "uninstall removed /var/lib/oarfish-update without --purge"
-  ok "uninstall removed the helper links and the wants links, kept the drop-in and /var/lib/oarfish-update"
+  ok "uninstall removed the helper and broker links and the wants links, kept the drop-in and /var/lib/oarfish-update"
 fi
 if [ ! -d "$R/etc/oarfish" ] || [ ! -d "$R/var/lib/oarfish" ]; then fail "uninstall removed user data"; fi
 id oarfish >/dev/null 2>&1 || fail "uninstall removed the user without --purge"
