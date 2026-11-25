@@ -57,11 +57,12 @@ describe('navigation groups (specification 7.2)', () => {
     expect(lists(screen.getByRole('navigation', { name: t.navLabel }))).toHaveLength(1);
   });
 
-  it('has an entry only for a page that exists: Dashboard and Gerät in no group, then Update as the first entry of System', () => {
+  it('has an entry only for a page that exists: Dashboard and Gerät in no group, then Aktivität and Update in System (7.2 order)', () => {
     const nav = routes.filter((r) => r.nav !== false);
     expect(nav.map((r) => [r.id, r.path, r.group])).toEqual([
       ['dashboard', '#/', undefined],
       ['device', '#/device', undefined],
+      ['activity', '#/activity', 'system'],
       ['update', '#/update', 'system'],
     ]);
   });
