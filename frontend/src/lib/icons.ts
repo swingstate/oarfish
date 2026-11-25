@@ -24,6 +24,13 @@ export const iconPaths = {
   user: ['M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8z', 'M4 21a8 8 0 0 1 16 0'],
   lock: ['M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z', 'M8 11V8a4 4 0 0 1 8 0v3', 'M12 15v2'],
   update: ['M20 12a8 8 0 0 1-14 5.3', 'M4 12a8 8 0 0 1 14-5.3', 'M18 2.5v4.2h-4.2', 'M6 21.5v-4.2h4.2'],
+  // Two service rows, each with a state dot and a name line (the Activity entry, G7.4).
+  activity: [
+    'M4 4h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z',
+    'M4 14h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
+    'M7 7h.01M7 17h.01',
+    'M11 7h6M11 17h6',
+  ],
 } as const satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof iconPaths;

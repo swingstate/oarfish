@@ -59,7 +59,7 @@ lint-backend:
 lint-frontend:
 	cd frontend && npm run check
 
-fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash, update-helper request, broker request, update service and release-verification parsers (FUZZTIME=10s each)
+fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash, update-helper request, broker request, service list, unit name, update service and release-verification parsers (FUZZTIME=10s each)
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseOSRelease$$' -fuzztime $(FUZZTIME) ./internal/platform/operating_system
 	cd backend && go test -run '^$$' -fuzz '^FuzzParseCompatible$$' -fuzztime $(FUZZTIME) ./internal/platform/hardware
 	@for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes; do \
@@ -72,6 +72,10 @@ fuzz: ## Fuzz the os-release, device-tree, metrics, password-hash, update-helper
 	@for f in FuzzDecodeRequest FuzzParseShow FuzzUnitName FuzzHelperPhase; do \
 		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./cmd/oarfish-broker) || exit 1; \
 	done
+	@for f in FuzzParseListUnits FuzzParseListUnitFiles; do \
+		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./internal/services) || exit 1; \
+	done
+	cd backend && go test -run '^$$' -fuzz '^FuzzValid$$' -fuzztime $(FUZZTIME) ./internal/unitname
 	@for f in FuzzHelperResponse FuzzReleaseList FuzzPlainNotes; do \
 		(cd backend && go test -run '^$$' -fuzz "^$$f\$$" -fuzztime $(FUZZTIME) ./internal/updater) || exit 1; \
 	done

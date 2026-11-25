@@ -6,6 +6,7 @@ import type { IconName } from './lib/icons';
 import type { NavGroup } from './lib/ui';
 import type { deUi } from './lib/locales/de';
 import Account from './pages/Account.svelte';
+import Activity from './pages/Activity.svelte';
 import Device from './pages/Device.svelte';
 import Dashboard from './pages/Dashboard.svelte';
 import Update from './pages/Update.svelte';
@@ -28,6 +29,7 @@ export interface Route {
 export const routes: readonly Route[] = [
   { id: 'dashboard', path: '#/', labelKey: 'navDashboard', icon: 'home', component: Dashboard },
   { id: 'device', path: '#/device', labelKey: 'navDevice', icon: 'device', component: Device },
+  { id: 'activity', path: '#/activity', labelKey: 'navActivity', icon: 'activity', group: 'system', component: Activity },
   { id: 'update', path: '#/update', labelKey: 'navUpdate', icon: 'update', group: 'system', component: Update },
   { id: 'account', path: '#/account', labelKey: 'navAccount', icon: 'user', component: Account, nav: false },
 ];

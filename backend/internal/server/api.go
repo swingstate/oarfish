@@ -81,12 +81,13 @@ func stateChanging(method string) bool {
 	return true
 }
 
-// apiHandler serves /api/v1. Only the four account endpoints and the update routes accept a
-// state-changing method; everything else is GET only and takes no body. Every
+// apiHandler serves /api/v1. Only the four account endpoints, the update routes and the
+// service action accept a state-changing method; everything else is GET only and takes no body. Every
 // route except session status, login and setup needs a session (D-C46).
 func apiHandler(cfg config) http.Handler {
 	a := &authAPI{cfg: cfg}
 	u := &updateAPI{authAPI: *a, svc: cfg.updater}
+	sv := &servicesAPI{authAPI: *a, svc: cfg.services}
 	routes := map[string]route{
 		"/api/v1/session": {target: audit.TargetSession, endpoints: map[string]endpoint{
 			http.MethodGet:    {access: public, setupOpen: true, handle: a.sessionStatus},
@@ -132,6 +133,13 @@ func apiHandler(cfg config) http.Handler {
 		}},
 		"/api/v1/update/discard": {target: audit.TargetNone, endpoints: map[string]endpoint{
 			http.MethodPost: {access: needsSession, activity: true, handle: u.discard},
+		}},
+		"/api/v1/services": {target: audit.TargetNone, endpoints: map[string]endpoint{
+			http.MethodGet: {access: needsSession, activity: true, handle: sv.list},
+		}},
+		"/api/v1/services/action": {target: audit.TargetNone, endpoints: map[string]endpoint{
+			http.MethodGet:  {access: needsSession, activity: true, handle: sv.lastAction},
+			http.MethodPost: {access: needsSession, activity: true, handle: sv.action},
 		}},
 		"/api/v1/events": {target: audit.TargetEvents, endpoints: map[string]endpoint{
 			http.MethodGet: {access: needsSession, handle: func(w http.ResponseWriter, r *http.Request, s *auth.Session) {
