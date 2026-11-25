@@ -365,8 +365,13 @@ describe('activity action panel', () => {
   it('uses native elements only: buttons, a labelled search field and radio inputs', async () => {
     await open(sampleList());
     const page = byTestId('activity');
-    expect(page.querySelector('[role="button"], [tabindex]:not([tabindex="-1"]), select, dialog, [aria-modal]')).toBeNull();
-    for (const b of page.querySelectorAll('button')) expect(b.getAttribute('type')).toBe('button');
+    // Changed on purpose in G7.5: the services card has no modal; the one native
+    // dialog of the page is the restart and shutdown confirmation (ActivityPower.test.ts).
+    const services = page.querySelector('[aria-labelledby="services-heading"]')!;
+    expect(services.querySelector('[role="button"], [tabindex]:not([tabindex="-1"]), select, dialog, [aria-modal]')).toBeNull();
+    for (const b of services.querySelectorAll('button')) expect(b.getAttribute('type')).toBe('button');
+    expect(page.querySelector('[role="button"], [tabindex]:not([tabindex="-1"]), select, [aria-modal]')).toBeNull();
+    expect([...page.querySelectorAll('dialog')].map((d) => d.getAttribute('data-testid'))).toEqual(['pwr-dialog']);
   });
 });
 
@@ -512,6 +517,19 @@ describe('activity scenario mode', () => {
       'action-restart-only-note',
       'action-denied-row',
       'session-lost',
+      // G7.5, tested in ActivityPower.test.ts
+      'power-dialog-reboot',
+      'power-dialog-shutdown',
+      'power-waiting-list',
+      'power-wrong-password',
+      'power-rate-limited',
+      'power-update-running',
+      'power-already-requested',
+      'power-broker-unavailable',
+      'power-reboot-flow',
+      'power-reboot-too-long',
+      'power-shutdown-flow',
+      'power-session-lost',
     ]);
     expect(installServicesMock('not-a-scenario')).toBe(false);
   });
@@ -539,6 +557,7 @@ describe('activity scenario mode', () => {
           expect(lost).toHaveBeenCalled();
           break;
         case 'broker-unavailable':
+        case 'power-broker-unavailable':
           expect(byTestId('act-broker-missing')).toBeTruthy();
           break;
         case 'list-long':

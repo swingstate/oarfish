@@ -130,7 +130,7 @@ export type SendResult =
   | { ok: true; status: number; body: unknown }
   | { ok: false; code: string; retryAfter: number | null };
 
-async function request(method: 'POST' | 'DELETE', url: string, body: unknown, fetchFn: typeof fetch): Promise<SendResult> {
+async function request(method: 'POST' | 'DELETE', url: string, body: unknown, fetchFn: typeof fetch, timeoutMs = 20000): Promise<SendResult> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (csrf !== null) headers['X-Oarfish-CSRF'] = csrf;
   let res: Response;
@@ -141,7 +141,7 @@ async function request(method: 'POST' | 'DELETE', url: string, body: unknown, fe
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: 'no-store',
       credentials: 'same-origin',
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     return { ok: false, code: 'network', retryAfter: null };
@@ -164,10 +164,11 @@ async function request(method: 'POST' | 'DELETE', url: string, body: unknown, fe
 /**
  * A state-changing JSON request to another API route (the update routes), with
  * the CSRF token of this module and the same session-loss handling as login and
- * password change. Never throws.
+ * password change. Never throws. The request is given up after timeoutMs (20 s;
+ * the power route needs longer, because the broker answers inside it).
  */
-export function postJSON(url: string, body: unknown, fetchFn: typeof fetch = fetch): Promise<SendResult> {
-  return request('POST', url, body, fetchFn);
+export function postJSON(url: string, body: unknown, fetchFn: typeof fetch = fetch, timeoutMs = 20000): Promise<SendResult> {
+  return request('POST', url, body, fetchFn, timeoutMs);
 }
 
 async function send(method: 'POST' | 'DELETE', url: string, body: unknown, fetchFn: typeof fetch): Promise<ActionResult> {

@@ -6,6 +6,7 @@
   import FormMessage from '../components/FormMessage.svelte';
   import Notice from '../components/Notice.svelte';
   import PageHeader from '../components/PageHeader.svelte';
+  import ActivityPower from './ActivityPower.svelte';
   import { formatDateTime } from '../lib/format';
   import { fmt, t } from '../lib/i18n';
   import type { Tone } from '../lib/ui';
@@ -310,11 +311,20 @@
       </Card>
     </div>
   {/if}
+
+  <!-- Reboot and shutdown (G7.5): independent of the service list, so it is there also without systemd or after a load error. -->
+  <div class="stack column power">
+    <ActivityPower />
+  </div>
 </div>
 
 <style>
   .column {
     max-width: 56rem;
+  }
+
+  .power {
+    margin-top: var(--space-5);
   }
 
   .secondary {

@@ -5,9 +5,11 @@
   import EmptyState from './components/EmptyState.svelte';
   import UserMenu from './components/UserMenu.svelte';
   import Login from './pages/Login.svelte';
+  import PowerStatus from './pages/PowerStatus.svelte';
   import Setup from './pages/Setup.svelte';
   import { t } from './lib/i18n';
   import { fetchSession, logout, onSessionLost, sessionUser, type SessionInfo } from './lib/session';
+  import { onPowerAccepted, type PowerAction } from './lib/power';
   import type { NavItem } from './lib/ui';
   import { routeFromHash, routes } from './routes';
 
@@ -19,6 +21,9 @@
   let username = $state('');
   let loggingOut = $state(false);
   let route = $state(routeFromHash(location.hash));
+  // After an accepted reboot or shutdown (ADR 0011 B6) the status view replaces
+  // the shell for good: no navigation, no page and no request except /healthz.
+  let power = $state<PowerAction | null>(null);
 
   function enter(session: SessionInfo): void {
     if (session.state === 'authenticated') {
@@ -68,10 +73,12 @@
         phase = 'login';
       }
     });
+    const stopPower = onPowerAccepted((action) => (power = action));
     void check();
     return () => {
       window.removeEventListener('hashchange', onHash);
       stop();
+      stopPower();
     };
   });
 
@@ -82,14 +89,28 @@
   const accountRoute = routes.find((r) => r.id === 'account')!;
 
   const title = $derived(
-    phase === 'app' ? t[route.labelKey] : phase === 'setup' ? t.setupTitle : phase === 'login' ? t.loginTitle : t.brandName,
+    power === 'reboot'
+      ? t.pwrStatusReboot
+      : power === 'poweroff'
+        ? t.pwrStatusPoweroff
+        : phase === 'app'
+          ? t[route.labelKey]
+          : phase === 'setup'
+            ? t.setupTitle
+            : phase === 'login'
+              ? t.loginTitle
+              : t.brandName,
   );
   $effect(() => {
-    document.title = phase === 'app' || phase === 'setup' || phase === 'login' ? `${title} · ${t.brandName}` : t.brandName;
+    document.title = power !== null || phase === 'app' || phase === 'setup' || phase === 'login' ? `${title} · ${t.brandName}` : t.brandName;
   });
 </script>
 
-{#if phase === 'app'}
+{#if power !== null}
+  <AuthShell>
+    <PowerStatus action={power} />
+  </AuthShell>
+{:else if phase === 'app'}
   <AppShell {items} current={route.id}>
     {#snippet account()}
       <UserMenu username={username || (sessionUser() ?? '')} accountHref={accountRoute.path} current={route.id === 'account'} onLogout={signOut} busy={loggingOut} />

@@ -31,6 +31,8 @@ export const iconPaths = {
     'M7 7h.01M7 17h.01',
     'M11 7h6M11 17h6',
   ],
+  // A power symbol: an open ring with a bar (the restart and shutdown card, G7.5).
+  power: ['M12 3v8', 'M7.05 6.05a7 7 0 1 0 9.9 0'],
 } as const satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof iconPaths;
