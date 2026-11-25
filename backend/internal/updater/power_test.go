@@ -18,7 +18,9 @@ func TestActivity(t *testing.T) {
 		e.helper.status.Phase, e.helper.statusErr = phase, err
 		e.helper.mu.Unlock()
 	}
-	apply := func(s step, done bool) *jobState { return &jobState{kind: jobApply, step: s, version: "0.1.0-alpha.7", done: done} }
+	apply := func(s step, done bool) *jobState {
+		return &jobState{kind: jobApply, step: s, version: "0.1.0-alpha.7", done: done}
+	}
 	for _, tc := range []struct {
 		name  string
 		job   *jobState
