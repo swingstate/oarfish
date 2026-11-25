@@ -1,8 +1,8 @@
 # User interface foundation
 
-Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and the pages built on them, in a light and a dark theme: Dashboard and Gerät (UI foundation task, D-C42, D-C43; the first page was called Home until the shell of task U1, D-C71), since Gate G5.1 the access pages Einrichten (setup), Anmelden (login) and Konto (account), described in [`AUTH.md`](AUTH.md) and in [Access states](#access-states-gate-g51) below, and since step G6.8 the page Update, described in [Update page](#update-page-step-g68) below. The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). The Dashboard itself is described in [`DASHBOARD.md`](DASHBOARD.md#dashboard-page).
+Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and the pages built on them, in a light and a dark theme: Dashboard and Gerät (UI foundation task, D-C42, D-C43; the first page was called Home until the shell of task U1, D-C71), since Gate G5.1 the access pages Einrichten (setup), Anmelden (login) and Konto (account), described in [`AUTH.md`](AUTH.md) and in [Access states](#access-states-gate-g51) below, since step G6.8 the page Update, described in [Update page](#update-page-step-g68) below, and since step G7.4 the page Aktivität with the service list and start, stop and restart, described in [Activity page](#activity-page-step-g74) below. The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). The Dashboard itself is described in [`DASHBOARD.md`](DASHBOARD.md#dashboard-page).
 
-**Status: implemented and tested** with jsdom unit tests and with headless Chrome on one developer Mac (layout checks at five widths, reference screenshots). **Checked once on a Raspberry Pi Zero 2 W with `v0.1.0-alpha.5`** in Safari, Chrome and Firefox ([hardware result](INSTALL.md#ui-foundation-v010-alpha5)). The shell of task U1 (navigation groups, language choice, version line, tokens) was checked in Chrome on one Mac only. The Update page of step G6.8 was checked in Chrome on one Mac against the development scenario mode only; it has not run against a real update service or device. The second confirmation and the texts of G6.10 step c were checked in jsdom and, for layout only, in headless Chrome on one Mac against the scenario mode. **Not verified:** a screen reader, keyboard use in Safari, forced-colours mode in a real browser, the lost-connection display on the device, the U1 shell on the device and in Safari and Firefox, and the Update page against a device. See [Verification status](#verification-status) and [Known gaps](#known-gaps).
+**Status: implemented and tested** with jsdom unit tests and with headless Chrome on one developer Mac (layout checks at five widths, reference screenshots). **Checked once on a Raspberry Pi Zero 2 W with `v0.1.0-alpha.5`** in Safari, Chrome and Firefox ([hardware result](INSTALL.md#ui-foundation-v010-alpha5)). The shell of task U1 (navigation groups, language choice, version line, tokens) was checked in Chrome on one Mac only. The Update page of step G6.8 was checked in Chrome on one Mac against the development scenario mode only; it has not run against a real update service or device. The second confirmation and the texts of G6.10 step c were checked in jsdom and, for layout only, in headless Chrome on one Mac against the scenario mode. The Activity page of step G7.4 was checked in jsdom only (class C): not in any real browser, not against a real service, broker or device. **Not verified:** a screen reader, keyboard use in Safari, forced-colours mode in a real browser, the lost-connection display on the device, the U1 shell on the device and in Safari and Firefox, the Update page against a device, and the Activity page in any real browser or against a device. See [Verification status](#verification-status) and [Known gaps](#known-gaps).
 
 The tokens in this file are named and explicit on purpose. They are meant to be carried into a design tool and back. The source of truth is [`frontend/src/styles/tokens.css`](../frontend/src/styles/tokens.css); `tokens.test.ts` fails when a token this file lists is missing there, and `docs.test.ts` fails when this file lacks a token, a component or a text that the code has.
 
@@ -16,6 +16,7 @@ The tokens in this file are named and explicit on purpose. They are meant to be 
 5. [States](#states)
    - [Access states](#access-states-gate-g51)
    - [Update page](#update-page-step-g68)
+   - [Activity page](#activity-page-step-g74)
 6. [State and label texts](#state-and-label-texts)
 7. [Text rules](#text-rules)
 8. [Accessibility](#accessibility)
@@ -44,12 +45,17 @@ frontend/src/
   pages/Login.svelte       Anmelden (G5.1)
   pages/Account.svelte     Konto: change the password (G5.1), reached from the user menu
   pages/Update.svelte      Update: versions, check, apply, progress and result (G6.8)
+  pages/Activity.svelte    Aktivität: the service list, its filter, and start, stop and restart (G7.4)
   lib/session.ts           the session client; the CSRF token lives in its module variable only
   lib/authErrors.ts        error codes of the access endpoints to sentences
   lib/update.ts            client of the update routes, with run-time shape checks of every answer (G6.8)
   lib/updateErrors.ts      error codes of the update routes to sentences (G6.8)
   lib/update.fixtures.ts   one synthetic State per state of the Update page, for tests and the scenario mode
   dev/updateMock.ts        development scenario mode (?mock=<scenario>); never in a production build
+  lib/services.ts          client of the services routes, with run-time shape checks of every answer (G7.4)
+  lib/serviceErrors.ts     the result codes of a service action, states, start modes and kinds to words (G7.4)
+  lib/services.fixtures.ts synthetic service lists and last actions, for tests and the scenario mode (G7.4)
+  dev/servicesMock.ts      scenario mode of the Activity page; never in a production build (G7.4)
   lib/ui.ts                tones, navigation entry and group types, and how API values map to them
   lib/lang.svelte.ts       the chosen language, its browser store, html lang (D-C77)
   lib/version.ts           the version from /healthz for the sidebar footer
@@ -231,11 +237,11 @@ All components are Svelte 5 with TypeScript and no dependency. They hold no UI t
 | `EmptyState` | A state without data: loading, error, or "nothing found". | `icon`, `tone`, `title`, `description`, `compact`, `role` | Full size on a page, `compact` inside a card. Only an error state gets `role="alert"`. |
 | `Icon` | One of the own icons, decorative (`aria-hidden`). | `name` | Sizes with the text (`1.25em`), colour is `currentColor`. |
 
-Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `wifi`, `ethernet`, `info`, `warning`, `critical`, `success`, `clock`, `user`, `lock`, `update` (two arrows in a circle, for the Update entry and its cards, G6.8). They are 24 by 24 outline paths drawn for this project, so there is no icon library and no third-party licence. The icon for an interface follows the API field `kind` (`wifi`, `ethernet`, else the generic `network`).
+Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `wifi`, `ethernet`, `info`, `warning`, `critical`, `success`, `clock`, `user`, `lock`, `update` (two arrows in a circle, for the Update entry and its cards, G6.8), `activity` (two service rows, each with a state dot and a name line, for the Aktivität entry and its card, G7.4). They are 24 by 24 outline paths drawn for this project, so there is no icon library and no third-party licence. The icon for an interface follows the API field `kind` (`wifi`, `ethernet`, else the generic `network`).
 
 ### Shell, navigation and language (task U1)
 
-**Navigation (specification 7.2, D-C71).** The first entry is "Dashboard" (it was "Home"; the address `#/` did not change). Entries without a group come first, then the group "Workload" (Apps, Storage, Files), then "System" (Network, Activity, Update, Erweiterungen, Settings). An entry exists only when its function exists (specification 7.1). Today there are three entries: Dashboard (`#/`, `pages/Dashboard.svelte`) and Gerät (`#/device`, `pages/Device.svelte`) without a group, and Update (`#/update`, `pages/Update.svelte`, step G6.8) as the first entry of the group System, which therefore appears for the first time. The account page `#/account` is reached from the user menu and is not an entry. A page that comes later sets `group: 'workload'` or `group: 'system'` in `routes.ts`; the group name appears with its first entry.
+**Navigation (specification 7.2, D-C71).** The first entry is "Dashboard" (it was "Home"; the address `#/` did not change). Entries without a group come first, then the group "Workload" (Apps, Storage, Files), then "System" (Network, Activity, Update, Erweiterungen, Settings). An entry exists only when its function exists (specification 7.1). Today there are four entries: Dashboard (`#/`, `pages/Dashboard.svelte`) and Gerät (`#/device`, `pages/Device.svelte`) without a group, then in the group System Aktivität (`#/activity`, `pages/Activity.svelte`, step G7.4) and Update (`#/update`, `pages/Update.svelte`, step G6.8), in the order of specification 7.2 (Network, Activity, Update, …; Network does not exist yet). The group System appeared with Update in G6.8. The page name Aktivität / Activity is a proposal for the owner's review. The account page `#/account` is reached from the user menu and is not an entry. A page that comes later sets `group: 'workload'` or `group: 'system'` in `routes.ts`; the group name appears with its first entry.
 
 **Language (ORB-GEN-006, D-C77).** German and English have the same keys; a test proves it. The start language follows the first language of `navigator.languages` that is German or English; anything else is English. The Deutsch and English buttons in the sidebar footer change the language at once, without a reload, and set `html lang`. The choice is kept in `localStorage` under the key `oarfish.lang`; only the code `de` or `en` is stored, and any other stored value is ignored. A store that cannot be read or written (private window, blocked site data) does not break the app: it starts from the browser language and does not remember. Components read `t`, `msg` and `fmt` from `lib/i18n.ts` where they show them, so a change reaches the whole page. Numbers keep the German format and units stay binary (MiB) in both languages. The language is not yet a setting: the settings page and a server-side store come later (H1).
 
@@ -351,6 +357,48 @@ The alert rules themselves (including the rule "no interface has a link") are un
 **Accessibility of the second confirmation (G6.10 step c).** The component names are a native list (`ul`), each file name a `code` element; the password field has a visible label and its help text is tied with `aria-describedby`; the two buttons are native `button` elements; nothing carries meaning by colour alone (the hand-over is said in the live region, the outcome badge is a word). The F4 text is spoken by the existing polite live region; no new live region was added. Checked in jsdom; not with a screen reader.
 
 Every fixture state also renders without a load error ("every state of the fixtures renders …"). The development scenario mode shows each of them in a browser ([`DEVELOPMENT.md`](DEVELOPMENT.md#update-page-and-its-scenario-mode-gate-g6-step-g68)).
+
+### Activity page (step G7.4)
+
+`pages/Activity.svelte` on `#/activity`, the first entry of the group System (specification 7.2; ORB-SVC-001, ORB-SVC-002, ORB-SVC-003; ADR 0011 B2, B3, B4 and amendment A5). It reads `GET /api/v1/services` and `GET /api/v1/services/action` and sends `POST /api/v1/services/action` through `lib/services.ts`, with the CSRF token of `lib/session.ts` (`postJSON`). Rules:
+
+- **Reads.** The list is read on opening, on "Aktualisieren" and once after an action has ended; there is no automatic refresh and no timer while nothing runs. The service caches a read for 5 s device-wide. "Gelesen: …" shows the time of the reading the service answered with.
+- **The list.** A list of rows (`ul`), not a table, so it reflows at 320 CSS pixels. Each row: the name in `code`, the state as a `Badge` with a word, "Startmodus: …" in words, the description (or "Keine Beschreibung"), "Kritischer Dienst: <kind>" for a row of ADR 0011 B3 rule 11, and for a restricted row its note. At most 100 rows are rendered; "Mehr anzeigen" adds the next 100, and a new filter starts at 100 again. A count line says how many services there are and how many are active, failed and inactive; "<n> von <m> Diensten angezeigt." appears when a filter is set or rows are held back.
+- **Filter.** A labelled search field matches the name and the description (case ignored); a group of four radio inputs ("Zustand": Alle, Aktiv, Fehlgeschlagen, Inaktiv) matches the active state.
+- **Actions.** A row that is not denied has one native button "Aktionen" (its accessible name is "Aktionen für <name>"). It opens an inline panel below the row, not a modal: per offered action its effect sentence and its button (Start, Stop, Neustart), the note of the critical kind if any, and "Schließen". Only one panel is open at a time. The focus moves into the panel (the panel itself, `tabindex="-1"`, named by its `h3`) and back to the row's button when the panel closes; Escape and "Schließen" close it. A click on an action button is the one confirmation of D-C87 item 7; there is no password. The panel then closes, and while the action runs every action button is disabled.
+- **Which buttons.** The service sends the offered actions per row and the page shows those it knows: Start when the state is not active; Stop when it is active, activating or reloading and the row is not restart only; Neustart for every row that is not denied. A restart-only row offers Neustart only (ADR 0011 A1.2, A3.4 rule 11) and says "Diesen Dienst können Sie nur neu starten. Ein Stopp würde den Zugang zum Gerät trennen." A denied row (rule 10) has no button and says "Nicht von Oarfish verwaltet. Diesen Dienst verwaltet Oarfish nicht. Er wird für Oarfish selbst oder für den Systemstart gebraucht." The broker decides again for every request; these buttons are a convenience, not the boundary.
+- **Known limit: one-shot and transient units.** The read path does not know the type of a unit (one-shot) and knows a transient unit only from its unit-file state. Such a unit gets buttons; the broker refuses the action with `unit_oneshot` or `unit_transient`, and the page says the sentence of that code (ADR 0011 A3.3, A3.4 rules 7 and 8).
+- **Progress and result.** After the request was accepted (202), the page reads `GET /api/v1/services/action` every 2 s until the step is `done`; the component's cleanup stops it. One polite live region (`role="status"`) says "<Aktion> für <name> läuft …" and then "<Aktion> für <name>." with the sentence of the result. Success says "Die Aktion wurde ausgeführt. Zustand jetzt: <Zustand>. Ein späterer Ausfall wird nicht geprüft." (A3.3). An action that runs when the page opens is followed the same way. Every code has its own sentence (`lib/serviceErrors.ts`); the server's English message is never shown, and an unknown code gets "Das hat nicht funktioniert. Versuchen Sie es erneut."
+- **Broker not reachable.** When the service reports no broker socket (`broker_available` false), the list stays, a warning notice says the sentence of `unavailable`, and no action button works (they are disabled and the click handler refuses as well).
+- **Untrusted text.** Names, descriptions, state words and codes from the API are text nodes only. A state word, a start mode or a kind that this version does not know is shown neutrally ("Unbekannt", "Sonstiges").
+- **Shape checks.** `lib/services.ts` checks every answer at run time. A wrong structure, another schema version or a step outside `running` and `done` is a load error.
+- **Session loss.** A 401 takes the existing session-loss path to Anmelden (`handleUnauthorized`).
+
+| State | What the user sees | Test (`pages/Activity.test.ts`) |
+|---|---|---|
+| Loading | "Die Dienste werden gelesen …" as a status. | "state loading" |
+| Load error | "Die Dienste konnten nicht gelesen werden." as an alert, the hint and "Erneut versuchen"; an answer of an unknown shape, `services_read_failed` and a server error are the same. | "state load error" (two tests) |
+| systemd not available | `EmptyState` "Auf diesem System gibt es keine Dienstverwaltung durch systemd." with the hint; no list. | "state systemd unavailable" |
+| List | One `h1`, the card "Dienste", the rows, the count line, "Gelesen: …". | "state list" |
+| List with failed services | "fehlgeschlagen" in a critical badge; the count line names them. | "state list with failed services" |
+| Critical and restricted rows | "Kritischer Dienst: <kind>", the restart-only note, the denied note and no button. | "marks critical and restricted rows" |
+| Broker not reachable | The warning notice; the panel repeats the sentence and its buttons are disabled; nothing is sent. | "state broker unavailable" |
+| Untrusted and unknown text | Markup shown as text; unknown state, start mode and kind shown neutrally. | "shows names, descriptions and unknown words as text only" |
+| No services | "Das System meldet keine Dienste." | "says so when the system reports no services" |
+| Filtered, nothing matches | "Kein Dienst passt zum Filter." | "filters by name and description, and by state", "the empty filter state of the scenario list-filtered-empty" |
+| More than 100 rows | 100 rows, "Mehr anzeigen", "<n> von <m> Diensten angezeigt." | "renders at most 100 rows" |
+| Refresh | One read per click; none by itself; a failed refresh keeps the list and says so in the message area. | "\"Aktualisieren\" reads once", "a failed refresh keeps the list" |
+| Panel | Effect texts, critical note, the buttons the row allows; focus in and back; Escape; one panel at a time. | "offers the buttons the row allows", "moves the focus into the panel and back" |
+| Action running | "<Aktion> für <name> läuft …"; reads every 2 s; every action button disabled. | "confirms with one click …", "follows an action that runs already" |
+| Action result | The sentence of the code (every code), success with the not-verified sentence; one new read of the list; polling stops. | "confirms with one click …", "says every result code as its own sentence" |
+| Refused by the route | `busy`, `unavailable` (the list is read again), `invalid_request`, a CSRF refusal, no answer. | "answers of the action route itself" |
+| Page left | The polling stops. | "the component cleanup stops the polling" |
+| Session lost | Anmelden with "Die Sitzung ist beendet. …". | "a 401 takes the existing session-loss path" |
+| English | The same page in English. | "English: the same page in the other language" |
+
+Every scenario of the development scenario mode renders in jsdom ("activity scenario mode"; the scenarios are in [`DEVELOPMENT.md`](DEVELOPMENT.md#activity-page-and-its-scenario-mode-gate-g7-step-g74)).
+
+**Accessibility of the Activity page.** Native elements only: buttons, one labelled `input type="search"` and a `fieldset` of four labelled radio inputs with a `legend`; no `role="button"`, no `select`, no modal. One `h1`, the card's `h2`, an `h3` in the open panel. The row button has a visible label ("Aktionen") and an accessible name that starts with it ("Aktionen für <name>"), `aria-expanded` and, while open, `aria-controls`. Targets are at least 24 by 24 CSS pixels (`--target-min`). The state is a word in a badge, never colour alone. Nothing animates. One polite live region for the action; a load error is an alert in the `EmptyState`, a failed refresh an alert in a `FormMessage`. No new colour pair: the page uses existing tokens only. Checked in jsdom only; not with a screen reader, a real keyboard, forced colours or at 320 CSS pixels in a real browser.
 
 ## State and label texts
 
@@ -713,6 +761,95 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `updErr.request_rejected` | Die Anfrage wurde abgelehnt. Laden Sie die Seite neu und versuchen Sie es erneut. | The request was refused. Reload the page and try again. |
 | `updErr.request_too_large` | Die Anfrage war zu groß. | The request was too large. |
 | `updErr.update_unavailable` | Updates sind in dieser Ausgabe von Oarfish nicht verfügbar. | Updates are not available in this build of Oarfish. |
+| `navActivity` | Aktivität | Activity |
+| `activityTitle` | Aktivität | Activity |
+| `actServicesHeading` | Dienste | Services |
+| `actLoading` | Die Dienste werden gelesen … | Reading the services … |
+| `actLoadError` | Die Dienste konnten nicht gelesen werden. | The services could not be read. |
+| `actLoadErrorHint` | Versuchen Sie es in einigen Sekunden erneut. | Try again in a few seconds. |
+| `actSystemdMissing` | Auf diesem System gibt es keine Dienstverwaltung durch systemd. | This system has no service management by systemd. |
+| `actSystemdMissingHint` | Oarfish zeigt Dienste nur auf Systemen mit systemd an. | Oarfish shows services only on systems with systemd. |
+| `actRefresh` | Aktualisieren | Refresh |
+| `actRefreshing` | Wird gelesen … | Reading … |
+| `actReadAt` | Gelesen: {time} | Read: {time} |
+| `actCounts` | {total} Dienste, davon {active} aktiv, {failed} fehlgeschlagen und {inactive} inaktiv. | {total} services: {active} active, {failed} failed and {inactive} inactive. |
+| `actFilterLabel` | Name oder Beschreibung enthält | Name or description contains |
+| `actStateFilterLabel` | Zustand | State |
+| `actFilter.all` | Alle | All |
+| `actFilter.active` | Aktiv | Active |
+| `actFilter.failed` | Fehlgeschlagen | Failed |
+| `actFilter.inactive` | Inaktiv | Inactive |
+| `actShown` | {shown} von {total} Diensten angezeigt. | {shown} of {total} services shown. |
+| `actNoMatch` | Kein Dienst passt zum Filter. | No service matches the filter. |
+| `actNoServices` | Das System meldet keine Dienste. | The system reports no services. |
+| `actShowMore` | Mehr anzeigen | Show more |
+| `actStartMode` | Startmodus | Start mode |
+| `actNoDescription` | Keine Beschreibung | No description |
+| `actActions` | Aktionen | Actions |
+| `actActionsFor` | Aktionen für {name} | Actions for {name} |
+| `actClose` | Schließen | Close |
+| `actStart` | Start | Start |
+| `actStop` | Stop | Stop |
+| `actRestart` | Neustart | Restart |
+| `actEffect.start` | Der Dienst wird gestartet. Der Startmodus ändert sich nicht. | The service is started. Its start mode does not change. |
+| `actEffect.stop` | Der Dienst wird beendet. Was von ihm abhängt, kann ausfallen. | The service is stopped. What depends on it can fail. |
+| `actEffect.restart` | Der Dienst wird beendet und neu gestartet. Offene Verbindungen zu ihm werden getrennt. | The service is stopped and started again. Open connections to it are closed. |
+| `actCritical.network` | Dieser Dienst gehört zum Netzwerk. Ein Neustart kann die Verbindung zum Gerät kurz unterbrechen. | This service is part of the network. A restart can briefly interrupt the connection to the device. |
+| `actCritical.ssh` | Dieser Dienst ermöglicht den Zugang per SSH. Ein Neustart trennt bestehende SSH-Verbindungen, auch einen SSH-Tunnel zu Oarfish. | This service provides access by SSH. A restart closes existing SSH connections, including an SSH tunnel to Oarfish. |
+| `actCritical.remote_access` | Dieser Dienst ermöglicht den Zugang über Tailscale. Ein Neustart trennt diese Verbindung kurz. | This service provides access through Tailscale. A restart briefly closes this connection. |
+| `actCritical.container` | Dieser Dienst führt Container aus. Ein Stopp oder Neustart beendet laufende Container. | This service runs containers. A stop or restart ends running containers. |
+| `actCritical.time` | Dieser Dienst hält die Uhrzeit aktuell. Ohne ihn kann die Uhrzeit abweichen. | This service keeps the time current. Without it the time can drift. |
+| `actRestartOnlyNote` | Diesen Dienst können Sie nur neu starten. Ein Stopp würde den Zugang zum Gerät trennen. | You can only restart this service. Stopping it would cut the access to the device. |
+| `actDeniedNote` | Diesen Dienst verwaltet Oarfish nicht. Er wird für Oarfish selbst oder für den Systemstart gebraucht. | Oarfish does not manage this service. It is needed by Oarfish itself or by the system start. |
+| `actKind.network` | Netzwerk | Network |
+| `actKind.ssh` | SSH | SSH |
+| `actKind.remote_access` | Fernzugang | Remote access |
+| `actKind.container` | Container | Containers |
+| `actKind.time` | Uhrzeit | Time |
+| `actKind.other` | Sonstiges | Other |
+| `actCriticalRow` | Kritischer Dienst: {kind} | Critical service: {kind} |
+| `actRestartOnlyRow` | Nur Neustart | Restart only |
+| `actDeniedRow` | Nicht von Oarfish verwaltet | Not managed by Oarfish |
+| `actState.active` | aktiv | active |
+| `actState.reloading` | lädt neu | reloading |
+| `actState.inactive` | inaktiv | inactive |
+| `actState.failed` | fehlgeschlagen | failed |
+| `actState.activating` | startet | starting |
+| `actState.deactivating` | stoppt | stopping |
+| `actState.maintenance` | Wartung | maintenance |
+| `actState.refreshing` | aktualisiert | refreshing |
+| `actMode.enabled` | Automatisch | Automatic |
+| `actMode.enabled-runtime` | Automatisch bis zum Neustart | Automatic until the next restart |
+| `actMode.disabled` | Manuell | Manual |
+| `actMode.static` | Nur bei Bedarf | Only on demand |
+| `actMode.masked` | Gesperrt | Blocked |
+| `actMode.indirect` | Indirekt | Indirect |
+| `actMode.linked` | Verknüpft | Linked |
+| `actMode.generated` | Erzeugt | Generated |
+| `actMode.transient` | Vorübergehend | Temporary |
+| `actRunning` | {action} für {name} läuft … | {action} for {name} is running … |
+| `actResultFor` | {action} für {name}. | {action} for {name}. |
+| `actResultSuccess` | Die Aktion wurde ausgeführt. Zustand jetzt: {state}. Ein späterer Ausfall wird nicht geprüft. | The action was carried out. State now: {state}. A later failure is not checked. |
+| `svcErr.bad_request` | Die Aktion ist fehlgeschlagen. Laden Sie die Seite neu und versuchen Sie es erneut. | The action failed. Reload the page and try again. |
+| `svcErr.busy` | Eine andere Aktion läuft noch. Warten Sie, bis sie beendet ist. | Another action is still running. Wait until it has finished. |
+| `svcErr.rate_limited` | Zu viele Aktionen in kurzer Zeit. Eine neue Aktion ist in {duration} möglich. | Too many actions in a short time. A new action is possible in {duration}. |
+| `svcErr.unit_invalid` | Der Dienstname ist ungültig. | The service name is not valid. |
+| `svcErr.unit_unknown` | Das System kennt diesen Dienst nicht mehr. Laden Sie die Liste neu. | The system no longer knows this service. Reload the list. |
+| `svcErr.unit_not_canonical` | Dieser Name ist ein weiterer Name eines Dienstes. Wählen Sie den Dienst in der Liste. | This name is another name of a service. Choose the service in the list. |
+| `svcErr.unit_denied` | Diesen Dienst verwaltet Oarfish nicht. Er wird für Oarfish selbst oder für den Systemstart gebraucht. | Oarfish does not manage this service. It is needed by Oarfish itself or by the system start. |
+| `svcErr.unit_masked` | Dieser Dienst ist gesperrt (maskiert) und lässt sich nicht starten. | This service is masked and cannot be started. |
+| `svcErr.unit_transient` | Dieser Dienst wurde nur vorübergehend angelegt. Oarfish verwaltet ihn nicht. | This service was created only temporarily. Oarfish does not manage it. |
+| `svcErr.unit_oneshot` | Dieser Dienst führt eine einmalige Aufgabe aus. Oarfish verwaltet solche Aufgaben nicht. | This service runs a one-time task. Oarfish does not manage such tasks. |
+| `svcErr.unit_template` | Diese Vorlage lässt sich nicht direkt starten. | This template cannot be started directly. |
+| `svcErr.refused_by_unit` | Der Dienst lässt diese Aktion nicht zu. | The service does not allow this action. |
+| `svcErr.operation_not_offered` | Diesen Dienst können Sie nur neu starten. Ein Stopp würde den Zugang zum Gerät trennen. | You can only restart this service. Stopping it would cut the access to the device. |
+| `svcErr.already_in_state` | Der Dienst ist bereits in diesem Zustand. | The service is already in this state. |
+| `svcErr.job_failed` | Die Aktion ist fehlgeschlagen. Zustand jetzt: {state}. | The action failed. State now: {state}. |
+| `svcErr.timeout` | Die Aktion dauert zu lange. Das System führt sie vielleicht noch aus. Laden Sie die Liste gleich neu. | The action takes too long. The system may still be running it. Reload the list in a moment. |
+| `svcErr.state_unexpected` | Die Aktion wurde ausgeführt, aber der Dienst hat nicht den erwarteten Zustand. Zustand jetzt: {state}. | The action ran, but the service is not in the expected state. State now: {state}. |
+| `svcErr.internal` | Die Aktion ist fehlgeschlagen. Versuchen Sie es erneut. | The action failed. Try again. |
+| `svcErr.unavailable` | Der Privilege Broker ist nicht erreichbar. Die Liste bleibt sichtbar, Aktionen sind nicht möglich. | The privilege broker cannot be reached. The list stays visible; actions are not possible. |
+| `svcErr.invalid_request` | Die Anfrage wurde abgelehnt. Laden Sie die Seite neu und versuchen Sie es erneut. | The request was refused. Reload the page and try again. |
 
 ## Text rules
 
@@ -737,9 +874,9 @@ Target: WCAG 2.2 AA (ORB-NFR-011). What is tested and what is not is in [Verific
 - **Focus.** One visible ring (`--focus-ring-*`) with 3:1 against every background. No sticky element covers a focused element.
 - **Target size.** Buttons, navigation entries, `summary` and links are at least 24 by 24 CSS pixels (`--target-min`).
 - **Landmarks and headings.** `header` (banner, with the navigation), `nav` with a name, `main`. One `h1` per page; `h2` for cards, `h3` for alert groups, `h4` for alert titles; no level is skipped. A skip link is the first focusable element.
-- **Native elements.** Only `a`, `button`, `summary` and, on the access pages and the Update page, labelled `input` elements are interactive. No `tabindex` above 0, no `role="button"`. Forms submit with Enter. One exception takes the focus without being interactive: the release-notes box of the Update page scrolls, so it has `tabindex="0"` and is a region named by its heading, to be scrolled with the keyboard (WCAG 2.1.1).
-- **Live region.** On Dashboard only the alert list has `aria-live`, exactly as before. The connection indicator, the notices and the metric values are not announced. The Gerät page keeps its loading and error roles. The forms of Einrichten, Anmelden and Konto each have one message area (`FormMessage`): errors as `role="alert"`, the expired and signed-out notes and the success note as `role="status"`. The Update page has one polite status for the current step and the restart, the status "Wird geprüft …", and message areas for its two password forms, "Jetzt prüfen" and "Verwerfen".
-- **Forms.** Every field has a visible label and, where it helps, a help text tied with `aria-describedby`. An error names the rule, marks the field with `aria-invalid` and a thicker border, and moves the focus to the field. Password fields are cleared after every submit. On a page change the focus goes to the first field. On the Update page the focus moves into the password field when the confirmation opens, back to "Aktualisieren" when it closes, and to the progress card when an update has started.
+- **Native elements.** Only `a`, `button`, `summary` and, on the access pages, the Update page and the Activity page, labelled `input` elements are interactive (on the Activity page a search field and radio inputs in a `fieldset`). No `tabindex` above 0, no `role="button"`. Forms submit with Enter. One exception takes the focus without being interactive: the release-notes box of the Update page scrolls, so it has `tabindex="0"` and is a region named by its heading, to be scrolled with the keyboard (WCAG 2.1.1).
+- **Live region.** On Dashboard only the alert list has `aria-live`, exactly as before. The connection indicator, the notices and the metric values are not announced. The Gerät page keeps its loading and error roles. The forms of Einrichten, Anmelden and Konto each have one message area (`FormMessage`): errors as `role="alert"`, the expired and signed-out notes and the success note as `role="status"`. The Update page has one polite status for the current step and the restart, the status "Wird geprüft …", and message areas for its two password forms, "Jetzt prüfen" and "Verwerfen". The Activity page has one polite status for the running action and its result, and a message area for a failed refresh.
+- **Forms.** Every field has a visible label and, where it helps, a help text tied with `aria-describedby`. An error names the rule, marks the field with `aria-invalid` and a thicker border, and moves the focus to the field. Password fields are cleared after every submit. On a page change the focus goes to the first field. On the Update page the focus moves into the password field when the confirmation opens, back to "Aktualisieren" when it closes, and to the progress card when an update has started. On the Activity page it moves into the action panel when it opens and back to the row's "Aktionen" when it closes (also after an action was sent).
 - **Images and icons.** Icons are `aria-hidden`. A sparkline is an image with a text alternative that includes the latest value. A meter has an accessible name and its value.
 - **Motion.** Nothing animates when a value updates (no transition on a bar, no animation at all). Hover and open effects use `--duration-*`, which `prefers-reduced-motion` sets to zero.
 - **Colour schemes and forced colours.** `color-scheme: light dark`; `forced-colors: active` rules for focus, borders, meters, the indicator dot and the current entry.
@@ -851,14 +988,14 @@ Do not add an entry for a function that does not exist yet (specification 7.1, "
 
 Initial frontend, `gzip -9` per file (the budget in ORB-NFR-006 is 750,000 bytes):
 
-| | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task | After task U1 | After step G6.8 |
-|---|---|---|---|---|---|---|
-| `index.html` | 263 | 265 | 266 | 263 | 261 | 267 |
-| CSS | 1,806 | 4,522 | 5,003 | 5,013 | 5,144 | 5,405 |
-| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,632 | 56,273 |
-| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **50,037** | **61,945** |
+| | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task | After task U1 | After step G6.8 | After step G7.4 |
+|---|---|---|---|---|---|---|---|
+| `index.html` | 263 | 265 | 266 | 263 | 261 | 267 | 264 |
+| CSS | 1,806 | 4,522 | 5,003 | 5,013 | 5,144 | 5,405 | 5,702 |
+| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,632 | 56,273 | 66,045 |
+| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **50,037** | **61,945** | **72,011** |
 
-The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way). Task U1 (with the colour baseline and the mark) adds 1,478 bytes (language choice, the English texts in the bundle, the grouped navigation, the footer); measured with `gzip -9 -n` per file on a developer Mac, no dependency added. Step G6.8 adds 11,907 bytes (the Update page, its client and 139 texts in each language); `main` before it was rebuilt and measured the same way (50,037). G6.10 step c adds 1,950 bytes (the second confirmation, the result and installer texts, 22 new texts in each language): 63,895 against 61,945 for `origin/main` before it, both built and measured the same way on a developer Mac. The development scenario mode is not in the build: `vite.config.ts` fails the build if its marker string appears in any output file.
+The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way). Task U1 (with the colour baseline and the mark) adds 1,478 bytes (language choice, the English texts in the bundle, the grouped navigation, the footer); measured with `gzip -9 -n` per file on a developer Mac, no dependency added. Step G6.8 adds 11,907 bytes (the Update page, its client and 139 texts in each language); `main` before it was rebuilt and measured the same way (50,037). G6.10 step c adds 1,950 bytes (the second confirmation, the result and installer texts, 22 new texts in each language): 63,895 against 61,945 for `origin/main` before it, both built and measured the same way on a developer Mac. Step G7.4 adds 8,072 bytes (the Activity page, its client and 89 texts in each language): 72,011 against 63,939 for `origin/main` before it (commit `116e219`), both built and measured the same way (`gzip -9 -n` per file) on a developer Mac; no dependency was added. The development scenario modes are not in the build: `vite.config.ts` fails the build if their marker string or the name of an installer appears in any output file.
 
 Updating a sample changes text and attributes in place: no element is added or removed and the cards stay the same nodes (`Dashboard.update.test.ts`). The sparkline path is derived from its values and changes only when a sample arrives. No CSS animation exists.
 
@@ -871,6 +1008,8 @@ Updating a sample changes text and attributes in place: no element is added or r
 **Verified for step G6.8 (2026-11-07), in headless Chrome on one Mac against the development scenario mode, by a script that is not in the repository:** every scenario at 320, 390, 768, 1280 and 1920 CSS pixels in light and dark, and each again at 320 with the confirmation open where it exists (275 page loads): no horizontal scroll and no element of the page outside the window; the 30 `update-*` screenshots; a keyboard walk-through with real key events in the scenario `available`: the Tab order skip link, brand, Dashboard, Gerät, Update, user menu, Deutsch, English, "Jetzt prüfen", the release-notes box, "Aktualisieren", each with a visible 2 px focus ring; Enter on "Aktualisieren" puts the focus into the password field; Escape closes the panel and returns the focus to "Aktualisieren"; Tab reaches the submit button and "Abbrechen", and Enter on "Abbrechen" returns the focus; Enter with an empty field says "Dieses Feld ist leer." and keeps the focus in the field; a wrong password says "Das aktuelle Passwort ist falsch.", empties the field and keeps the focus; an accepted one moves the focus to the progress card, whose live region says "Aktueller Schritt: Release-Daten laden". **Not checked for G6.8:** a device, a real update service, the real restart, Safari, Firefox, a screen reader, forced colours, text spacing and 200 percent text size.
 
 **Checked for G6.10 step c (2026-11-11), not Verified:** in jsdom, every state of the step (the tests named in [Update page](#update-page-step-g68)), both languages of the second confirmation, and the bound of F4 on both sides as the page sees it. In headless Chrome on one Mac against the development scenario mode, by a script that is not in the repository (device metrics emulated through the DevTools protocol): the twelve new scenarios at 320, 390, 768, 1280 and 1920 CSS pixels in light and dark (120 page loads), with no horizontal scroll and no element of the page outside the window, and the 16 screenshots above. **Not checked for step c:** a keyboard walk-through in a real browser, a device, a real update service or helper, the real hand-over, Safari, Firefox, a screen reader, forced colours, text spacing and 200 percent text size.
+
+**Checked for step G7.4 (2026-11-25), not Verified, class C only:** in jsdom, every state of the [Activity page](#activity-page-step-g74) and every scenario of its scenario mode, the filter and "Mehr anzeigen", the panel's focus rules and Escape, the polling and its end with fake timers, every result sentence, both languages, and that names and descriptions stay text. **Not checked for G7.4:** any real browser (not even headless Chrome: no layout check at 320 to 1920 CSS pixels and no screenshots were made in this step), a keyboard walk-through with real key events, Safari, Firefox, a screen reader, forced colours, text spacing and 200 percent text size, a real service, `systemctl` under the service's sandbox, the real broker, and the device.
 
 **Verified in headless Chrome on one Mac, by a script that is not in the repository:** the layout checks and the screenshots described above (and, for the known-gaps task, a mock server with synthetic data: the alerts card and the tab shown again with a stream that is still opening, and the shell at 360, 1280, 1920 and 2560 px in both themes); that the page loads and is styled under the server's `Content-Security-Policy` (`default-src 'self'`, no inline style attribute exists); and the Tab order (skip link, brand, navigation, links, `summary` elements) with a visible 2 px focus ring on each stop, in both themes.
 
@@ -891,6 +1030,7 @@ Updating a sample changes text and attributes in place: no element is added or r
 - **Keyboard use in Safari.**
 - **The known-gaps changes** (alerts card marked stale, old values marked after a hidden tab is shown, neutral icon, content next to the sidebar, "MiB" in the profile text) were checked in jsdom tests and in headless Chrome on one Mac only. They have not been checked in Safari, Firefox or on the device yet.
 - **The lost-connection display** of the new UI on the device.
+- **The Activity page (G7.4)** in any real browser, against a real service and broker, on the device, with a screen reader, in forced colours, and its layout at 320 CSS pixels (it is a list of rows for that, but no browser has shown it).
 - **The Update page (G6.8 and G6.10 step c)** against a real service, helper and device, the restart it causes and the session loss after it, the second confirmation with a real staged component set, the hand-over of the helper and the 60-second bound against real timings, in any browser other than headless Chrome, and with a screen reader.
 - **Idle CPU and `VmRSS` of `v0.1.0-alpha.5`.** Not re-measured.
 - **Four simultaneous clients.**

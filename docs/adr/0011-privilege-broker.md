@@ -5,8 +5,9 @@
 - Amendment A2 (G7.1 device spike findings, written 2026-11-23): the results of the device spike G7.1 with throwaway units on the reference device, one verdict per assumption, the service list for amendment A1.5, and draft changes to B2, B3 and B8 marked "proposal, not applied", listed in "Amendment A2 (G7.1 device spike findings)" below. It edits no sentence of the body and no row of "Assumptions to verify" and takes no decision; the owner decides B2, B3 and B8 from it (stop point of G7.1 in B10).
 - Amendment A3 (G7.1 owner decisions, written 2026-11-23, D-C88): the owner's decisions on the proposals of amendment A2.5, "wie empfohlen", with the full text of every rule they change (B2, B3, B8), the changed rows of the failure matrix and what stays open, listed in "Amendment A3 (G7.1 owner decisions)" below. It edits no sentence of the body; where the body and A3 differ, A3 governs. It is a decision, not evidence: nothing in it is verified.
 - Amendment A4 (G7.2 broker core as implemented, written 2026-11-24, D-C89): the owner's decisions for G7.2 (D-C89 items 2 to 7 and four accepted choices) as the rules that now apply, the broker as built (files, functions, the environment of `systemctl`, the bound of `correlation_id`, how test seams stay out of the release binary), every choice the code made where this ADR did not fix one, and the class C tests per row of the failure matrix, listed in "Amendment A4 (G7.2 broker core as implemented)" below. There is no deviation from the body, A1 or A3. It edits no sentence of the body, A1, A2 or A3 except two pointer sentences in A3.7 and A3.8. It is class C evidence only: nothing in it is verified on a device.
+- Amendment A5 (G7.4 service side and Activity page as implemented, written 2026-11-25): the service side of the broker as built (the read path R1, the broker client, the routes, the action job, the service values of ADR 0009 A7 in the audit package) and the page Aktivität, the files and functions, every choice the code made where this ADR did not fix one, the class C tests per row of the failure matrix, what is not verified and what stays open, listed in "Amendment A5 (G7.4 service side and Activity page as implemented)" below. There is no deviation from the body or from A1 to A4. It edits no sentence of the body or of A1 to A4 except one pointer sentence in A4.8. It is class C evidence only: nothing in it is verified on a device, in a real browser or against the real broker.
 - Date: 2026-11-23
-- Gate: G7; steps G7.0 (design stop) and G7.1 (device spike) are done; G7.2 (broker core) is implemented and waits for the owner's review of the privileged code (B10); G7.3 has not started
+- Gate: G7; steps G7.0 (design stop) and G7.1 (device spike) are done; G7.2 (broker core) and G7.3 (packaging, G7.3a to G7.3c) are merged; G7.4 (service side and Activity page) is implemented as class C and waits for the owner's review of the page (B10); G7.5 has not started
 - Written against: `main` at commit `4f1b5d13accc7373e5fee586c0defe45e9b7ae0c` (merge of PR #52)
 - Decision numbers: this ADR uses draft numbers `D-DRAFT-G7-nn` only. They become `D-C87` and later when the owner accepts them (`D-C82` stays reserved). `docs/DECISIONS.md` is not changed by this ADR.
 - Amends nothing. Where an accepted text (ADR 0009, ADR 0010, the specification) would need a change, this ADR lists it as a proposal in "Conflicts and gaps" and in "Amendments this ADR would need".
@@ -31,6 +32,7 @@
 16. [Amendment A2 (G7.1 device spike findings)](#amendment-a2-g71-device-spike-findings)
 17. [Amendment A3 (G7.1 owner decisions)](#amendment-a3-g71-owner-decisions)
 18. [Amendment A4 (G7.2 broker core as implemented)](#amendment-a4-g72-broker-core-as-implemented)
+19. [Amendment A5 (G7.4 service side and Activity page as implemented)](#amendment-a5-g74-service-side-and-activity-page-as-implemented)
 
 ## How to read this ADR
 
@@ -1031,4 +1033,102 @@ The fake `systemctl` exists twice: a Go stand-in for the runner (`fakeSys`, used
 ### A4.8 What stays open
 
 - G7.3 (packaging: bundle, component set, helper change, installer, budget value 80,000) has not started and is not prepared by G7.2. (Pointer, G7.3a: this bullet is stale. G7.3 is split into G7.3a and G7.3b. G7.3a implements the helper change, the bundle shape, `relverify`, `bundlegen`, the installer's store of the broker files below `components/<id>` and the budget value 80,000, stated in [ADR 0010 Amendment A20](0010-update-helper.md#amendment-a20-g73a); the broker's links, the wants link and start of its socket, its uninstall and its health check in the installer are G7.3b.) (Pointer, G7.3b: done, stated in [ADR 0010 Amendment A21](0010-update-helper.md#amendment-a21-g73b); D-C90 accepted G7.3a.)
-- The service side (read path R1, routes, audit entries, the Activity page) is G7.4; reboot and shutdown in the UI are G7.5.
+- The service side (read path R1, routes, audit entries, the Activity page) is G7.4; reboot and shutdown in the UI are G7.5. (Pointer, G7.4: implemented as class C, stated in [amendment A5](#amendment-a5-g74-service-side-and-activity-page-as-implemented); G7.5 has not started.)
+
+## Amendment A5 (G7.4 service side and Activity page as implemented)
+
+**A5 (G7.4, written 2026-11-25).** Step G7.4 implements the service side of B10: the read path R1 of B2 as amended by A3.2, a client of the broker's socket for the three service operations of A4.3, the routes of B4 for services, the action job, the service values of ADR 0009 amendment A7 in the audit package, and the page Aktivität with the service list and start, stop and restart. This amendment edits no sentence of the body or of A1 to A4, except one pointer sentence in A4.8. **Deviations from the body and A1 to A4: none.** Where this ADR left a choice to the code, A5.6 names it. It decides nothing: every item of A5.6 that the owner wants as a rule needs a decision entry.
+
+**A5 is class C evidence only.** The tests prove the argument shapes and environment of the two read shapes against a fake `systemctl`, the parsers against fixture output and hostile output, the classification against the broker's own lists, the protocol against a scripted server on a real Unix socket, the job, the routes, the audit mapping and the page in jsdom. They prove nothing about systemd, the broker or a browser. No device was touched in G7.4; the broker, the helper, `install/`, `scripts/` and the workflows are unchanged (the SHA-256 of the helper and the broker built at the base and at the head of the step are equal). Nothing is Verified, and the reference device stays Compatible.
+
+### A5.1 Files and functions
+
+| File | Content |
+|---|---|
+| `backend/internal/unitname/unitname.go` | `Valid` (rule 1 of B3, the broker's pattern of A4.4 item 1 as the constant `Pattern`), `IsTemplate`, `Template`; used by the route, the read path, the client and the audit target |
+| `backend/internal/services/systemctl.go` | `SystemctlPath`, the two shapes `shapeListUnits` and `shapeListUnitFiles`, `allowedShape`, `systemctlEnv`, `runProgram` (the only place of the service that starts a process), `limitedBuffer` |
+| `backend/internal/services/parse.go` | `parseListUnits`, `parseListUnitFiles`, the closed sets of load, active, sub and unit-file states, `cleanDescription` |
+| `backend/internal/services/classify.go` | `denyList` and `restartOnly` (copies of the broker's lists of A3.4), `criticalKinds` (the table of rule 11), `classify`, `offeredActions`, `ValidAction` |
+| `backend/internal/services/reader.go` | `reader` (single flight, the 5 s cache, `invalidate`), `readOnce`, `join`, `List`, `Row`, `Counts`, the codes `services_unavailable` and `services_read_failed` |
+| `backend/internal/services/actions.go` | the job: `submit` (stat, busy, start), the broker call on its own context, one audit entry, `lastAction`, `close` |
+| `backend/internal/services/services.go` | `Manager` (`List`, `BrokerAvailable`, `Submit`, `Last`, `Close`) |
+| `backend/internal/brokerclient/client.go` | `SocketPath`, `Deadline` (110 s), `API`, `Client` (`Available`, `Do`), `request`, `decodeAnswer`, the closed sets `Codes` and `States` |
+| `backend/internal/server/services.go` | `ServiceControl`, `WithServices`, the handlers of `GET /api/v1/services`, `POST /api/v1/services/action`, `GET /api/v1/services/action` |
+| `backend/internal/audit/audit.go` | the actions `service_start`, `service_stop`, `service_restart`; the results of A7 for service operations; `ServiceResult`, `ServiceTarget`, `validServiceTarget` |
+| `backend/cmd/oarfish/main.go` | `services.New` with `brokerclient.New(brokerclient.SocketPath)` and the audit log; `Close` runs before the audit log closes |
+| `frontend/src/pages/Activity.svelte`, `lib/services.ts`, `lib/serviceErrors.ts`, `lib/services.fixtures.ts`, `dev/servicesMock.ts` | the page, its client with run-time shape checks, the sentences of the codes and the words of the closed sets, the fixtures and the development scenario mode ([`UI.md`](../UI.md#activity-page-step-g74)) |
+
+### A5.2 The read path as built
+
+- **Process.** `/usr/bin/systemctl`, no shell, exactly the two shapes of A3.2: `list-units --type=service --all --no-legend --no-pager --plain` and `list-unit-files --type=service --no-legend --no-pager`; environment exactly `PATH=/usr/sbin:/usr/bin:/sbin:/bin` and `LC_ALL=C`; standard input `/dev/null`; standard error discarded; working directory `/`; 5 s per call (then `SIGKILL`, and at most 1 s more for the output); at most 256 KiB of standard output kept. No `show`, no third shape, no `--output=json`.
+- **Bounds.** At most 1,000 lines per output and 1,000 rows; one read at a time (a caller that comes while one runs waits for it and gets its result); the result kept 5 s device-wide; the cache dropped when an action ends. No background work: the read runs only when a request asks for the list.
+- **Parsing (A3.2).** `list-units`: four words separated by spaces and the rest of the line as the description. `list-unit-files`: exactly three words. Every name passes rule 1; every word is from its closed set (A5.6 items 2 to 4); a duplicated name, an empty line, a tab, a wrong word count or output over a bound fails the whole read (`services_read_failed`); nothing of a failed read is shown.
+- **Rows.** The names of `list-units` without the `not-found` entries, joined with the start mode of `list-unit-files`; the names that only `list-unit-files` has, as inactive and not loaded; never an alias or a template. Sorted by name (byte order).
+- **Descriptions.** Invalid UTF-8 replaced by U+FFFD, control characters and bidirectional format characters removed, trimmed, at most 200 characters; text only on the page.
+- **Unavailable.** Without the directory `/run/systemd/system` or the file `/usr/bin/systemctl`, or when the program cannot be started, the answer is `services_unavailable` (503); every other failure is `services_read_failed` (503). Neither carries a path, an operating-system text or output. The service starts and runs without systemd (a development Mac, Generic mode).
+
+### A5.3 The broker client as built
+
+- One request per connection, `{"v":1,"op":"service.start|service.stop|service.restart","unit":"…","correlation_id":"<16 lowercase hex>"}` and a newline, at most 1,024 bytes; the member set of A4.3 and nothing else. No `status`, no power operation (G7.5).
+- One answer line of at most 8 KiB, decoded strictly (A5.6 item 12). The 19 codes of B2 that a service operation can produce (`success`, `bad_request`, `busy`, `rate_limited`, `unit_invalid`, `unit_unknown`, `unit_not_canonical`, `unit_denied`, `unit_masked`, `unit_transient`, `unit_oneshot`, `unit_template`, `refused_by_unit`, `operation_not_offered`, `already_in_state`, `job_failed`, `timeout`, `state_unexpected`, `internal`) are kept; `accepted`, `update_running`, `already_requested` and any other word are `internal`. The service's own `unavailable`: the socket is missing, the connection is refused or reset, the broker closes without an answer, or no answer comes within 110 s.
+- No retry: a request is sent at most once (a retry could run the operation twice).
+- `Available` is a stat of `/run/oarfish-broker/broker.sock` and requires a socket; it never connects, so opening the page never starts the root process.
+
+### A5.4 Routes and the job as built
+
+- `GET /api/v1/services`: session, activity. `{"schema_version":1,"read_at":…,"broker_available":…,"counts":{"total","active","failed","inactive"},"services":[{"name","description","load_state","active_state","sub_state","start_mode","denied","restart_only","critical","actions"}]}`.
+- `POST /api/v1/services/action`: session, activity, the three CSRF layers of ADR 0009 E3 unchanged, JSON only, body at most 1 KiB, exactly `unit` and `action`. Order: the body; rule 1 for `unit` and the closed set for `action` (both 400 `invalid_request`, not audited as a service action); the stat of the socket (503 `unavailable`, audited); one action at a time device-wide (409 `busy`, audited); else 202 `{"schema_version":1,"accepted":true}` and the job. No password (D-C87 item 7).
+- `GET /api/v1/services/action`: session, activity, from memory: `{"schema_version":1,"action":null}` or the last action with `unit`, `action`, `step` (`running` or `done`), `started_at`, and when done `finished_at`, `code`, `state` and `retry_after_s` as the broker sent them. A restart of the service clears it.
+- The job runs the broker call on its own context, not the request's: closing the page neither cancels nor un-audits it, and the server's 30 s write timeout is unchanged. The correlation ID is the server's value of the request, passed to the broker and into the audit entry. Without `WithServices` the three routes answer 503 `services_unavailable`.
+
+### A5.5 Audit (ADR 0009 A7, the part of service actions)
+
+Actions `service_start`, `service_stop`, `service_restart`, none aggregated; target `service/<unit>` where the unit passes rule 1 (so at most 255 bytes), else the event is dropped and counted; results `success`, `error`, `busy`, `rate_limited`, `unavailable` and the broker codes `unit_invalid`, `unit_unknown`, `unit_not_canonical`, `unit_denied`, `unit_masked`, `unit_transient`, `unit_oneshot`, `unit_template`, `refused_by_unit`, `operation_not_offered`, `already_in_state`, `job_failed`, `timeout`, `state_unexpected`; `bad_request` and `internal` are recorded as `error`. One entry per request that passed the syntax and closed-set checks, written when the answer is known (the job for an accepted request, the route for the service's own `busy` and `unavailable`), with the account name of the session at request time. The power part of A7 (`system_reboot`, `system_poweroff`, `update_running`, `already_requested`, the target `system`, the flush and `fsync`) is G7.5 and not in the code.
+
+### A5.6 Choices the code made where this ADR did not fix one
+
+1. **Rule 1 in the service.** The service uses the broker's pattern of A4.4 item 1 (the instance may be empty), so `name@.service` passes the route and the broker answers `unit_template`. Templates are never rows. `TestPatternMatchesTheBroker` keeps the two patterns equal.
+2. **Sub states are a closed set.** The 27 sub states of a service unit in systemd up to version 257 (`dead`, `condition`, `start-pre`, `start`, `start-post`, `running`, `exited`, `reload`, `reload-signal`, `reload-notify`, `refresh-extensions`, `mounting`, `stop`, `stop-watchdog`, `stop-sigterm`, `stop-sigkill`, `stop-post`, `final-watchdog`, `final-sigterm`, `final-sigkill`, `failed`, `dead-before-auto-restart`, `failed-before-auto-restart`, `dead-resources-pinned`, `auto-restart`, `auto-restart-queued`, `cleaning`). The list is an *assumption* from systemd's documentation, not read from a device; an unknown sub state fails the whole read (A5.8).
+3. **Load states** are the closed set `loaded`, `not-found`, `bad-setting`, `error`, `merged`, `masked`, `stub`; `not-found` rows are dropped.
+4. **The vendor preset** (third column) must be `-` or 1 to 16 lowercase letters; it is not used.
+5. **Rows only in `list-unit-files`** have the load state `not-loaded` (a word of the service, not of systemd), the active state `inactive`, the sub state `dead` and no description.
+6. **Start mode of an instance** that `list-unit-files` does not name: the state of its template; otherwise `""` (the page says "Unbekannt"). `alias` is never a start mode.
+7. **Restart-only rows offer restart only**, also when they are inactive. The broker would accept a start of them (it enforces only the stop part, A4.4 item 14); the page follows the owner's rule "only restarted" for every button. The rule for other rows: start when not `active`; stop when `active`, `activating` or `reloading`; restart always; nothing for a denied row.
+8. **Critical kinds** are given for every row of the rule 11 table, also for the rows with "Stop offered" (`ModemManager.service`, containers, time).
+9. **A failed read is cached** for 5 s like a successful one, so repeated clicks do not start more processes.
+10. **Descriptions** lose bidirectional format characters (U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069) besides control characters, so a description cannot reorder what is shown around it.
+11. **systemd present** means the directory `/run/systemd/system` and the file `/usr/bin/systemctl` (stat); a program that cannot be started is `services_unavailable` too.
+12. **Answer decoding.** `state` is accepted only with `success`, `job_failed`, `timeout` and `state_unexpected`; `retry_after_s` is required with `rate_limited` and refused with any other code, plain digits from 1 to 86,400; the answer must be exactly one line ending in a newline; an empty answer is `unavailable`; anything else is `internal`.
+13. **The client refuses to build** a request for an operation outside the three, a unit that fails rule 1 or a correlation ID that is not 16 lowercase hexadecimal digits: `internal`, no connection.
+14. **`Available` requires a socket** at the path, not only an entry.
+15. **A refusal does not replace the last action**: `busy` and `unavailable` of the route leave the last action as it was.
+16. **Shutdown.** When the service stops, the job's context ends; the client returns `unavailable` at once (the operation may continue inside systemd), the job writes its audit entry, and the audit log closes after that.
+17. **HTTP status codes:** 202 accepted, 400 `invalid_request`, 409 `busy`, 413 `request_too_large`, 503 `unavailable`, `services_unavailable` and `services_read_failed`.
+18. **The page** reads the last action once on opening and follows an action that runs; after an action it reads the list once; a refused request other than `busy` reads the list once as well (the socket may be gone).
+19. **Texts.** The sentences of B2 are used as written, except two that the text rules of `docs/UI.md` forbid ("bitte"): `busy` reads "Eine andere Aktion läuft noch. Warten Sie, bis sie beendet ist." and `rate_limited` reads "Zu viele Aktionen in kurzer Zeit. Eine neue Aktion ist in {duration} möglich." The meaning is unchanged (B2 allows the wording to change at the UI step). The route's own `invalid_request` has the sentence of the update page's request refusal. Every user text of G7.4 is a proposal for the owner's review.
+
+### A5.7 Class C tests per row of the failure matrix
+
+Expected results as amended by A3.7 and A4.1. Service side only; the broker side stays as A4.6.
+
+| Row | Tests (service side) |
+|---|---|
+| BF13 | `TestJobAuditMapping` (`job_failed` kept with its state and audited), page "says every result code as its own sentence" |
+| BF14 | `TestJobAuditMapping` (`timeout`), `TestUnavailableAndNoRetry` (no answer within the client deadline is `unavailable`, sent once), page scenario `action-timeout` |
+| BF15 | `TestJobAuditMapping` (`state_unexpected`), page "says every result code as its own sentence" |
+| BF16 (class C part) | `TestJobSuccess`, `TestServicesActionIsAJobAuditedOnce` (one entry with user, action, target, result and the request's correlation ID), page "confirms with one click …" (the success sentence says that a later failure is not checked) |
+| BF17 | `TestJobBusy`, `TestServicesActionIsAJobAuditedOnce`, `TestServicesActionSubmit`, page "answers of the action route itself" |
+| BF19 | `TestJobUnavailable`, `TestUnavailableAndNoRetry`, `TestAvailableIsStatOnly`, `TestServicesActionSubmit`, page "state broker unavailable" |
+| BF21 (service side) | `TestParseListUnits`, `TestParseListUnitsFailsClosed`, `TestParseListUnitFiles`, `TestParseListUnitFilesFailsClosed`, `TestCleanDescription`, `TestHostileListUnits`, `TestRunProgramBound`, `TestReadFailed`, `TestJoinBound`, `FuzzParseListUnits`, `FuzzParseListUnitFiles`, page "shows names, descriptions and unknown words as text only" |
+| BF22 | `TestServicesRoutesNeedASessionAndTheCSRFLayers` (refused, nothing reaches the job, audited `csrf_failed` and `origin_rejected`) |
+| BF29 (service side) | `TestRequestRefusedBeforeSending`, `TestNoOtherOperation`, `TestPowerOnlyAndUnknownCodesAreInternal`, `TestListsMatchTheBroker`, `TestServicesActionBody`; the broker side of BF29 is A4.6 |
+
+Besides the matrix: `TestShapes`, `TestRunProgram`, `TestRunProgramDeadline`, `TestOnlySystemctlExecutes`, `TestImports`, `TestCache`, `TestInvalidate`, `TestSingleFlight`, `TestCloseEndsARead`, `TestReadUnavailable`, `TestDenyClassification`, `TestRestartOnlyClassification`, `TestRestartOnlyIsTheNoRowsOfRule11`, `TestCriticalKindsAndActions`, `TestJobOwnContextAndClose`, `TestManagerDropsCacheAfterAction`, `TestServicesLastAction`, `TestServicesRoutesAreActivity`, `TestServicesRoutesWithoutTheOption`, `TestWriteTimeoutUntouched`, `TestServicesRedaction`, `TestClosedSetsAfterA7ServicePart`, `TestServiceResultMapping`, `TestServiceTargetPattern`, `TestServiceEventsAreWrittenOrDropped`, `TestArchitectureNoProductCodeRunsAProgram` (extended by the one file of the read path), and the page tests named in [`UI.md`](../UI.md#activity-page-step-g74). A mutation run weakened, one at a time, the restart-only list, the deny list, the target pattern, the 1 KiB body limit, the busy slot, the mapping of power-only codes, the no-retry rule, the stat-only socket check and the single process-start file; each turned at least one of these tests red.
+
+### A5.8 What is not verified, and what stays open
+
+- **Not verified:** the read shapes under the service's sandbox on a device as part of the product (G7.1 observed them once with a throwaway copy, A2.3 A-02; the transport is the D-Bus system bus, S9); the time of `list-unit-files` against the 5 s bound on a device (2.6 to 2.7 s observed in G7.1, S6); the real broker behind the client; the memory of a list read; the page in any real browser, with a screen reader, in forced colours and at 320 CSS pixels; Ubuntu Server (G12). Every class D and T row stays open for G7.6.
+- **Open: the unit type on the read path.** The two shapes do not tell a one-shot unit, and a transient unit only by its unit-file state; the page shows buttons for them and the broker refuses (`unit_oneshot`, `unit_transient`), with the sentence of the code. No change inside the two shapes can tell the type. A proposal outside R1 as decided: a third read shape `systemctl show --property=Id,Type,Transient --no-pager -- <names…>` for the loaded names (an owner decision, it changes R1 and D-C87 item 3); not implemented.
+- **Open: the sub-state set.** An unknown sub state from a newer systemd fails the whole read (A5.6 item 2). If the owner prefers, the sub state could be checked by a pattern as the broker checks `SubState` (A4.4 item 4) and shown neutrally; not implemented.
+- **Open: the page's texts and name.** Every user text of G7.4 and the name Aktivität / Activity are proposals for the owner's review (B10 stop point of G7.4).
+- **Not started:** G7.5 (reboot, shutdown, the power routes, the password for them, the waiting actions and sessions, the power part of ADR 0009 A7).
