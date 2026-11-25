@@ -215,3 +215,26 @@ func TestManagerDropsCacheAfterAction(t *testing.T) {
 		t.Error("nil broker counted as available")
 	}
 }
+
+// ActionRunning is true exactly while a job runs (the waiting list and the
+// refusal busy of a reboot or shutdown, ADR 0011 B6, G7.5).
+func TestActionRunning(t *testing.T) {
+	b := &fakeBroker{available: true, answer: brokerclient.Answer{Code: brokerclient.CodeSuccess, State: "active"}, release: make(chan struct{}), started: make(chan struct{}, 1)}
+	m := New(Config{Broker: b})
+	defer m.Close()
+	if m.ActionRunning() {
+		t.Fatal("running before any action")
+	}
+	if m.Submit(req(ActionRestart)) != SubmitAccepted {
+		t.Fatal("submit")
+	}
+	<-b.started
+	if !m.ActionRunning() {
+		t.Error("not running while the broker works")
+	}
+	close(b.release)
+	waitFor(t, "the job", func() bool { return !m.ActionRunning() })
+	if m.Last().Step != StepDone {
+		t.Errorf("%+v", m.Last())
+	}
+}

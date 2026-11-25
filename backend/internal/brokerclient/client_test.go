@@ -311,9 +311,10 @@ func TestAvailableIsStatOnly(t *testing.T) {
 	}
 }
 
-// This package knows the three service operations and nothing else of the
-// protocol: no string literal in its code names status, a power operation or
-// a power-only code (G7.5), and no file imports os/exec.
+// This package knows the three service operations, the two power operations
+// and nothing else of the protocol: no string literal in its code names
+// status, and no file imports os/exec. Updated on purpose in G7.5, which adds
+// the power operations and their codes.
 func TestNoOtherOperation(t *testing.T) {
 	files, _ := filepath.Glob("*.go")
 	var ops []string
@@ -336,19 +337,192 @@ func TestNoOtherOperation(t *testing.T) {
 				return true
 			}
 			v, _ := strconv.Unquote(lit.Value)
-			for _, bad := range []string{"status", "system.reboot", "system.poweroff", "accepted", "update_running", "already_requested"} {
-				if v == bad {
-					t.Errorf("%s has the literal %q", name, v)
-				}
+			if v == "status" {
+				t.Errorf("%s has the literal %q", name, v)
 			}
-			if strings.HasPrefix(v, "service.") {
+			if strings.HasPrefix(v, "service.") || strings.HasPrefix(v, "system.") {
 				ops = append(ops, v)
 			}
 			return true
 		})
 	}
 	slices.Sort(ops)
-	if !slices.Equal(ops, []string{"service.restart", "service.start", "service.stop"}) {
+	if !slices.Equal(ops, []string{"service.restart", "service.start", "service.stop", "system.poweroff", "system.reboot"}) {
 		t.Errorf("operations %v", ops)
+	}
+}
+
+func powerClient(path string) *Client { c := New(path); c.powerDeadline = 2 * time.Second; return c }
+
+// The power requests of A4.3: exactly v, op and correlation_id, no unit, one
+// line. The deadline is 20 s, below the server's write timeout of 30 s.
+func TestPowerRequestShape(t *testing.T) {
+	f := newFakeBroker(t, answering(`{"v":1,"code":"accepted"}`+"\n"))
+	for op, want := range map[PowerOp]string{
+		OpReboot:   `{"v":1,"op":"system.reboot","correlation_id":"0123456789abcdef"}` + "\n",
+		OpPoweroff: `{"v":1,"op":"system.poweroff","correlation_id":"0123456789abcdef"}` + "\n",
+	} {
+		before := len(f.lines)
+		if got := powerClient(f.path).Power(context.Background(), op, cid); got != CodeAccepted {
+			t.Errorf("%s: %s", op, got)
+		}
+		f.mu.Lock()
+		got := f.lines[before]
+		f.mu.Unlock()
+		if got != want {
+			t.Errorf("%s sent %q\nwant %q", op, got, want)
+		}
+	}
+	if PowerDeadline != 20*time.Second || New(SocketPath).powerDeadline != PowerDeadline || PowerDeadline >= 30*time.Second {
+		t.Error("power deadline")
+	}
+	if n := f.conns.Load(); n != 2 {
+		t.Errorf("%d connections", n)
+	}
+}
+
+// A power request that cannot be built is internal, and no connection is made:
+// a service operation, status, an unknown operation, a bad correlation ID.
+func TestPowerRequestRefusedBeforeSending(t *testing.T) {
+	f := newFakeBroker(t, answering(`{"v":1,"code":"accepted"}`+"\n"))
+	for _, tc := range []struct {
+		op  PowerOp
+		cid string
+	}{
+		{"status", cid}, {"service.restart", cid}, {"system.halt", cid}, {"system.kexec", cid}, {"System.Reboot", cid}, {"", cid},
+		{OpReboot, "0123456789ABCDEF"}, {OpPoweroff, "short"}, {OpReboot, ""},
+	} {
+		if got := powerClient(f.path).Power(context.Background(), tc.op, tc.cid); got != CodeInternal {
+			t.Errorf("%+v: %s", tc, got)
+		}
+	}
+	if n := f.conns.Load(); n != 0 {
+		t.Errorf("%d connections", n)
+	}
+}
+
+// Every power code of the closed set reaches the caller. The broker's
+// protocol.go can answer exactly these for a power operation (A4.4 item 7).
+func TestEveryPowerCode(t *testing.T) {
+	for _, c := range PowerCodes {
+		f := newFakeBroker(t, answering(`{"v":1,"code":"`+string(c)+`"}`+"\n"))
+		if got := powerClient(f.path).Power(context.Background(), OpReboot, cid); got != c {
+			t.Errorf("%s: %s", c, got)
+		}
+	}
+	want := []Code{"accepted", "bad_request", "busy", "update_running", "already_requested", "job_failed", "timeout", "internal"}
+	if !slices.Equal(PowerCodes, want) {
+		t.Errorf("power codes %v", PowerCodes)
+	}
+}
+
+// The service-only codes and any other word are internal for a power operation
+// (the mirror of TestPowerOnlyAndUnknownCodesAreInternal).
+func TestServiceOnlyAndUnknownCodesAreInternalForPower(t *testing.T) {
+	var serviceOnly []string
+	for _, c := range Codes {
+		if !slices.Contains(PowerCodes, c) {
+			serviceOnly = append(serviceOnly, string(c))
+		}
+	}
+	if len(serviceOnly) != 14 {
+		t.Errorf("service-only codes %v", serviceOnly)
+	}
+	for _, c := range append(serviceOnly, "unavailable", "wrong_password", "ACCEPTED", "ok", "") {
+		f := newFakeBroker(t, answering(`{"v":1,"code":"`+c+`"}`+"\n"))
+		if got := powerClient(f.path).Power(context.Background(), OpPoweroff, cid); got != CodeInternal {
+			t.Errorf("%q: %s", c, got)
+		}
+	}
+	// A rate_limited answer with its wait time is a service answer, not a power one.
+	f := newFakeBroker(t, answering(`{"v":1,"code":"rate_limited","retry_after_s":5}`+"\n"))
+	if got := powerClient(f.path).Power(context.Background(), OpReboot, cid); got != CodeInternal {
+		t.Errorf("rate_limited: %s", got)
+	}
+}
+
+// Malformed and oversize answers to a power operation are internal: the
+// decoder of the service answers plus a state or a wait time, which the broker
+// never sends for a power operation.
+func TestMalformedPowerAnswersAreInternal(t *testing.T) {
+	for _, ans := range []string{
+		`{"v":2,"code":"accepted"}` + "\n",
+		`{"v":1.0,"code":"accepted"}` + "\n",
+		`{"v":"1","code":"accepted"}` + "\n",
+		`{"code":"accepted"}` + "\n",
+		`{"v":1}` + "\n",
+		`{"v":1,"code":null}` + "\n",
+		`{"v":1,"code":true}` + "\n",
+		`{"v":1,"code":"accepted","message":"x"}` + "\n",
+		`{"v":1,"Code":"accepted"}` + "\n",
+		`{"v":1,"code":"accepted","code":"busy"}` + "\n",
+		`{"v":1,"code":"accepted","state":"active"}` + "\n",
+		`{"v":1,"code":"job_failed","state":"failed"}` + "\n",
+		`{"v":1,"code":"timeout","state":"failed"}` + "\n",
+		`{"v":1,"code":"busy","retry_after_s":3}` + "\n",
+		`{"v":1,"code":"accepted"} {}` + "\n",
+		`{"v":1,"code":"accepted"}` + "\n" + `{"v":1,"code":"accepted"}` + "\n",
+		`{"v":1,"code":"accepted"}`,
+		`[1]` + "\n",
+		"\n",
+		`{"v":1,"code":"accepted","x":"` + strings.Repeat("a", 9000) + `"}` + "\n",
+	} {
+		f := newFakeBroker(t, answering(ans))
+		if got := powerClient(f.path).Power(context.Background(), OpReboot, cid); got != CodeInternal {
+			t.Errorf("%.80q: %s", ans, got)
+		}
+		if n := f.conns.Load(); n != 1 {
+			t.Errorf("%.40q: %d connections", ans, n)
+		}
+	}
+}
+
+// No answer, a reset, a refused connection, a missing socket, the deadline and
+// a cancelled context are unavailable for a power operation, and it is never
+// sent twice. The deadline is the power deadline, not the 110 s of a service
+// operation.
+func TestPowerUnavailableAndNoRetry(t *testing.T) {
+	closeAtOnce := newFakeBroker(t, func(net.Conn, string) {})
+	if got := powerClient(closeAtOnce.path).Power(context.Background(), OpReboot, cid); got != CodeUnavailable {
+		t.Errorf("closed: %s", got)
+	}
+	reset := newFakeBroker(t, nil)
+	if got := powerClient(reset.path).Power(context.Background(), OpPoweroff, cid); got != CodeUnavailable {
+		t.Errorf("reset: %s", got)
+	}
+	hang := newFakeBroker(t, func(c net.Conn, _ string) { time.Sleep(600 * time.Millisecond) })
+	c := New(hang.path)
+	c.powerDeadline = 200 * time.Millisecond // the service deadline stays 110 s and is not used
+	start := time.Now()
+	if got := c.Power(context.Background(), OpReboot, cid); got != CodeUnavailable {
+		t.Errorf("deadline: %s", got)
+	}
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Errorf("waited %v past the power deadline", d)
+	}
+	for name, f := range map[string]*fakeBroker{"closed": closeAtOnce, "reset": reset, "deadline": hang} {
+		if n := f.conns.Load(); n != 1 {
+			t.Errorf("%s: %d connections, want exactly 1 (no retry)", name, n)
+		}
+	}
+	dir := shortDir(t)
+	refused := filepath.Join(dir, "r.sock")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: refused, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.SetUnlinkOnClose(false)
+	ln.Close()
+	if got := powerClient(refused).Power(context.Background(), OpReboot, cid); got != CodeUnavailable {
+		t.Errorf("refused: %s", got)
+	}
+	if got := powerClient(filepath.Join(dir, "missing.sock")).Power(context.Background(), OpReboot, cid); got != CodeUnavailable {
+		t.Errorf("missing: %s", got)
+	}
+	slow := newFakeBroker(t, func(c net.Conn, _ string) { time.Sleep(600 * time.Millisecond) })
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if got := powerClient(slow.path).Power(ctx, OpReboot, cid); got != CodeUnavailable {
+		t.Errorf("cancelled: %s", got)
 	}
 }

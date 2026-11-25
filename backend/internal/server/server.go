@@ -28,6 +28,7 @@ type config struct {
 	allowedHosts []string
 	updater      UpdateService
 	services     ServiceControl
+	power        *PowerConfig
 }
 
 // WithDevice enables GET /api/v1/device, backed by src.

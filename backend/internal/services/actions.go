@@ -127,6 +127,13 @@ func (a *actions) submit(req Request) string {
 	return SubmitAccepted
 }
 
+// isRunning reports whether an action job runs now.
+func (a *actions) isRunning() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.running
+}
+
 // lastAction returns a copy of the last action, or nil.
 func (a *actions) lastAction() *ActionView {
 	a.mu.Lock()

@@ -114,7 +114,8 @@ func run(addr, stateDir, cacheDir string, log *slog.Logger) error {
 	// while idle. On a system without systemd the routes answer
 	// services_unavailable. Close runs before the audit log's Close (defers run
 	// in reverse), so a job ended by the shutdown is still audited and flushed.
-	svc := services.New(services.Config{Broker: brokerclient.New(brokerclient.SocketPath), Audit: auditLog.Record})
+	broker := brokerclient.New(brokerclient.SocketPath)
+	svc := services.New(services.Config{Broker: broker, Audit: auditLog.Record})
 	defer svc.Close()
 
 	// Detection runs once, now. It only reads files and cannot fail; the
@@ -137,9 +138,16 @@ func run(addr, stateDir, cacheDir string, log *slog.Logger) error {
 		AlertContext: func() metrics.AlertContext { return metrics.AlertContext{SupportTier: tier} },
 	})
 
+	// Reboot and shutdown (ADR 0011 B4 to B6, G7.5): the request goes to the
+	// broker inside the HTTP request after the password; the accepted entry is
+	// flushed and fsynced before the answer. The waiting list reads the update
+	// job and the helper's status (as GET /api/v1/update does), the service
+	// action job, the sessions and the open event streams; no logind.
+	power := server.PowerConfig{Broker: broker, Updates: upd, Services: svc, Views: sampler.Clients}
+
 	srv := server.New(addr, server.NewHandler(web.Assets(),
 		server.WithDevice(dev), server.WithMetrics(sampler), server.WithAuth(am), server.WithAudit(auditLog), server.WithUpdater(upd),
-		server.WithServices(svc)))
+		server.WithServices(svc), server.WithPower(power)))
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()

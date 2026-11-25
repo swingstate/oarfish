@@ -57,6 +57,10 @@ func (m *Manager) BrokerAvailable() bool { return m.broker != nil && m.broker.Av
 // audited). It returns SubmitAccepted when the job runs.
 func (m *Manager) Submit(req Request) string { return m.actions.submit(req) }
 
+// ActionRunning reports whether a service action runs now (the list of waiting
+// actions of a reboot or shutdown, ADR 0011 B6, and its refusal busy).
+func (m *Manager) ActionRunning() bool { return m.actions.isRunning() }
+
 // Last returns the last action since the service started, or nil.
 func (m *Manager) Last() *ActionView { return m.actions.lastAction() }
 

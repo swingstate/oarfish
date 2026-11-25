@@ -1,10 +1,11 @@
 // Package brokerclient is the service's client of the privilege broker's
-// socket for the three service operations (ADR 0011 B2, B4, A4.3; step G7.4).
-// It speaks protocol 1 exactly: one request per connection, one JSON line of
-// at most 1,024 bytes with the member set of the operation, one bounded answer
-// line, decoded strictly. A mutating request is never sent twice: a retry
-// could run the operation twice. status, system.reboot and system.poweroff
-// are not part of this package (G7.5).
+// socket for the three service operations (ADR 0011 B2, B4, A4.3; step G7.4)
+// and the two power operations (step G7.5). It speaks protocol 1 exactly: one
+// request per connection, one JSON line of at most 1,024 bytes with the member
+// set of the operation, one bounded answer line, decoded strictly against the
+// closed code set of that kind of operation. A mutating request is never sent
+// twice: a retry could run the operation twice. status is not part of this
+// package: the "status" of ADR 0011 B6 is the update helper's.
 package brokerclient
 
 import (
@@ -34,6 +35,11 @@ const (
 	// broker's deadline of 100 s for the systemctl job, its verification read
 	// about 1 s later, and a margin (A3.3).
 	Deadline = 110 * time.Second
+	// PowerDeadline is the whole time the client waits for a power operation.
+	// The power request is answered inside the HTTP request, so it stays below
+	// the server's write timeout of 30 s; the broker answers as soon as systemd
+	// has queued the job (A4.4 item 7), which takes about a second.
+	PowerDeadline = 20 * time.Second
 )
 
 // Op is one of the three service operations. Nothing else is ever sent.
@@ -43,6 +49,15 @@ const (
 	OpStart   Op = "service.start"
 	OpStop    Op = "service.stop"
 	OpRestart Op = "service.restart"
+)
+
+// PowerOp is one of the two power operations (A4.3). Nothing else is sent
+// without a unit.
+type PowerOp string
+
+const (
+	OpReboot   PowerOp = "system.reboot"
+	OpPoweroff PowerOp = "system.poweroff"
 )
 
 // Code is the result of one operation: a broker code of the closed set below,
@@ -75,6 +90,11 @@ const (
 	// CodeUnavailable is the service's own: the socket is missing, the
 	// connection was refused or reset, or no answer came.
 	CodeUnavailable Code = "unavailable"
+
+	// The codes only a power operation produces (ADR 0011 B2, A4.1, A4.4 item 7).
+	CodeAccepted         Code = "accepted"
+	CodeUpdateRunning    Code = "update_running"
+	CodeAlreadyRequested Code = "already_requested"
 )
 
 // Codes is the closed set of broker codes for a service operation.
@@ -82,6 +102,14 @@ var Codes = []Code{
 	CodeSuccess, CodeBadRequest, CodeBusy, CodeRateLimited, CodeUnitInvalid, CodeUnitUnknown, CodeUnitNotCanonical,
 	CodeUnitDenied, CodeUnitMasked, CodeUnitTransient, CodeUnitOneshot, CodeUnitTemplate, CodeRefusedByUnit,
 	CodeOperationNotOffered, CodeAlreadyInState, CodeJobFailed, CodeTimeout, CodeStateUnexpected, CodeInternal,
+}
+
+// PowerCodes is the closed set of broker codes for a power operation: what
+// powerOp and the decoder of the broker can answer (A4.3, A4.4 items 7 and 9).
+// A service-only code (unit_*, rate_limited, already_in_state,
+// state_unexpected, success) or any other word becomes CodeInternal.
+var PowerCodes = []Code{
+	CodeAccepted, CodeBadRequest, CodeBusy, CodeUpdateRunning, CodeAlreadyRequested, CodeJobFailed, CodeTimeout, CodeInternal,
 }
 
 // States is the closed set of ActiveState words an answer may carry (A4.3).
@@ -106,19 +134,33 @@ type API interface {
 	Do(ctx context.Context, op Op, unit, correlationID string) Answer
 }
 
-// Client is the client of the socket at a path.
-type Client struct {
-	socket   string
-	deadline time.Duration
-	dial     func(ctx context.Context, path string) (net.Conn, error)
-	stat     func(path string) (fs.FileInfo, error)
+// PowerAPI is what the power route needs. *Client is the socket client; the
+// tests of the route use a fake.
+type PowerAPI interface {
+	// Available is the same stat of the socket as API.Available.
+	Available() bool
+	// Power sends one power operation and waits for its answer, at most
+	// PowerDeadline. It never retries.
+	Power(ctx context.Context, op PowerOp, correlationID string) Code
 }
 
-var _ API = (*Client)(nil)
+// Client is the client of the socket at a path.
+type Client struct {
+	socket        string
+	deadline      time.Duration
+	powerDeadline time.Duration
+	dial          func(ctx context.Context, path string) (net.Conn, error)
+	stat          func(path string) (fs.FileInfo, error)
+}
+
+var (
+	_ API      = (*Client)(nil)
+	_ PowerAPI = (*Client)(nil)
+)
 
 // New returns a client of the socket at path.
 func New(path string) *Client {
-	return &Client{socket: path, deadline: Deadline,
+	return &Client{socket: path, deadline: Deadline, powerDeadline: PowerDeadline,
 		dial: func(ctx context.Context, p string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", p)
@@ -142,22 +184,69 @@ func (c *Client) Do(ctx context.Context, op Op, unit, correlationID string) Answ
 	if !ok {
 		return Answer{Code: CodeInternal}
 	}
-	ctx, cancel := context.WithTimeout(ctx, c.deadline)
-	defer cancel()
-	raw, err := c.once(ctx, line)
-	if err != nil {
-		if errors.Is(err, errBadAnswer) {
-			return Answer{Code: CodeInternal}
-		}
-		// Not reachable, reset, closed without an answer, or no answer in time:
-		// the operation may or may not have run; it is not sent again.
-		return Answer{Code: CodeUnavailable}
+	raw, code := c.exchange(ctx, c.deadline, line)
+	if code != "" {
+		return Answer{Code: code}
 	}
 	a, ok := decodeAnswer(raw)
 	if !ok {
 		return Answer{Code: CodeInternal}
 	}
 	return a
+}
+
+// Power sends one power operation on one connection and reads one answer. An
+// operation outside the two or a correlation ID that is not 16 lowercase
+// hexadecimal digits is CodeInternal and nothing is sent.
+func (c *Client) Power(ctx context.Context, op PowerOp, correlationID string) Code {
+	line, ok := powerRequest(op, correlationID)
+	if !ok {
+		return CodeInternal
+	}
+	raw, code := c.exchange(ctx, c.powerDeadline, line)
+	if code != "" {
+		return code
+	}
+	got, ok := decodePowerAnswer(raw)
+	if !ok {
+		return CodeInternal
+	}
+	return got
+}
+
+// exchange sends line once and returns the answer line, or the code that
+// replaces it: CodeInternal for an unusable answer, CodeUnavailable for no
+// answer at all.
+func (c *Client) exchange(ctx context.Context, deadline time.Duration, line []byte) ([]byte, Code) {
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	raw, err := c.once(ctx, line)
+	if err != nil {
+		if errors.Is(err, errBadAnswer) {
+			return nil, CodeInternal
+		}
+		// Not reachable, reset, closed without an answer, or no answer in time:
+		// the operation may or may not have run; it is not sent again.
+		return nil, CodeUnavailable
+	}
+	return raw, ""
+}
+
+// powerRequest is the request of A4.3 for a power operation: exactly v, op and
+// correlation_id, no unit.
+func powerRequest(op PowerOp, cid string) ([]byte, bool) {
+	if op != OpReboot && op != OpPoweroff || !validCorrelationID(cid) {
+		return nil, false
+	}
+	b, err := json.Marshal(struct {
+		V             int     `json:"v"`
+		Op            PowerOp `json:"op"`
+		CorrelationID string  `json:"correlation_id"`
+	}{protocolVersion, op, cid})
+	if err != nil {
+		return nil, false
+	}
+	return append(b, '\n'), true
 }
 
 func request(op Op, unit, cid string) ([]byte, bool) {
@@ -227,8 +316,9 @@ func (c *Client) once(ctx context.Context, line []byte) ([]byte, error) {
 }
 
 var (
-	codeSet  = setOf(Codes)
-	stateSet = setOf(States)
+	codeSet      = setOf(Codes)
+	powerCodeSet = setOf(PowerCodes)
+	stateSet     = setOf(States)
 	// The codes with which the broker reports the state it read (A4.3).
 	stateCodes = map[Code]bool{CodeSuccess: true, CodeJobFailed: true, CodeTimeout: true, CodeStateUnexpected: true}
 )
@@ -241,6 +331,56 @@ func setOf[T comparable](xs []T) map[T]bool {
 	return m
 }
 
+// answerMembers splits one answer line into its members: exactly one JSON
+// object, keys from the four names of A4.3 in their exact letter case, each at
+// most once, and nothing after it. v must be the literal 1.
+func answerMembers(line []byte) (map[string]json.RawMessage, bool) {
+	dec := json.NewDecoder(bytes.NewReader(line))
+	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
+		return nil, false
+	}
+	m := map[string]json.RawMessage{}
+	for dec.More() {
+		t, err := dec.Token()
+		key, ok := t.(string)
+		if err != nil || !ok {
+			return nil, false
+		}
+		switch key {
+		case "v", "code", "state", "retry_after_s":
+		default:
+			return nil, false
+		}
+		if _, dup := m[key]; dup {
+			return nil, false
+		}
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			return nil, false
+		}
+		m[key] = v
+	}
+	if t, err := dec.Token(); err != nil || t != json.Delim('}') {
+		return nil, false
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, false
+	}
+	if string(m["v"]) != "1" {
+		return nil, false
+	}
+	return m, true
+}
+
+// codeIn decodes the code member: a JSON string of the set.
+func codeIn(m map[string]json.RawMessage, set map[Code]bool) (Code, bool) {
+	var code *string
+	if json.Unmarshal(m["code"], &code) != nil || code == nil || !set[Code(*code)] {
+		return "", false
+	}
+	return Code(*code), true
+}
+
 // decodeAnswer is the strict decoder of the answer to a service operation:
 // one JSON object with exactly the members v (the literal 1), code (a word of
 // Codes), state (a word of States, only with a code that carries one) and
@@ -248,46 +388,14 @@ func setOf[T comparable](xs []T) map[T]bool {
 // then). An unknown member, a member in another letter case, a repeated
 // member, null, a wrong type or data after the object fails.
 func decodeAnswer(line []byte) (Answer, bool) {
-	dec := json.NewDecoder(bytes.NewReader(line))
-	if t, err := dec.Token(); err != nil || t != json.Delim('{') {
-		return Answer{}, false
-	}
-	m := map[string]json.RawMessage{}
-	for dec.More() {
-		t, err := dec.Token()
-		key, ok := t.(string)
-		if err != nil || !ok {
-			return Answer{}, false
-		}
-		switch key {
-		case "v", "code", "state", "retry_after_s":
-		default:
-			return Answer{}, false
-		}
-		if _, dup := m[key]; dup {
-			return Answer{}, false
-		}
-		var v json.RawMessage
-		if err := dec.Decode(&v); err != nil {
-			return Answer{}, false
-		}
-		m[key] = v
-	}
-	if t, err := dec.Token(); err != nil || t != json.Delim('}') {
-		return Answer{}, false
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return Answer{}, false
-	}
-	if string(m["v"]) != "1" {
+	m, ok := answerMembers(line)
+	if !ok {
 		return Answer{}, false
 	}
 	var a Answer
-	var code *string
-	if json.Unmarshal(m["code"], &code) != nil || code == nil || !codeSet[Code(*code)] {
+	if a.Code, ok = codeIn(m, codeSet); !ok {
 		return Answer{}, false
 	}
-	a.Code = Code(*code)
 	if raw, has := m["state"]; has {
 		var s *string
 		if json.Unmarshal(raw, &s) != nil || s == nil || !stateSet[*s] || !stateCodes[a.Code] {
@@ -307,6 +415,18 @@ func decodeAnswer(line []byte) (Answer, bool) {
 		a.RetryAfterS = n
 	}
 	return a, true
+}
+
+// decodePowerAnswer is the strict decoder of the answer to a power operation:
+// exactly the members v (the literal 1) and code (a word of PowerCodes). The
+// broker sends no state and no wait time for a power operation (A4.4 item 7),
+// so either member fails, as does everything decodeAnswer refuses.
+func decodePowerAnswer(line []byte) (Code, bool) {
+	m, ok := answerMembers(line)
+	if !ok || len(m) != 2 {
+		return "", false
+	}
+	return codeIn(m, powerCodeSet)
 }
 
 // wholeNumber accepts plain digits without a sign, a fraction or an exponent,

@@ -6,6 +6,9 @@
 // Writes are buffered. The buffer is written 30 seconds after its first entry,
 // before a rotation and at Close; there is no fsync per entry (ORB-NFR-009).
 // The accepted cost is that the last seconds can be lost on a power failure.
+// The one exception is RecordDurable, for an accepted reboot or shutdown
+// (ADR 0011 B5): it writes the buffer and fsyncs the file before it returns,
+// because the stop of the service follows within seconds.
 // A failed write never stops the service and never blocks a request: it is
 // counted and reported to the journal as a plain message without data.
 package audit
@@ -15,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -60,6 +64,10 @@ const (
 	ServiceStart   Action = "service_start"
 	ServiceStop    Action = "service_stop"
 	ServiceRestart Action = "service_restart"
+	// The power actions (ADR 0009 amendment A7, the part of step G7.5). Neither
+	// is aggregated.
+	SystemReboot   Action = "system_reboot"
+	SystemPoweroff Action = "system_poweroff"
 )
 
 // Target is what the action was about. The set is closed.
@@ -74,6 +82,8 @@ const (
 	TargetDevice   Target = "device"
 	TargetMetrics  Target = "metrics"
 	TargetEvents   Target = "events"
+	// TargetSystem is the target of a power action (A7, step G7.5).
+	TargetSystem Target = "system"
 )
 
 // Result is the outcome. The set is closed.
@@ -127,7 +137,7 @@ const (
 // G7.4): the broker codes of ADR 0011 B2 that a service operation can produce.
 // Success, Failed, Busy, RateLimited and Unavailable exist already. The broker
 // codes bad_request and internal are recorded as Failed. The power part of A7
-// (update_running, already_requested, the target system) is step G7.5.
+// follows below.
 const (
 	UnitInvalid         Result = "unit_invalid"
 	UnitUnknown         Result = "unit_unknown"
@@ -144,6 +154,33 @@ const (
 	Timeout             Result = "timeout"
 	StateUnexpected     Result = "state_unexpected"
 )
+
+// The results of a power action (ADR 0009 amendment A7, the part of step
+// G7.5): the broker codes of ADR 0011 B2 that only a power operation produces.
+// The other results of a power action exist already: Success (the broker
+// answered accepted), WrongPassword and RateLimited (the password check),
+// Busy, Unavailable, JobFailed, Timeout and Failed.
+const (
+	UpdateRunning    Result = "update_running"
+	AlreadyRequested Result = "already_requested"
+)
+
+// PowerResult maps the code a power request ended with (a broker code of ADR
+// 0011 B2 for a power operation, or the service's own busy, unavailable and
+// update_running) to a result of A7. accepted is Success; the broker codes
+// bad_request and internal, and anything else, become Failed. The password
+// results come from the account error path, not from here.
+func PowerResult(code string) Result {
+	if code == "accepted" {
+		return Success
+	}
+	r := Result(code)
+	switch r {
+	case Busy, Unavailable, UpdateRunning, AlreadyRequested, JobFailed, Timeout:
+		return r
+	}
+	return Failed
+}
 
 // ServiceResult maps the code a service action ended with (a broker code of
 // ADR 0011 B2, or the service's own busy and unavailable) to a result of A7.
@@ -190,10 +227,11 @@ var (
 	actions = map[Action]bool{SetupCompleted: true, LoginSucceeded: true, LoginFailed: true, Logout: true,
 		PasswordChanged: true, PasswordChangeFailed: true, RequestRejected: true,
 		UpdateStarted: true, UpdateFinished: true,
-		ServiceStart: true, ServiceStop: true, ServiceRestart: true}
+		ServiceStart: true, ServiceStop: true, ServiceRestart: true,
+		SystemReboot: true, SystemPoweroff: true}
 	aggregated = map[Action]bool{LoginFailed: true, RequestRejected: true}
 	targets    = map[Target]bool{TargetNone: true, TargetSetup: true, TargetSession: true, TargetPassword: true,
-		TargetDevice: true, TargetMetrics: true, TargetEvents: true}
+		TargetDevice: true, TargetMetrics: true, TargetEvents: true, TargetSystem: true}
 	results = map[Result]bool{Success: true, InvalidCredentials: true, InvalidSetupToken: true, RateLimited: true,
 		WrongPassword: true, PolicyRejected: true, Failed: true, HostRejected: true, OriginRejected: true, CSRFFailed: true,
 		Busy: true, SignatureInvalid: true, ChecksumMismatch: true, ManifestInvalid: true, DowngradeRefused: true,
@@ -203,7 +241,8 @@ var (
 		ComponentsRolledBack: true, RollbackFailed: true, Aborted: true, Unavailable: true,
 		UnitInvalid: true, UnitUnknown: true, UnitNotCanonical: true, UnitDenied: true, UnitMasked: true,
 		UnitTransient: true, UnitOneshot: true, UnitTemplate: true, RefusedByUnit: true, OperationNotOffered: true,
-		AlreadyInState: true, JobFailed: true, Timeout: true, StateUnexpected: true}
+		AlreadyInState: true, JobFailed: true, Timeout: true, StateUnexpected: true,
+		UpdateRunning: true, AlreadyRequested: true}
 	// A user is the account name (the rule of auth.ValidateUsername) or "-".
 	// An update target is update/<version>, the version regex of ADR 0010 U2 and
 	// at most 64 characters (A6).
@@ -277,11 +316,28 @@ type aggregate struct {
 	count int
 }
 
+// auditFile is what write needs of the open audit file. *os.File is one; the
+// tests replace openFile to record the order of write, sync and close and to
+// make a sync fail.
+type auditFile interface {
+	io.Writer
+	Sync() error
+	Close() error
+}
+
+func openAuditFile(path string) (auditFile, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, securefile.FileMode)
+}
+
+// errSync marks a failed fsync, so that the journal says which step failed.
+var errSync = errors.New("audit: sync failed")
+
 // Log is the audit file writer.
 type Log struct {
-	dir   string
-	clock clock.Clock
-	warn  func(msg string)
+	dir      string
+	clock    clock.Clock
+	warn     func(msg string)
+	openFile func(path string) (auditFile, error)
 
 	mu         sync.Mutex
 	buf        bytes.Buffer
@@ -304,7 +360,7 @@ func Open(stateDir string, c clock.Clock, warn func(msg string)) (*Log, error) {
 	if err := securefile.EnsureDir(dir); err != nil {
 		return nil, err
 	}
-	l := &Log{dir: dir, clock: c, warn: warn, aggs: map[aggKey]*aggregate{}}
+	l := &Log{dir: dir, clock: c, warn: warn, openFile: openAuditFile, aggs: map[aggKey]*aggregate{}}
 	for i := 0; i < Files; i++ {
 		if _, err := securefile.CheckFile(l.file(i)); err != nil {
 			return nil, err
@@ -328,13 +384,16 @@ func (l *Log) file(i int) string {
 }
 
 // Record adds an event. It only appends to memory and never waits for disk.
-func (l *Log) Record(e Event) {
+func (l *Log) Record(e Event) { l.record(e) }
+
+// record adds an event to memory and reports whether it was taken.
+func (l *Log) record(e Event) bool {
 	if e.validate() != nil {
 		l.mu.Lock()
 		l.dropped++
 		l.mu.Unlock()
 		l.warn("audit: an event with invalid fields was dropped")
-		return
+		return false
 	}
 	now := l.clock.Now().UTC()
 	en := entry{Time: now.Format(time.RFC3339), User: e.User, Action: e.Action, Target: e.Target,
@@ -343,13 +402,34 @@ func (l *Log) Record(e Event) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed {
-		return
+		return false
 	}
 	if aggregated[e.Action] {
 		l.aggregateLocked(en)
-		return
+		return true
 	}
-	l.appendLocked(en)
+	return l.appendLocked(en)
+}
+
+// RecordDurable adds an event, writes the buffer to the file and fsyncs the
+// file before it returns (ADR 0011 B5, ADR 0009 A7): the entry of an accepted
+// reboot or shutdown must be on the disk before the stop of the service, which
+// follows within seconds. It waits for the disk. It reports whether the entry
+// was taken, written and synced; a failed write or sync is counted in Stats
+// (Failures) and reported to the journal without data, like any failed write.
+// An aggregated action is refused (it would not be written now).
+func (l *Log) RecordDurable(e Event) bool {
+	if aggregated[e.Action] {
+		l.mu.Lock()
+		l.dropped++
+		l.mu.Unlock()
+		l.warn("audit: an event with invalid fields was dropped")
+		return false
+	}
+	if !l.record(e) {
+		return false
+	}
+	return l.flush(true)
 }
 
 // aggregateLocked folds an event into the open window of its kind. The first
@@ -386,27 +466,33 @@ func (l *Log) emitAggregatesLocked() {
 	l.aggOrder = nil
 }
 
-func (l *Log) appendLocked(en entry) {
+func (l *Log) appendLocked(en entry) bool {
 	line, err := json.Marshal(en)
 	if err != nil {
 		l.dropped++
-		return
+		return false
 	}
 	if l.buf.Len()+len(line)+1 > maxBuffered {
 		// Only reachable when the disk has failed for a long time; memory stays bounded.
 		l.dropped++
-		return
+		return false
 	}
 	l.buf.Write(line)
 	l.buf.WriteByte('\n')
 	if l.flushTimer == nil && !l.closed {
 		l.flushTimer = l.clock.AfterFunc(FlushDelay, func() { l.Flush() })
 	}
+	return true
 }
 
 // Flush writes the buffer to the file, rotating first when the file would
 // pass MaxFileSize. Aggregation windows that are still open stay open.
-func (l *Log) Flush() {
+func (l *Log) Flush() { l.flush(false) }
+
+// flush is Flush; with sync it also fsyncs audit.jsonl after the write, even
+// when the buffer is empty (a concurrent flush may have taken the entry; the
+// sync then makes that write durable). It reports whether everything worked.
+func (l *Log) flush(sync bool) bool {
 	l.writeMu.Lock()
 	defer l.writeMu.Unlock()
 	l.mu.Lock()
@@ -417,25 +503,32 @@ func (l *Log) Flush() {
 	data := bytes.Clone(l.buf.Bytes())
 	l.buf.Reset()
 	l.mu.Unlock()
-	if len(data) == 0 {
-		return
+	if len(data) == 0 && !sync {
+		return true
 	}
-	if err := l.write(data); err != nil {
+	if err := l.write(data, sync); err != nil {
 		l.mu.Lock()
 		l.failures++
 		n := l.failures
 		l.mu.Unlock()
-		l.warn(fmt.Sprintf("audit: writing the audit file failed (%d failed writes since start)", n))
+		step := "writing"
+		if errors.Is(err, errSync) {
+			step = "syncing"
+		}
+		l.warn(fmt.Sprintf("audit: %s the audit file failed (%d failed writes since start)", step, n))
+		return false
 	}
+	return true
 }
 
-// write appends whole lines, rotating before a line that would not fit.
-func (l *Log) write(data []byte) error {
+// write appends whole lines, rotating before a line that would not fit. With
+// sync, the last file written (audit.jsonl) is fsynced before it is closed.
+func (l *Log) write(data []byte, sync bool) error {
 	size, err := fileSize(l.file(0))
 	if err != nil {
 		return err
 	}
-	var f *os.File
+	var f auditFile
 	defer func() {
 		if f != nil {
 			_ = f.Close()
@@ -458,7 +551,7 @@ func (l *Log) write(data []byte) error {
 			size = 0
 		}
 		if f == nil {
-			if f, err = os.OpenFile(l.file(0), os.O_WRONLY|os.O_APPEND|os.O_CREATE, securefile.FileMode); err != nil {
+			if f, err = l.openFile(l.file(0)); err != nil {
 				return err
 			}
 		}
@@ -467,8 +560,18 @@ func (l *Log) write(data []byte) error {
 		}
 		size += int64(len(line))
 	}
+	if f == nil && sync {
+		if f, err = l.openFile(l.file(0)); err != nil {
+			return err
+		}
+	}
 	if f == nil {
 		return nil
+	}
+	if sync {
+		if err := f.Sync(); err != nil {
+			return errors.Join(errSync, err)
+		}
 	}
 	err = f.Close()
 	f = nil
