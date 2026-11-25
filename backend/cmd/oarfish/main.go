@@ -16,6 +16,7 @@ import (
 
 	"github.com/swingstate/oarfish/backend/internal/audit"
 	"github.com/swingstate/oarfish/backend/internal/auth"
+	"github.com/swingstate/oarfish/backend/internal/brokerclient"
 	"github.com/swingstate/oarfish/backend/internal/clock"
 	"github.com/swingstate/oarfish/backend/internal/metrics"
 	"github.com/swingstate/oarfish/backend/internal/platform/detector"
@@ -23,6 +24,7 @@ import (
 	"github.com/swingstate/oarfish/backend/internal/platform/profiles"
 	"github.com/swingstate/oarfish/backend/internal/platform/source"
 	"github.com/swingstate/oarfish/backend/internal/server"
+	"github.com/swingstate/oarfish/backend/internal/services"
 	"github.com/swingstate/oarfish/backend/internal/trustkey"
 	"github.com/swingstate/oarfish/backend/internal/updater"
 	"github.com/swingstate/oarfish/backend/internal/version"
@@ -106,6 +108,15 @@ func run(addr, stateDir, cacheDir string, log *slog.Logger) error {
 	defer upd.Close()
 	upd.CleanCache()
 
+	// The services of the Activity page (ADR 0011, G7.4): the list is read with
+	// the two fixed systemctl shapes only when a request asks for it, and an
+	// action goes to the privilege broker as a job. No timer and no goroutine
+	// while idle. On a system without systemd the routes answer
+	// services_unavailable. Close runs before the audit log's Close (defers run
+	// in reverse), so a job ended by the shutdown is still audited and flushed.
+	svc := services.New(services.Config{Broker: brokerclient.New(brokerclient.SocketPath), Audit: auditLog.Record})
+	defer svc.Close()
+
 	// Detection runs once, now. It only reads files and cannot fail; the
 	// profiles are embedded, so an error here is a defect in the build.
 	reg, err := profiles.Load()
@@ -127,7 +138,8 @@ func run(addr, stateDir, cacheDir string, log *slog.Logger) error {
 	})
 
 	srv := server.New(addr, server.NewHandler(web.Assets(),
-		server.WithDevice(dev), server.WithMetrics(sampler), server.WithAuth(am), server.WithAudit(auditLog), server.WithUpdater(upd)))
+		server.WithDevice(dev), server.WithMetrics(sampler), server.WithAuth(am), server.WithAudit(auditLog), server.WithUpdater(upd),
+		server.WithServices(svc)))
 
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()

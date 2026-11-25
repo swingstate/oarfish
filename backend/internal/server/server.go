@@ -27,6 +27,7 @@ type config struct {
 	audit        *audit.Log
 	allowedHosts []string
 	updater      UpdateService
+	services     ServiceControl
 }
 
 // WithDevice enables GET /api/v1/device, backed by src.

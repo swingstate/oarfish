@@ -26,6 +26,7 @@ import (
 
 	"github.com/swingstate/oarfish/backend/internal/clock"
 	"github.com/swingstate/oarfish/backend/internal/securefile"
+	"github.com/swingstate/oarfish/backend/internal/unitname"
 )
 
 // File layout and budgets.
@@ -54,6 +55,11 @@ const (
 	// The actions of the update (ADR 0009 amendment A6). Neither is aggregated.
 	UpdateStarted  Action = "update_started"
 	UpdateFinished Action = "update_finished"
+	// The service actions of the privilege broker (ADR 0009 amendment A7, the
+	// part of step G7.4). None is aggregated.
+	ServiceStart   Action = "service_start"
+	ServiceStop    Action = "service_stop"
+	ServiceRestart Action = "service_restart"
 )
 
 // Target is what the action was about. The set is closed.
@@ -117,6 +123,49 @@ const (
 	Unavailable          Result = "unavailable"
 )
 
+// The results of a service action (ADR 0009 amendment A7, the part of step
+// G7.4): the broker codes of ADR 0011 B2 that a service operation can produce.
+// Success, Failed, Busy, RateLimited and Unavailable exist already. The broker
+// codes bad_request and internal are recorded as Failed. The power part of A7
+// (update_running, already_requested, the target system) is step G7.5.
+const (
+	UnitInvalid         Result = "unit_invalid"
+	UnitUnknown         Result = "unit_unknown"
+	UnitNotCanonical    Result = "unit_not_canonical"
+	UnitDenied          Result = "unit_denied"
+	UnitMasked          Result = "unit_masked"
+	UnitTransient       Result = "unit_transient"
+	UnitOneshot         Result = "unit_oneshot"
+	UnitTemplate        Result = "unit_template"
+	RefusedByUnit       Result = "refused_by_unit"
+	OperationNotOffered Result = "operation_not_offered"
+	AlreadyInState      Result = "already_in_state"
+	JobFailed           Result = "job_failed"
+	Timeout             Result = "timeout"
+	StateUnexpected     Result = "state_unexpected"
+)
+
+// ServiceResult maps the code a service action ended with (a broker code of
+// ADR 0011 B2, or the service's own busy and unavailable) to a result of A7.
+// The broker codes bad_request and internal, and anything else, become Failed.
+func ServiceResult(code string) Result {
+	r := Result(code)
+	switch r {
+	case Success, Busy, RateLimited, Unavailable, UnitInvalid, UnitUnknown, UnitNotCanonical, UnitDenied,
+		UnitMasked, UnitTransient, UnitOneshot, UnitTemplate, RefusedByUnit, OperationNotOffered,
+		AlreadyInState, JobFailed, Timeout, StateUnexpected:
+		return r
+	}
+	return Failed
+}
+
+// ServiceTarget is the target of a service action, service/<unit> (A7). A unit
+// that does not pass rule 1 of ADR 0011 B3 makes the event invalid, so it is
+// dropped and counted like any value outside the sets.
+func ServiceTarget(unit string) Target { return Target(servicePrefix + unit) }
+
+const servicePrefix = "service/"
+
 // UpdateResult maps an error code or outcome of the update (the helper's, or
 // "unavailable") to a result of A6. Success stays Success; the helper codes
 // bad_request, not_found and internal, and anything unknown, become Failed.
@@ -140,7 +189,8 @@ func UpdateTarget(version string) Target { return Target("update/" + version) }
 var (
 	actions = map[Action]bool{SetupCompleted: true, LoginSucceeded: true, LoginFailed: true, Logout: true,
 		PasswordChanged: true, PasswordChangeFailed: true, RequestRejected: true,
-		UpdateStarted: true, UpdateFinished: true}
+		UpdateStarted: true, UpdateFinished: true,
+		ServiceStart: true, ServiceStop: true, ServiceRestart: true}
 	aggregated = map[Action]bool{LoginFailed: true, RequestRejected: true}
 	targets    = map[Target]bool{TargetNone: true, TargetSetup: true, TargetSession: true, TargetPassword: true,
 		TargetDevice: true, TargetMetrics: true, TargetEvents: true}
@@ -150,7 +200,10 @@ var (
 		AlreadyInstalled: true, RequirementsNotMet: true, HelperTooOld: true, InstallerRequired: true,
 		ConfirmationRequired: true, KeyChanged: true, UnitRejected: true, ComponentsDamaged: true, StageExpired: true,
 		NoSpace: true, CurrentUnhealthy: true, Cooldown: true, IOError: true, RolledBack: true,
-		ComponentsRolledBack: true, RollbackFailed: true, Aborted: true, Unavailable: true}
+		ComponentsRolledBack: true, RollbackFailed: true, Aborted: true, Unavailable: true,
+		UnitInvalid: true, UnitUnknown: true, UnitNotCanonical: true, UnitDenied: true, UnitMasked: true,
+		UnitTransient: true, UnitOneshot: true, UnitTemplate: true, RefusedByUnit: true, OperationNotOffered: true,
+		AlreadyInState: true, JobFailed: true, Timeout: true, StateUnexpected: true}
 	// A user is the account name (the rule of auth.ValidateUsername) or "-".
 	// An update target is update/<version>, the version regex of ADR 0010 U2 and
 	// at most 64 characters (A6).
@@ -198,8 +251,15 @@ func validUpdateTarget(t Target) bool {
 	return len(s) <= len("update/")+64 && !strings.Contains(s, "..") && updateTargetPattern.MatchString(s)
 }
 
+// validServiceTarget checks the pattern of A7: service/<unit>, where the unit
+// passes rule 1 of ADR 0011 B3 and so has at most 255 bytes after the prefix.
+func validServiceTarget(t Target) bool {
+	unit, ok := strings.CutPrefix(string(t), servicePrefix)
+	return ok && unitname.Valid(unit)
+}
+
 func (e Event) validate() error {
-	if !actions[e.Action] || !(targets[e.Target] || validUpdateTarget(e.Target)) || !results[e.Result] ||
+	if !actions[e.Action] || !(targets[e.Target] || validUpdateTarget(e.Target) || validServiceTarget(e.Target)) || !results[e.Result] ||
 		!userPattern.MatchString(e.User) || !correlationPattern.MatchString(e.CorrelationID) {
 		return ErrInvalidEvent
 	}
