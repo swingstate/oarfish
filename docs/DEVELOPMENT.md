@@ -348,6 +348,46 @@ With a scenario of the Activity page, a fake fetch layer (`src/dev/servicesMock.
 
 Scenarios: `loading`, `load-error`, `systemd-unavailable`, `list`, `list-long` (250 rows, for "Mehr anzeigen"), `list-filtered-empty` (no failed service: choose "Fehlgeschlagen"), `list-with-failed`, `broker-unavailable`, `action-flow`, `action-timeout`, `action-rate-limited`, `action-oneshot-refused`, `action-restart-only-note`, `action-denied-row`, `session-lost`. In the `action-*` scenarios any action button starts the course: three reads with "läuft …", then the result of the scenario (`action-flow`: success; `action-timeout`: `timeout`; `action-rate-limited`: `rate_limited` with 37 seconds; `action-oneshot-refused`: `unit_oneshot`), then one new read of the list. A second action while one runs answers `busy`. `pages/Activity.test.ts` renders every scenario once ("activity scenario mode").
 
+## Reboot and shutdown, service side, and their tests (Gate G7, step G7.5)
+
+The service side of reboot and shutdown ([ADR 0011 amendment A6](adr/0011-privilege-broker.md#amendment-a6-g75-reboot-and-shutdown-as-implemented)) adds to five packages. `go test ./...`, `make test` and CI run the tests. They are class C evidence only: nothing in them ran against the real broker, a real helper or a device, and no real reboot or shutdown happened.
+
+- `internal/brokerclient`: `Power` for `system.reboot` and `system.poweroff` with its own closed code set `PowerCodes` and `PowerDeadline` (20 s). The tests use the scripted server on a real Unix socket of G7.4: the request shape, refusals before sending, every power code, the service-only codes and unknown words as `internal` (and the G7.4 mirror test), malformed and oversize answers, a reset, a refused connection, the deadline (shortened by a field, not a fake clock, because the client uses the real socket deadline), a cancelled context, no retry. `TestNoOtherOperation` now allows exactly the five operations and still forbids `status`.
+- `internal/audit`: `power_test.go` (the closed sets after A7 in `service_test.go`, `PowerResult`, the target `system`, and `RecordDurable` with a fake file that records the order open, write, sync, close and one whose sync fails).
+- `internal/updater`: `Activity` (`power_test.go`: every job step and helper phase, the hand-over, no audit entry and no helper call other than `status`).
+- `internal/services`: `ActionRunning` (`TestActionRunning`).
+- `internal/server/power.go`: the two routes; `power_test.go` covers the session and the CSRF and Origin layers, the 1 KiB body and unknown members, the closed set of the action, the wrong password and the limiter with zero broker calls, the order of the checks, every broker code to its status, body and audit result, the entry written after the broker answered and before the answer, a failed audit write that keeps `accepted`, a broker call that outlives a closed request, the waiting list for each kind and the empty case, the other-sessions count, the activity flag, the routes without `WithPower`, and a marker password that appears in no answer, audit line or broker call.
+
+## Reboot and shutdown scenarios (Gate G7, step G7.5)
+
+The restart and shutdown part of the Activity page ([`UI.md`](UI.md#restart-and-shutdown-step-g75)) is `frontend/src/pages/ActivityPower.svelte` (the card and the dialog) and `pages/PowerStatus.svelte` (the status view), with the client `lib/power.ts`, the sentences `lib/powerErrors.ts` and the fixtures `lib/power.fixtures.ts`. `npm test` runs `pages/ActivityPower.test.ts` and `lib/power.test.ts` with fake timers and a fake server; jsdom has no `showModal`, so the dialog tests use a stand-in that sets the `open` attribute. **Nothing of it has run against a real service, broker or device, and no real restart or shutdown happened; the owner reviews it in the scenario mode.**
+
+The scenarios are part of `src/dev/servicesMock.ts`, on the Activity page:
+
+```bash
+cd frontend && npm run dev
+# then open http://localhost:5173/?mock=power-reboot-flow#/activity
+```
+
+In these scenarios the mock answers the power routes and `GET /healthz` itself as well, so no restart or shutdown is sent anywhere and the status view never reaches a device. Any text in the password field stands for the right password; the mock neither checks nor keeps it.
+
+| Scenario | What to look at |
+|---|---|
+| `power-dialog-reboot` | "Neu starten": the dialog with title, body, tunnel sentence, "Keine wartenden Aktionen", the password field; Abbrechen and Escape |
+| `power-dialog-shutdown` | "Herunterfahren": the shutdown title and body (power supply sentence) |
+| `power-waiting-list` | The waiting list with every kind, two sessions, three live views and an unknown kind |
+| `power-wrong-password` | Any password: "Das aktuelle Passwort ist falsch." under the field; the dialog stays open |
+| `power-rate-limited` | Any password: the wait sentence with 37 seconds |
+| `power-update-running` | The waiting list says an update runs; confirming gives the `update_running` sentence |
+| `power-already-requested` | Confirming gives "Neustart oder Herunterfahren wurde bereits angefordert." |
+| `power-broker-unavailable` | The notice in the card and both buttons disabled (the services list shows its own notice) |
+| `power-reboot-flow` | Confirm "Neu starten": the status view "Das Gerät startet neu …", after about 30 s "wieder erreichbar" with the link |
+| `power-reboot-too-long` | Confirm "Neu starten": after 5 minutes without an answer "Das Gerät antwortet noch nicht. …" |
+| `power-shutdown-flow` | Confirm "Herunterfahren": "Das Gerät fährt herunter …", then after about 10 s "Das Gerät antwortet nicht mehr. …" |
+| `power-session-lost` | Confirming signs out: Anmelden with "Die Sitzung ist beendet. …" |
+
+The other scenarios of the page answer the power routes too (accepted, nothing waiting) and run the course of `power-reboot-flow` after a confirmation. `pages/ActivityPower.test.ts` runs every power scenario once and checks that no request leaves the mock ("power scenario mode").
+
 ## Known limitations at Gate G3
 
 (Detection limits are in [`DETECTION.md`](DETECTION.md), "Verification status".)

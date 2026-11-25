@@ -436,7 +436,7 @@ Every scenario of the development scenario mode renders in jsdom ("activity scen
 | Page left | The polling stops (cleanup, link). | "the component cleanup stops the polling …" |
 | English | The same dialog and view in English. | "English: the same dialog …", "English: the same view …" |
 
-Every power scenario of the development scenario mode renders in jsdom without a request leaving the mock ("power scenario mode"; the scenarios are in [`DEVELOPMENT.md`](DEVELOPMENT.md#restart-and-shutdown-scenarios-gate-g7-step-g75)).
+Every power scenario of the development scenario mode renders in jsdom without a request leaving the mock ("power scenario mode"; the scenarios are in [`DEVELOPMENT.md`](DEVELOPMENT.md#reboot-and-shutdown-scenarios-gate-g7-step-g75)).
 
 **Accessibility of restart and shutdown.** Native elements only: buttons, a native `dialog`, a labelled password input in a `form`; no `role="button"`, no `aria-modal` (the native modal dialog has it). One `h1` per view: the page's, or the status view's; the card's `h2`; the dialog's `h2` and its `h3` "Wartende Aktionen". Visible labels on every button; targets at least 24 by 24 CSS pixels. No meaning by colour alone; nothing animates. The error is an alert tied to the field; the status view has one polite live region and announces each change once. Checked in jsdom only; jsdom has no `showModal`, so the tests use a stand-in that sets the `open` attribute: the browser's focus trap and inert background are not tested.
 
