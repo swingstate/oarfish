@@ -185,7 +185,7 @@ CI runs the fixture tests in the job "Signing and tamper tests" and the Go tests
 7. Verify the published assets (below).
 8. **Release notes of the G5.1 release (and any release a device may reach from `v0.1.0-alpha.5` or earlier)** must say: "After this update the device has no administrator account and starts in setup mode. The GUI shows the setup page; read the setup token on the device with `sudo cat /var/lib/oarfish/setup-token`. The dashboard and the device page show data only after setup and login. Every `/api/v1` route except the session status, login and setup now needs a session; `/healthz` stays public." (ADR 0009, Consequences; D-C46)
 
-Publishing happens only from a tag push; there is no manual publish path. If a release fails halfway, delete the draft/partial release and the tag, fix the cause and tag again. Never reuse a published version.
+Publishing happens only from a tag push; there is no manual publish path. If a release job fails, the release step stops and reports. No tag and no release is deleted or reused without the owner's decision (AGENT_RULES 10.9, 10.10). The usual repair is to run the failed jobs of that tag again; see "A tag whose release was never published" in "Release checks".
 
 ## Checklist for the release step G7.6b
 
@@ -228,7 +228,7 @@ These texts go into the release notes with `gh release edit` after the release w
 
 **German**
 
-> Dieses Release (`<TAG>`) bringt den Privilege Broker und die neue Seite „Aktivität". Jedes Gerät braucht einmal den Installer, um ihn zu erhalten: Der Update Helper früherer Releases kann den Broker nicht installieren. Laden Sie `install.sh` von dieser Release-Seite, lesen Sie es und führen Sie es auf dem Gerät mit `sudo sh install.sh` aus. Ihre Einstellungen und Ihr Konto bleiben erhalten.
+> Dieses Release (`<TAG>`) bringt den Privilege Broker und die neue Seite „Aktivität“. Jedes Gerät braucht einmal den Installer, um ihn zu erhalten: Der Update Helper früherer Releases kann den Broker nicht installieren. Laden Sie `install.sh` von dieser Release-Seite, lesen Sie es und führen Sie es auf dem Gerät mit `sudo sh install.sh` aus. Ihre Einstellungen und Ihr Konto bleiben erhalten.
 >
 > Ein Gerät mit `v0.1.0-alpha.12` kann dieses Release nicht über seine Update-Seite installieren. Die Seite zeigt es als „Nicht bestätigt“ und meldet, dass die Beschreibung des Releases (Manifest) ungültig ist und diese Version nicht angeboten wird. Das ist zu erwarten: Die alte Update-Seite kennt den neuen Aufbau des Releases nicht und gibt keinen Hinweis auf den Installer. Die Meldung bedeutet nicht, dass Ihr Gerät beschädigt ist. Nutzen Sie den Installer wie oben beschrieben.
 >
