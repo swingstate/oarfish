@@ -14,6 +14,8 @@
     fetchAction,
     fetchServices,
     serviceActions,
+    stateGroup,
+    transitionCount,
     submitAction,
     type ServiceAction,
     type ServiceRow,
@@ -29,8 +31,8 @@
   const pollMs = 2000;
   const pageSize = 100;
 
-  type StateFilter = 'all' | 'active' | 'failed' | 'inactive';
-  const stateFilters: StateFilter[] = ['all', 'active', 'failed', 'inactive'];
+  type StateFilter = 'all' | 'active' | 'failed' | 'inactive' | 'transition';
+  const stateFilters: StateFilter[] = ['all', 'active', 'failed', 'inactive', 'transition'];
 
   let phase = $state<'loading' | 'error' | 'systemd' | 'ready'>('loading');
   let list = $state<ServicesList | null>(null);
@@ -181,11 +183,18 @@
     const q = query.trim().toLowerCase();
     return list.services.filter(
       (r) =>
-        (stateFilter === 'all' || r.active_state === stateFilter) &&
+        (stateFilter === 'all' || stateGroup(r.active_state) === stateFilter) &&
         (q === '' || r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)),
     );
   });
   const visible = $derived(filtered.slice(0, limit));
+  // The count line adds up: rows in another state than active, failed or
+  // inactive are named as their own group when there are any.
+  const countsText = $derived.by(() => {
+    if (!list) return '';
+    const transition = transitionCount(list.counts);
+    return transition === 0 ? fmt('actCounts', { ...list.counts }) : fmt('actCountsTransition', { ...list.counts, transition });
+  });
   const offered = (r: ServiceRow) => serviceActions.filter((a) => r.actions.includes(a));
   const actionsLocked = $derived(!list?.broker_available || submitting || running !== null);
 </script>
@@ -221,7 +230,7 @@
           <button type="button" onclick={() => void load()} disabled={refreshing} data-testid="act-refresh">{refreshing ? t.actRefreshing : t.actRefresh}</button>
           <p class="secondary" data-testid="act-read-at">{fmt('actReadAt', { time: formatDateTime(list.read_at) ?? t.unknownValue })}</p>
         </div>
-        <p data-testid="act-counts">{fmt('actCounts', { ...list.counts })}</p>
+        <p data-testid="act-counts">{countsText}</p>
 
         <div class="filters">
           <div class="field">

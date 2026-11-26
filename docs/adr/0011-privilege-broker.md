@@ -8,8 +8,9 @@
 - Amendment A5 (G7.4 service side and Activity page as implemented, written 2026-11-25): the service side of the broker as built (the read path R1, the broker client, the routes, the action job, the service values of ADR 0009 A7 in the audit package) and the page Aktivität, the files and functions, every choice the code made where this ADR did not fix one, the class C tests per row of the failure matrix, what is not verified and what stays open, listed in "Amendment A5 (G7.4 service side and Activity page as implemented)" below. There is no deviation from the body or from A1 to A4. It edits no sentence of the body or of A1 to A4 except one pointer sentence in A4.8. It is class C evidence only: nothing in it is verified on a device, in a real browser or against the real broker.
 - Amendment A6 (G7.5 reboot and shutdown as implemented, written 2026-11-25): the two power operations in the broker client, the power routes with the password and the list of waiting actions, the power values of ADR 0009 A7 with the flush and `fsync` before the answer, and the card, dialog and status view on the page Aktivität, the files and functions, every choice the code made where this ADR did not fix one, the class C tests per row of the failure matrix, what is not verified and what stays open, listed in "Amendment A6 (G7.5 reboot and shutdown as implemented)" below. One deviation, in the texts: the "Bitte" sentence of the B6 table. It edits no sentence of the body or of A1 to A5 except one pointer sentence in A4.8 and one in A5.8. It is class C evidence only: nothing in it is verified on a device, in a real browser or against the real broker, and no real reboot or shutdown was made.
 - Amendment A7 (G7.6 release and device evidence, written 2026-11-26): the first release that carries the broker (`v0.1.0-alpha.13`, the first real run of the two release checks), the installer run with the broker on the reference device and the device evidence per row of the failure matrix and per open device check of A4 to A6, each with its class (C, D or T), what was not observed, one finding (a unit name with an escape is answered `internal`), the open points and the deviations, listed in "Amendment A7 (G7.6 release and device evidence)" below. It takes no decision and edits no sentence of the body or of A1 to A6. Class D evidence is one device, one image, one moment: nothing is Verified, and the reference device stays Compatible. Whether G7 passes is the owner's decision (D-C87 item 15).
+- Amendment A8 (G7-FIX1, quoted names in `show`, written 2026-11-26): the owner's decision that G7 passes (D-C100), systemd's quoting of the property `Names` in the `show` shape with its source, the fix of finding A7.5 in the broker (an entry of `Names` is unquoted by that rule before rule 1 is applied to it), the check of the service side, the tests and the mutations, and three page fixes (the wrong-password sentence of the power dialog, a count line of the page Aktivität that adds up, the tunnel sentence of the status view when the device is back), listed in "Amendment A8 (G7-FIX1, quoted names in show)" below. It edits no sentence of the body or of A1 to A7 except one pointer sentence in A7.5 and one in A7.7. It is class C evidence until the device check of G7-FIX1: nothing in it is verified on a device.
 - Date: 2026-11-23
-- Gate: G7; steps G7.0 (design stop) and G7.1 (device spike) are done; G7.2 (broker core), G7.3 (packaging, G7.3a to G7.3c) and G7.4 (service side and Activity page) are merged; G7.5 (reboot and shutdown) is merged (PR #62, D-C94); G7.6 is split into G7.6a (decision records D-C95 to D-C99 and the release texts, text only; merged, PR #64), G7.6b (the release `v0.1.0-alpha.13`, done), G7.6c (device evidence, done; amendment A7) and G7.6d (the closing review: the evidence pull request with A7; the owner's decision whether G7 passes is pending)
+- Gate: G7; steps G7.0 (design stop) and G7.1 (device spike) are done; G7.2 (broker core), G7.3 (packaging, G7.3a to G7.3c) and G7.4 (service side and Activity page) are merged; G7.5 (reboot and shutdown) is merged (PR #62, D-C94); G7.6 is split into G7.6a (decision records D-C95 to D-C99 and the release texts, text only; merged, PR #64), G7.6b (the release `v0.1.0-alpha.13`, done), G7.6c (device evidence, done; amendment A7) and G7.6d (the closing review: the evidence pull request with A7, merged, PR #65). G7 passed by D-C100 (2026-11-26); the follow-up step G7-FIX1 (amendment A8) fixes finding A7.5
 - Written against: `main` at commit `4f1b5d13accc7373e5fee586c0defe45e9b7ae0c` (merge of PR #52)
 - Decision numbers: this ADR uses draft numbers `D-DRAFT-G7-nn` only. They become `D-C87` and later when the owner accepts them (`D-C82` stays reserved). `docs/DECISIONS.md` is not changed by this ADR.
 - Amends nothing. Where an accepted text (ADR 0009, ADR 0010, the specification) would need a change, this ADR lists it as a proposal in "Conflicts and gaps" and in "Amendments this ADR would need".
@@ -37,6 +38,7 @@
 19. [Amendment A5 (G7.4 service side and Activity page as implemented)](#amendment-a5-g74-service-side-and-activity-page-as-implemented)
 20. [Amendment A6 (G7.5 reboot and shutdown as implemented)](#amendment-a6-g75-reboot-and-shutdown-as-implemented)
 21. [Amendment A7 (G7.6 release and device evidence)](#amendment-a7-g76-release-and-device-evidence)
+22. [Amendment A8 (G7-FIX1, quoted names in show)](#amendment-a8-g7-fix1-quoted-names-in-show)
 
 ## How to read this ADR
 
@@ -1279,7 +1281,7 @@ Besides the matrix: `TestPowerUnavailableAndNoRetry`, `TestPowerWaiting`, `TestP
 
 ### A7.5 Finding (defect, not fixed)
 
-**A unit name with an escape is always answered `internal`.** For a unit whose name holds a `\xHH` escape, systemd 257 prints the property `Names` of the `show` shape in double quotes, with the backslash doubled; `Id` stays unquoted. Observed on the device with the shape of B2 for a `systemd-fsck@…\x2d….service` instance (read only, as root). `unitFacts` in `backend/cmd/oarfish-broker/unit.go` requires every word of `Names` to pass rule 1, so the quoted word fails and the broker answers `internal` before rules 4 to 11 run. Rule 1 allows such names, so a unit with an escaped name can never be started, stopped or restarted, and a denied one is answered `internal` instead of `unit_denied`. The broker fails closed: nothing runs. No request for such a unit was sent; the answer is read from the code. *Smallest fix proposal, not built:* unquote a `Names` value that systemd quoted (C-style escapes, as systemd writes them) before it is split, and add the observed output as a class C fixture. An owner decision; it changes the privileged code.
+**A unit name with an escape is always answered `internal`.** For a unit whose name holds a `\xHH` escape, systemd 257 prints the property `Names` of the `show` shape in double quotes, with the backslash doubled; `Id` stays unquoted. Observed on the device with the shape of B2 for a `systemd-fsck@…\x2d….service` instance (read only, as root). `unitFacts` in `backend/cmd/oarfish-broker/unit.go` requires every word of `Names` to pass rule 1, so the quoted word fails and the broker answers `internal` before rules 4 to 11 run. Rule 1 allows such names, so a unit with an escaped name can never be started, stopped or restarted, and a denied one is answered `internal` instead of `unit_denied`. The broker fails closed: nothing runs. No request for such a unit was sent; the answer is read from the code. *Smallest fix proposal, not built:* unquote a `Names` value that systemd quoted (C-style escapes, as systemd writes them) before it is split, and add the observed output as a class C fixture. An owner decision; it changes the privileged code. *Pointer (G7-FIX1):* fixed by [amendment A8](#amendment-a8-g7-fix1-quoted-names-in-show) (class C until its device check).
 
 ### A7.6 What was not observed
 
@@ -1297,7 +1299,7 @@ Besides the matrix: `TestPowerUnavailableAndNoRetry`, `TestPowerWaiting`, `TestP
 ### A7.7 Open points for the owner
 
 - **G7 exit (D-C87 item 15).** BF16, BF26 and BF27 were observed as class D. Whether G7 passes, and which of the rows of A7.6 are accepted as known and not blocking, is the owner's decision.
-- **Finding A7.5** (escaped unit names): whether and when it is fixed.
+- **Finding A7.5** (escaped unit names): whether and when it is fixed. *Pointer (G7-FIX1):* G7 passed by D-C100; A7.5 is fixed by [amendment A8](#amendment-a8-g7-fix1-quoted-names-in-show).
 - **Texts** (owner remarks during the run): the wrong-password sentence of the power dialog reuses the account page's "Das aktuelle Passwort ist falsch."; the owner suggests a wording that names the password just entered. The counts of the page Aktivität do not add up when a row is in another state than active, failed or inactive (one row of 156 in this run).
 - **Wording in `RELEASING.md`**: "the manifest of this release lists twelve" counts the entries of the tarball (the root directory and 11 files); `contents` lists 11.
 - The open points of A5.8 and A6.8 stay open.
@@ -1306,3 +1308,69 @@ Besides the matrix: `TestPowerUnavailableAndNoRetry`, `TestPowerWaiting`, `TestP
 
 - The local release checks before the tag ran with the scripts that `make release-bundle` and `make check-release-history` call, with a fresh output directory instead of `dist/release`, which held bundles of earlier builds.
 - The journal timestamps of the early boot are those of the last saved clock (no real-time clock) until the time is synchronized; times of the boots above are taken from the uptime, not from those lines.
+
+## Amendment A8 (G7-FIX1, quoted names in show)
+
+**A8 (G7-FIX1, written 2026-11-26, `docs/DECISIONS.md` D-C100).** The owner decided that G7 passes (D-C100) and that finding A7.5 is fixed in a follow-up step, G7-FIX1. This amendment records systemd's quoting of the `show` shape, the fix in the broker, the check of the service side and the tests. It edits no sentence of the body or of A1 to A7, except one pointer sentence in A7.5 and one in A7.7. No rule of B3 changes: rule 1 to rule 11 apply as A3.4 and A4.1 state them, now also to a unit whose `Id` or alias holds a `\xHH` escape.
+
+**A8 is class C evidence until the device check of G7-FIX1.** The tests prove the parsing against fixtures in systemd's shape; they prove nothing about systemd's behaviour beyond what its source says. Nothing is Verified, and the reference device stays Compatible.
+
+### A8.1 systemd's quoting rule, and its source
+
+Read from the systemd source at the tags `v257` and `v257.13` (the reference device runs Debian's `257.13-1~deb13u1`; the files below are identical in both tags; whether Debian patches them was not checked, an assumption):
+
+- `src/shared/bus-print-properties.c`, `bus_print_property()`: a property of D-Bus type `as` (an array of strings, such as `Names`) is printed as its entries separated by one space, each entry passed through `shell_maybe_quote(str, 0)`. A property of type `s` (such as `Id`) is printed as it is; a value that holds a newline is printed as `[unprintable]`.
+- `src/systemctl/systemctl-show.c`, `print_property()`: systemctl's own printer handles neither `Id` nor `Names`, so the generic printer above applies.
+- `src/basic/escape.c`, `shell_maybe_quote()` and `strcpy_backslash_escaped()`, with `src/basic/escape.h` and `src/basic/string-util.h`: an entry is printed unchanged unless it holds a control character, invalid UTF-8, a character of `WHITESPACE` (space, tab, newline, carriage return) or a character of `SHELL_NEED_QUOTES` (`"`, `\`, `` ` ``, `$`, `*`, `?`, `[`, `'`, `(`, `)`, `<`, `>`, `|`, `&`, `;`, `!`). Then it is enclosed in double quotes, and a backslash is put before each character of `SHELL_NEED_ESCAPE` (`"`, `\`, `` ` ``, `$`); a control character is written as a C escape; every other character stays as it is.
+
+Of the 13 properties of the `show` shape of B2, only `Names` has type `as`; `Id`, `LoadState`, `ActiveState`, `SubState`, `Result`, `Type` and `UnitFileState` have type `s`; the others are booleans or numbers. So only `Names` can be quoted. A unit name allowed by rule 1 holds a character of `SHELL_NEED_QUOTES` only as the backslash of a `\xHH` escape, so `a@x\x2dy.service` is printed as `"a@x\\x2dy.service"` in `Names` and as `a@x\x2dy.service` in `Id`, which is what A7.5 observed.
+
+`list-units` and `list-unit-files` print the name as a table cell of type `TABLE_STRING` (`src/systemctl/systemctl-list-units.c`, `src/systemctl/systemctl-list-unit-files.c`, `src/shared/format-table.c`), which is not quoted. The read path R1 therefore sees the name as it is.
+
+### A8.2 The change in the broker
+
+`unitFacts` in `backend/cmd/oarfish-broker/unit.go` reads `Names` with `splitNames`, the inverse of the rule of A8.1: 1 to 64 entries (`maxNames`, unchanged) separated by single spaces. Each entry is either a plain word without a character of `SHELL_NEED_QUOTES` and without white space, or a word in double quotes whose only escapes are a backslash before `"`, `\`, `` ` `` or `$`, in which none of `"`, `` ` `` and `$` stands without its backslash, and which systemd would have quoted (it holds one of the characters above). The entry comes back unquoted, and rule 1 is applied to it as before. Everything else is `errShowShape` and the answer `internal`, as before: an empty entry, a leading, trailing or double space, an unterminated quote, a backslash before any other character (a C escape included), a quoted word joined to the next one, a word quoted without need, and an unquoted word that holds a backslash (systemd 257 never prints one). `Id` is not unquoted, because systemd does not quote it; a quoted `Id` fails rule 1. The bounds of `parseShow` (13 keys, each once, printable ASCII) and of rule 1 (255 bytes) are unchanged.
+
+The broker's bytes change: `oarfish-broker-linux-arm64` was `f18712cd3a42a6a8ba10987a925cc31678954e07d1f6e469abb170326ba70551` (`v0.1.0-alpha.13`) and is `7f7329e3692b1d72f27e76e86c2ade805aaf32db7ea5d6549eaad72a60a50109` after the fix (`make build-broker`, reproducible). The helper's bytes are unchanged (`0c6f95d25fbb44d25af6f21a8d96ee9d0d0fa46a99ad4600ec67c32bc3e6400e` before and after, `make build-helper`). No unit file, the installer and the bundle format do not change.
+
+### A8.3 The service side
+
+No change is needed. R1 reads the names from `list-units` and `list-unit-files`, which do not quote (A8.1), checks them with `internal/unitname` (rule 1, which allows the escape), and the page sends the name of the row unchanged in the JSON body of `POST /api/v1/services/action`. Tests that show it: `TestEscapedNamesOnReadPath` (`internal/services`: an escaped instance is listed under its exact name, takes the start mode of its template and is offered stop and restart; an escaped `systemd-fsck@` instance is listed as denied without actions), `TestServicesActionSubmit` (`internal/server`: the escaped name reaches the job byte for byte) and the test of `submitAction` in `frontend/src/lib/services.test.ts` (the page posts the name exactly as the list gave it).
+
+### A8.4 Tests and mutations
+
+- `TestShowEscapedNameFromDevice`: the shape A7.5 observed, for a `systemd-fsck@` instance with two `\x2d` escapes and a synthetic device path, is accepted and gives the unquoted name in `Id` and `Names`.
+- `TestSplitNames`: plain and quoted entries, an alias with and without escapes, the edge cases of the rule (an escaped backslash, quote, `$` and `` ` ``, a quoted space, `*` and `'`), each also printed back by a separate test implementation of `shell_maybe_quote` and compared; the malformed shapes of A8.2; the bound of 64 entries.
+- `TestShowNamesRule1AfterUnquoting`: a correctly quoted entry that is not a unit name (a space, a quote, `$`, `` ` ``, `*`, a double backslash, an upper-case escape and others) fails the read; a quoted `Id` fails it too.
+- `TestEscapedNames` (through the broker against the fake `systemctl`): the device shape is answered `unit_oneshot` (rule 8 before rule 10); an escaped instance succeeds for restart and stop; rules 4 to 9 give their own codes (`unit_not_canonical` for an escaped alias, `unit_template`, `unit_masked`, `unit_transient`, `refused_by_unit`, `already_in_state`); escaped deny-list instances, as `Id` and as an alias, are `unit_denied`; escaped restart-only instances are `operation_not_offered` for stop and succeed for restart; malformed quoting is `internal`.
+- `FuzzParseShow`: new seeds with quoted `Names`; for every accepted input each entry passes rule 1 and the test implementation of `shell_maybe_quote` prints the entries back to the exact value of `Names`.
+- The test helper `showOut` now prints `Names` quoted as systemd does, so every broker test with an escaped name uses the real shape.
+
+Mutations, each applied alone to `unit.go`; each builds, and each turns tests red:
+
+| Mutation | Failing tests |
+|---|---|
+| `Names` split with `strings.Fields`, no unquoting | `TestShowEscapedNameFromDevice`, `TestParseShow`, `TestEscapedNames`, `TestHostileShowOutput` |
+| A quoted word taken as it is up to the next quote, without unescaping and without the checks | `TestSplitNames` (among others the bad escape `"a@x\x2dy.service"`, the quoted `"a.service"` and `""` are accepted), `TestShowEscapedNameFromDevice`, `TestParseShow`, `TestEscapedNames` |
+| Rule 1 not applied to the entries after unquoting | `TestShowNamesRule1AfterUnquoting` |
+
+### A8.5 Three page fixes (texts and the count line)
+
+Two remarks of the owner in A7.7 ("Texts") and one sentence of the status view, frontend and texts only; no route, no backend field and no rule changes.
+
+1. **Wrong password in the power dialog.** It reused the account page's "Das aktuelle Passwort ist falsch." / "The current password is wrong.", although the dialog asks for the password, not the current one. It now has its own key `pwrErr.wrong_password`: "Das Passwort ist falsch." / "The password is wrong." (`lib/powerErrors.ts`). The account page keeps its sentence. The update page's password step reuses the same account sentence (`lib/updateErrors.ts`, `wrong_password`), where "aktuell" is just as wrong; it is not changed here (an open point for the owner). Service actions ask for no password (D-C87 item 7).
+2. **The count line of the page Aktivität adds up.** The service counts only `active`, `failed` and `inactive` in their groups but every row in the total (`count` in `internal/services/reader.go`), so a row in another state of the closed set of A5 (`reloading`, `activating`, `deactivating`, `maintenance`, `refreshing`) was in no group: on the device the line read "156 Dienste, davon 41 aktiv, 0 fehlgeschlagen und 114 inaktiv" (A7.7). The page now derives that group as the total minus the three counts (no new field) and, when it is not zero, uses `actCountsTransition`: "… , {inactive} inaktiv und {transition} im Übergang." / "… , {inactive} inactive and {transition} in transition."; with no such row the old sentence `actCounts` stays. The state filter has a fifth choice, "Im Übergang" / "In transition", which shows exactly those rows; "Aktiv", "Fehlgeschlagen" and "Inaktiv" keep showing exactly their own state.
+3. **The status view after a restart, state "wieder erreichbar" only.** The tunnel sentence there is now `pwrTunnelBack`: "Wenn Sie über einen SSH-Tunnel verbunden waren, bauen Sie ihn jetzt neu auf. Dann melden Sie sich an." / "If you were connected through an SSH tunnel, set it up again now. Then sign in." Before the device is back, after 5 minutes without an answer and in the shutdown view the sentence `pwrTunnel` stays.
+
+Tests: `lib/power.test.ts` (the sentence and that the account sentence is unchanged), `pages/ActivityPower.test.ts` (every refusal sentence, the scenario `power-wrong-password`, the status view's tunnel sentence in each state, the scenario `power-reboot-flow`), `pages/Activity.test.ts` ("state list in transition …" with one activating row, "the count line adds up for every active state of the closed set", the scenario `list-in-transition`), and `docs.test.ts` for the text tables of [`UI.md`](../UI.md). Checked in jsdom only; not in a real browser or on a device.
+
+### A8.6 What is not verified, and what stays open
+
+- Every result above is class C. The device check of G7-FIX1 (a GUI update that replaces the broker, and the page with a unit whose name holds an escape) is still to come.
+- Whether Debian's systemd 257.13 package changes the printing code of A8.1 (assumption: it does not).
+- Rule 1 allows a backslash only in the instance of a template (B3, unchanged). A unit or an alias with an escape outside the instance, for example `a\x2db.service`, still fails rule 1: as a request it is `unit_invalid`, as an alias in `Names` it makes the broker answer `internal`, and as a line of `list-units` or `list-unit-files` it makes the whole read of R1 fail. None was seen on the reference image; this is an open point for the owner, not part of this fix.
+- The open points of A5.8, A6.8 and A7.7 stay open.
+
+### A8.7 Deviations
+
+None from the body or from A1 to A7.

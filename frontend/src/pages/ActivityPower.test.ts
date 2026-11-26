@@ -326,7 +326,7 @@ describe('restart and shutdown dialog', () => {
 
   it('every refusal is one sentence in the dialog, tied to the field; the dialog stays open and the field is cleared', async () => {
     const cases: [ReturnType<typeof err> | 'network', string, boolean][] = [
-      [err(403, 'wrong_password'), t.errorCurrentPassword, true],
+      [err(403, 'wrong_password'), t['pwrErr.wrong_password'], true],
       [err(429, 'rate_limited', { retry_after_seconds: 37 }), fmt('errorRateLimitedSeconds', { seconds: 37 }), false],
       ...powerCodes.map((c) => [err(c === 'unavailable' ? 503 : 409, c), t[`pwrErr.${c}`], false] as [ReturnType<typeof err>, string, boolean]),
       [err(403, 'csrf_failed'), t['updErr.request_rejected'], false],
@@ -460,7 +460,8 @@ describe('power status view', () => {
     const link = byTestId('pwr-sign-in') as HTMLAnchorElement;
     expect(text(link)).toBe(t.pwrSignIn);
     expect(link.getAttribute('href')).toBe(location.pathname + location.search);
-    expect(text(byTestId('pwr-status-tunnel'))).toBe(t.pwrTunnel);
+    // Back: the tunnel sentence says to set the tunnel up again now (G7-FIX1).
+    expect(text(byTestId('pwr-status-tunnel'))).toBe(t.pwrTunnelBack);
     await flush(60_000);
     expect(count(HEALTH)).toBe(4);
     expect(calls.every((c) => c.key === HEALTH)).toBe(true);
@@ -476,6 +477,7 @@ describe('power status view', () => {
     await flush(5000);
     expect(statusText()).toBe(t.pwrRebootLate);
     expect(byTestId('pwr-status').getAttribute('data-phase')).toBe('late');
+    expect(text(byTestId('pwr-status-tunnel'))).toBe(t.pwrTunnel);
     const before = count(HEALTH);
     await flush(10_000);
     expect(count(HEALTH)).toBe(before + 2);
@@ -483,6 +485,7 @@ describe('power status view', () => {
     await flush(5000);
     expect(statusText()).toBe(t.pwrAfterReboot);
     expect(byTestId('pwr-sign-in')).toBeTruthy();
+    expect(text(byTestId('pwr-status-tunnel'))).toBe(t.pwrTunnelBack);
   });
 
   it('shutdown: "fährt herunter", then at the first failed answer the expected sentence, and the polling stops', async () => {
@@ -629,7 +632,7 @@ describe('power scenario mode', () => {
         await fireEvent.submit(pw()!.form!);
         await flush(500);
         const want: Record<string, string> = {
-          'power-wrong-password': t.errorCurrentPassword,
+          'power-wrong-password': t['pwrErr.wrong_password'],
           'power-rate-limited': fmt('errorRateLimitedSeconds', { seconds: 37 }),
           'power-update-running': t['pwrErr.update_running'],
           'power-already-requested': t['pwrErr.already_requested'],
@@ -663,6 +666,8 @@ describe('power scenario mode', () => {
       for (let i = 0; i < steps; i++) await flush(5150); // the interval plus the mock's 150 ms answer time
       await flush(500);
       expect(text(byTestId('pwr-status-text')), name).toBe(want);
+      // Only the state "wieder erreichbar" has the new tunnel sentence.
+      expect(text(byTestId('pwr-status-tunnel')), name).toBe(name === 'power-reboot-flow' ? t.pwrTunnelBack : t.pwrTunnel);
       expect(real).not.toHaveBeenCalled();
     }
   });

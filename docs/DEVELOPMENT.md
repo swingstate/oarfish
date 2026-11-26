@@ -351,7 +351,7 @@ cd frontend && npm run dev
 
 With a scenario of the Activity page, a fake fetch layer (`src/dev/servicesMock.ts`) answers `/api/v1/session` (the synthetic user `admin-test`) and the three services routes from the fixtures; every other request goes on unchanged. A name that both pages know (`loading`, `load-error`) installs both mocks, and each answers only its own routes. The same build check as for the update page applies: `vite.config.ts` fails `npm run build` if the marker `oarfish-dev-mock` or the name `installServicesMock` appears in any output file. The data is synthetic: invented unit names for ordinary rows, and the list names of ADR 0011 B3 rules 10 and 11 (for example `ssh.service`, `dbus.service`) for the critical and restricted rows.
 
-Scenarios: `loading`, `load-error`, `systemd-unavailable`, `list`, `list-long` (250 rows, for "Mehr anzeigen"), `list-filtered-empty` (no failed service: choose "Fehlgeschlagen"), `list-with-failed`, `broker-unavailable`, `action-flow`, `action-timeout`, `action-rate-limited`, `action-oneshot-refused`, `action-restart-only-note`, `action-denied-row`, `session-lost`. In the `action-*` scenarios any action button starts the course: three reads with "läuft …", then the result of the scenario (`action-flow`: success; `action-timeout`: `timeout`; `action-rate-limited`: `rate_limited` with 37 seconds; `action-oneshot-refused`: `unit_oneshot`), then one new read of the list. A second action while one runs answers `busy`. `pages/Activity.test.ts` renders every scenario once ("activity scenario mode").
+Scenarios: `loading`, `load-error`, `systemd-unavailable`, `list`, `list-long` (250 rows, for "Mehr anzeigen"), `list-filtered-empty` (no failed service: choose "Fehlgeschlagen"), `list-with-failed`, `list-in-transition` (one activating row: the count line ends with "und 1 im Übergang", and the filter "Im Übergang" shows that row; G7-FIX1), `broker-unavailable`, `action-flow`, `action-timeout`, `action-rate-limited`, `action-oneshot-refused`, `action-restart-only-note`, `action-denied-row`, `session-lost`. In the `action-*` scenarios any action button starts the course: three reads with "läuft …", then the result of the scenario (`action-flow`: success; `action-timeout`: `timeout`; `action-rate-limited`: `rate_limited` with 37 seconds; `action-oneshot-refused`: `unit_oneshot`), then one new read of the list. A second action while one runs answers `busy`. `pages/Activity.test.ts` renders every scenario once ("activity scenario mode").
 
 ## Reboot and shutdown, service side, and their tests (Gate G7, step G7.5)
 
@@ -381,12 +381,12 @@ In these scenarios the mock answers the power routes and `GET /healthz` itself a
 | `power-dialog-reboot` | "Neu starten": the dialog with title, body, tunnel sentence, "Keine wartenden Aktionen", the password field; Abbrechen and Escape |
 | `power-dialog-shutdown` | "Herunterfahren": the shutdown title and body (power supply sentence) |
 | `power-waiting-list` | The waiting list with every kind, two sessions, three live views and an unknown kind |
-| `power-wrong-password` | Any password: "Das aktuelle Passwort ist falsch." under the field; the dialog stays open |
+| `power-wrong-password` | Any password: "Das Passwort ist falsch." under the field (its own sentence since G7-FIX1); the dialog stays open |
 | `power-rate-limited` | Any password: the wait sentence with 37 seconds |
 | `power-update-running` | The waiting list says an update runs; confirming gives the `update_running` sentence |
 | `power-already-requested` | Confirming gives "Neustart oder Herunterfahren wurde bereits angefordert." |
 | `power-broker-unavailable` | The notice in the card and both buttons disabled (the services list shows its own notice) |
-| `power-reboot-flow` | Confirm "Neu starten": the status view "Das Gerät startet neu …", after about 30 s "wieder erreichbar" with the link |
+| `power-reboot-flow` | Confirm "Neu starten": the status view "Das Gerät startet neu …", after about 30 s "wieder erreichbar" with the link and the sentence "Wenn Sie über einen SSH-Tunnel verbunden waren, bauen Sie ihn jetzt neu auf. Dann melden Sie sich an." (G7-FIX1) |
 | `power-reboot-too-long` | Confirm "Neu starten": after 5 minutes without an answer "Das Gerät antwortet noch nicht. …" |
 | `power-shutdown-flow` | Confirm "Herunterfahren": "Das Gerät fährt herunter …", then after about 10 s "Das Gerät antwortet nicht mehr. …" |
 | `power-session-lost` | Confirming signs out: Anmelden with "Die Sitzung ist beendet. …" |

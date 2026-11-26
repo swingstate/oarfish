@@ -87,7 +87,7 @@
   {#if phase === 'back'}
     <p><a href={signInHref} onclick={stop} data-testid="pwr-sign-in">{t.pwrSignIn}</a></p>
   {/if}
-  <p data-testid="pwr-status-tunnel">{t.pwrTunnel}</p>
+  <p data-testid="pwr-status-tunnel">{phase === 'back' ? t.pwrTunnelBack : t.pwrTunnel}</p>
 </div>
 
 <style>

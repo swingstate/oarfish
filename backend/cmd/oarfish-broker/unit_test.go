@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -33,10 +35,131 @@ func TestParseShow(t *testing.T) {
 	if err != nil || raw["LoadState"] != "not-found" {
 		t.Fatalf("not-found: %v %v", raw, err)
 	}
-	// An alias and an escaped instance in Names.
-	raw, _ = parseShow([]byte(showOut(`a@x\x2dy.service`, "Names", `a@x\x2dy.service b.service`)))
-	if u, err := unitFacts(raw); err != nil || len(u.Names) != 2 {
+	// An escaped instance with an alias, as systemctl prints them (A8).
+	raw, _ = parseShow([]byte(showOut(`a@x\x2dy.service`, "Names", `"a@x\\x2dy.service" b.service`)))
+	if u, err := unitFacts(raw); err != nil || !slices.Equal(u.Names, []string{`a@x\x2dy.service`, "b.service"}) {
 		t.Fatalf("names: %+v %v", u, err)
+	}
+}
+
+// fsckShow is the shape systemd 257 printed on the reference device for a
+// systemd-fsck@ instance (G7.6c, finding A7.5), with a synthetic device path:
+// Id as it is, the entry of Names in double quotes with the backslashes
+// doubled.
+const fsckUnit = `systemd-fsck@dev-disk-by\x2dpartuuid-00000000\x2d02.service`
+
+const fsckShow = `Type=oneshot
+Result=success
+MainPID=0
+ExecMainStartTimestampMonotonic=0
+Id=systemd-fsck@dev-disk-by\x2dpartuuid-00000000\x2d02.service
+Names="systemd-fsck@dev-disk-by\\x2dpartuuid-00000000\\x2d02.service"
+LoadState=loaded
+ActiveState=active
+SubState=exited
+UnitFileState=static
+RefuseManualStart=no
+RefuseManualStop=no
+Transient=no
+`
+
+func TestShowEscapedNameFromDevice(t *testing.T) {
+	raw, err := parseShow([]byte(fsckShow))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := unitFacts(raw)
+	if err != nil {
+		t.Fatalf("the device shape is refused: %v", err)
+	}
+	if u.ID != fsckUnit || !slices.Equal(u.Names, []string{fsckUnit}) {
+		t.Fatalf("got %+v", u)
+	}
+	if fsckShow != showOut(fsckUnit, "Type", "oneshot", "MainPID", "0", "ExecMainStartTimestampMonotonic", "0",
+		"SubState", "exited", "UnitFileState", "static") {
+		t.Fatal("showOut does not print Names as systemd does")
+	}
+}
+
+// The value of Names, read by systemd's quoting rule (A8): what is accepted
+// and what it unquotes to. The quote, the space and the other characters
+// that the rule escapes or quotes are unquoted correctly and then refused by
+// rule 1, because no unit name holds them.
+func TestSplitNames(t *testing.T) {
+	for v, want := range map[string][]string{
+		"a.service":                           {"a.service"},
+		"a.service b.service":                 {"a.service", "b.service"},
+		`"a@x\\x2dy.service"`:                 {`a@x\x2dy.service`},
+		`"a@x\\x2dy.service" b.service`:       {`a@x\x2dy.service`, "b.service"},
+		`b.service "a@x\\x2dy.service"`:       {"b.service", `a@x\x2dy.service`},
+		`"a@\\x2d.service" "b@\\x2e.service"`: {`a@\x2d.service`, `b@\x2e.service`},
+		`"a b.service"`:                       {"a b.service"},
+		`"a\"b.service"`:                      {`a"b.service`},
+		`"a\$b.service"`:                      {"a$b.service"},
+		"\"a\\`b.service\"":                   {"a`b.service"},
+		`"a*b.service"`:                       {"a*b.service"},
+		`"a'b.service"`:                       {"a'b.service"},
+		`"a\\\\b.service"`:                    {`a\\b.service`},
+	} {
+		got, err := splitNames(v)
+		if err != nil || !slices.Equal(got, want) {
+			t.Errorf("%s: %q %v, want %q", v, got, err, want)
+		}
+		if sdNames(want...) != v {
+			t.Errorf("%s: systemd would print %s", v, sdNames(want...))
+		}
+	}
+	malformed := []string{
+		"", " ", " a.service", "a.service ", "a.service  b.service",
+		`"a@x\\x2dy.service`,               // unterminated quote
+		`"a@x\\x2dy.service" "`,            // unterminated second entry
+		`"a@x\x2dy.service"`,               // a backslash before x: a bad escape
+		`"a@x\\x2dy.service\"`,             // the closing quote escaped
+		`"a\tb.service"`, `"a\nb.service"`, // C escapes are not written for printable characters
+		`"a@x\\x2dy.service"b.service`,                       // a quoted word joined to another
+		`b.service"a@x\\x2dy.service"`,                       // and the other way round
+		`"a"b".service"`, `"a$b.service"`, "\"a`b.service\"", // a lone character of SHELL_NEED_ESCAPE
+		`"a.service"`, `""`, // quoted without need
+		`a@x\x2dy.service`, `a@x\\x2dy.service`, // unquoted with a backslash
+		`a"b.service`, "a'b.service", "a*b.service", "a;b.service", "a(b).service",
+	}
+	for _, v := range malformed {
+		if got, err := splitNames(v); err == nil {
+			t.Errorf("%s accepted: %q", v, got)
+		}
+	}
+	// The bound: maxNames entries, quoted or not, and not one more.
+	many := make([]string, maxNames+1)
+	for i := range many {
+		many[i] = fmt.Sprintf(`n@\x%02x.service`, i%256)
+	}
+	if got, err := splitNames(sdNames(many[:maxNames]...)); err != nil || len(got) != maxNames {
+		t.Errorf("%d names: %d %v", maxNames, len(got), err)
+	}
+	if _, err := splitNames(sdNames(many...)); err == nil {
+		t.Errorf("%d names accepted", maxNames+1)
+	}
+}
+
+// After unquoting, rule 1 still holds for every entry of Names: a correctly
+// quoted entry that is not a unit name fails the whole read.
+func TestShowNamesRule1AfterUnquoting(t *testing.T) {
+	for _, n := range []string{
+		"a b.service", `a"b.service`, "a$b.service", "a`b.service", "a*b.service", `a\\b.service`, `a\x2Db.service`,
+		`a\.service`, "a;b.service", `x@a\x2d`,
+	} {
+		raw, err := parseShow([]byte(showOut(demo, "Names", sdNames(demo, n))))
+		if err != nil {
+			t.Fatalf("%s: %v", n, err)
+		}
+		if u, err := unitFacts(raw); err == nil {
+			t.Errorf("%s accepted: %q", n, u.Names)
+		}
+	}
+	// Id is printed as it is, never quoted: a quoted Id fails rule 1.
+	raw, _ := parseShow([]byte(showOut(fsckUnit, "Id", sdQuote(fsckUnit))))
+	if _, err := unitFacts(raw); err == nil {
+		t.Error("quoted Id accepted")
 	}
 }
 
@@ -103,11 +226,17 @@ func TestSplitTemplate(t *testing.T) {
 }
 
 // FuzzParseShow: the parser never panics, and what it accepts has each of the
-// 13 keys exactly once, with printable ASCII values.
+// 13 keys exactly once, with printable ASCII values. What unitFacts accepts
+// has a valid Id and only valid names in Names, and systemd's quoting of
+// those names gives back the value of Names exactly (A8).
 func FuzzParseShow(f *testing.F) {
 	f.Add([]byte(showOut(demo)))
 	f.Add([]byte(notFoundOut(demo)))
 	f.Add([]byte(showOut(demo, "Names", demo+" x.service")))
+	f.Add([]byte(fsckShow))
+	f.Add([]byte(showOut(`a@x\x2dy.service`, "Names", `"a@x\\x2dy.service" "b@\\x2e.service" c.service`)))
+	f.Add([]byte(showOut(demo, "Names", `"a b.service" "a\"b" "a\\x2d`)))
+	f.Add([]byte(showOut(demo, "Names", `"a@x\x2dy.service"b`)))
 	f.Add([]byte("Id=a\nId=a\n"))
 	f.Add([]byte("=\n"))
 	f.Fuzz(func(t *testing.T, data []byte) {
@@ -135,6 +264,17 @@ func FuzzParseShow(f *testing.F) {
 		}
 		if !validUnitName(u.ID) || !activeStates[u.ActiveState] || !serviceTypes[u.Type] {
 			t.Fatalf("accepted %+v", u)
+		}
+		if len(u.Names) == 0 || len(u.Names) > maxNames {
+			t.Fatalf("accepted %d names", len(u.Names))
+		}
+		for _, n := range u.Names {
+			if !validUnitName(n) {
+				t.Fatalf("accepted name %q", n)
+			}
+		}
+		if sdNames(u.Names...) != raw["Names"] {
+			t.Fatalf("Names %q read as %q", raw["Names"], u.Names)
 		}
 	})
 }

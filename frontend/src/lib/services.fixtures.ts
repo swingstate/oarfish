@@ -104,6 +104,11 @@ export function failedList(): ServicesList {
   ]);
 }
 
+/** Exactly one row in transition (activating), as on the device in G7.6c: the count line names the group. */
+export function transitionList(): ServicesList {
+  return list(ordinaryRows().filter((r) => r.active_state !== 'reloading'));
+}
+
 /** The list without the broker's socket: the rows stay, no action works. */
 export function brokerMissingList(): ServicesList {
   return list([...ordinaryRows(), ...specialRows()], false);

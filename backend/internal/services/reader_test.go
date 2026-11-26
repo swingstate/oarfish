@@ -98,6 +98,33 @@ func TestReadThroughProcessFake(t *testing.T) {
 	}
 }
 
+// ADR 0011 A8: list-units and list-unit-files print a name with a \xHH
+// escape as it is (systemd 257 prints both as table cells, unquoted; only
+// show quotes it). R1 lists such an instance under its exact name, takes the
+// start mode of its template, and offers what rules 10 and 11 allow.
+func TestEscapedNamesOnReadPath(t *testing.T) {
+	const inst = `demo-disk@dev-disk-by\x2dlabel-data.service`
+	const fsck = `systemd-fsck@dev-disk-by\x2dpartuuid-00000000\x2d02.service`
+	f := newFakeSystemctl(t)
+	f.set(1, "out", inst+" loaded active running Demo disk worker\n"+
+		fsck+" loaded active exited File System Check on /dev/disk/by-partuuid/00000000-02\n")
+	f.set(2, "out", "demo-disk@.service static -\nsystemd-fsck@.service static -\n")
+	r, _ := testReader(t, f)
+	list, e := r.read(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !slices.Equal(names(list.Rows), []string{inst, fsck}) {
+		t.Fatalf("rows %q", names(list.Rows))
+	}
+	if d := rowNamed(t, list.Rows, inst); d.Denied || d.StartMode != "static" || !slices.Equal(d.Actions, []string{"stop", "restart"}) {
+		t.Errorf("%+v", d)
+	}
+	if d := rowNamed(t, list.Rows, fsck); !d.Denied || len(d.Actions) != 0 {
+		t.Errorf("%+v", d)
+	}
+}
+
 // No systemd, or no systemctl: services_unavailable, and no process starts.
 func TestReadUnavailable(t *testing.T) {
 	f := newFakeSystemctl(t)
