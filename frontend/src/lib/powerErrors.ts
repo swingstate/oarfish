@@ -1,7 +1,7 @@
 // Sentences for the power routes (ADR 0011 B2 and B6; backend/internal/server
-// power.go). Every code has its own sentence in both languages; the password
-// codes and the codes of the access layer reuse the sentences of the update
-// page's password step; anything else gets the generic sentence. The server's
+// power.go). Every code has its own sentence in both languages; wrong_password
+// has its own sentence too; rate_limited and the codes of the access layer
+// reuse the sentences of the update page's password step; anything else gets the generic sentence. The server's
 // English message is never shown.
 import { actionErrorText, type UpdateErrorField } from './updateErrors';
 import { fmt, has, msg, t } from './i18n';
@@ -23,6 +23,8 @@ export function powerErrorText(r: PowerFailure): { text: string; field: UpdateEr
     case 'session':
       return { text: t.errorGeneric, field: null };
   }
+  // Its own sentence: the power dialog asks for the password, not the current one of the account page.
+  if (r.code === 'wrong_password') return { text: t['pwrErr.wrong_password'], field: 'password' };
   const key = `pwrErr.${r.code}`;
   if (known(powerCodes, r.code) && has(key)) return { text: msg(key), field: null };
   // wrong_password, rate_limited, the CSRF and Origin refusals, a body the service could not read.

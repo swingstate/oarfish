@@ -16,10 +16,12 @@ import {
   longList,
   noAction,
   noFailedList,
+  row,
   running,
   sampleList,
+  transitionList,
 } from '../lib/services.fixtures';
-import type { ActionState, ServicesList } from '../lib/services';
+import { activeStates, type ActionState, type ServicesList } from '../lib/services';
 import { errorText, resultText, serviceCodes } from '../lib/serviceErrors';
 import { installServicesMock, servicesScenarioNames } from '../dev/servicesMock';
 
@@ -152,7 +154,8 @@ describe('activity page states', () => {
     expect(text(within(rowOf('example-web.service')).getByTestId('act-mode'))).toBe('Startmodus: Unbekannt');
     expect(text(within(rowOf('example-run.service')).getByTestId('act-state'))).toBe('startet');
     const l = sampleList();
-    expect(text(byTestId('act-counts'))).toBe(fmt('actCounts', { ...l.counts }));
+    // The sample has one activating and one reloading row: named as their own group.
+    expect(text(byTestId('act-counts'))).toBe(fmt('actCountsTransition', { ...l.counts, transition: 2 }));
     expect(text(byTestId('act-read-at'))).toMatch(/^Gelesen: /);
     // The state is a word in a badge: never colour alone.
     expect(within(app).getByTestId('act-state').getAttribute('data-tone')).toBe('success');
@@ -164,6 +167,51 @@ describe('activity page states', () => {
     expect(text(within(broken).getByTestId('act-state'))).toBe('fehlgeschlagen');
     expect(within(broken).getByTestId('act-state').getAttribute('data-tone')).toBe('critical');
     expect(text(byTestId('act-counts'))).toContain('3 fehlgeschlagen');
+  });
+
+  // G7-FIX1: on the device the line read "156 Dienste, davon 41 aktiv, 0 fehlgeschlagen und 114 inaktiv" (sum 155).
+  it('state list in transition: one activating row is its own group, the line adds up, and the filter shows it', async () => {
+    const l = transitionList();
+    await open(l);
+    expect(l.counts).toEqual({ total: 9, active: 4, failed: 0, inactive: 4 });
+    expect(text(byTestId('act-counts'))).toBe('9 Dienste, davon 4 aktiv, 0 fehlgeschlagen, 4 inaktiv und 1 im Übergang.');
+    await fireEvent.click(screen.getByLabelText(t['actFilter.transition']));
+    expect(screen.getAllByTestId('act-row').map((r) => r.dataset.name)).toEqual(['example-run.service']);
+    // The other filters keep their meaning: exactly their own state.
+    for (const f of ['active', 'failed', 'inactive'] as const) {
+      await fireEvent.click(screen.getByLabelText(t[`actFilter.${f}`]));
+      const states = screen.queryAllByTestId('act-row').map((r) => l.services.find((s) => s.name === r.dataset.name)!.active_state);
+      expect(states.length).toBe(l.counts[f]);
+      expect(states.every((s) => s === f)).toBe(true);
+    }
+    await fireEvent.click(screen.getByLabelText(t['actFilter.all']));
+    expect(screen.getAllByTestId('act-row').length).toBe(l.counts.total);
+  });
+
+  it('the count line adds up for every active state of the closed set', async () => {
+    for (const s of activeStates) {
+      cleanup();
+      const rows = [row('demo-a.service', 'active', 'enabled'), row('demo-b.service', s, 'enabled'), row('demo-c.service', 'inactive', 'disabled')];
+      const counts = {
+        total: 3,
+        active: rows.filter((r) => r.active_state === 'active').length,
+        failed: rows.filter((r) => r.active_state === 'failed').length,
+        inactive: rows.filter((r) => r.active_state === 'inactive').length,
+      };
+      await open({ schema_version: 1, read_at: sampleList().read_at, broker_available: true, counts, services: rows });
+      const nums = text(byTestId('act-counts')).match(/\d+/g)!.map(Number);
+      expect(nums[0], s).toBe(3);
+      expect(nums.slice(1).reduce((a, b) => a + b, 0), s).toBe(3);
+      if (['active', 'failed', 'inactive'].includes(s)) expect(text(byTestId('act-counts')), s).not.toContain('Übergang');
+      else expect(text(byTestId('act-counts')), s).toContain('1 im Übergang');
+      // The filter shows the row under exactly one group.
+      let seen = 0;
+      for (const f of ['active', 'failed', 'inactive', 'transition'] as const) {
+        await fireEvent.click(screen.getByLabelText(t[`actFilter.${f}`]));
+        if (screen.queryAllByTestId('act-row').some((r) => r.dataset.name === 'demo-b.service')) seen++;
+      }
+      expect(seen, s).toBe(1);
+    }
   });
 
   it('marks critical and restricted rows: the kind, the restart-only note, the denied note without a button', async () => {
@@ -243,7 +291,7 @@ describe('activity list tools', () => {
     expect(screen.getAllByTestId('act-row').length).toBe(failedList().services.length);
     // The state filter is a labelled group of native radio inputs.
     expect(screen.getByRole('group', { name: t.actStateFilterLabel })).toBeTruthy();
-    expect(screen.getAllByRole('radio').length).toBe(4);
+    expect(screen.getAllByRole('radio').length).toBe(5);
   });
 
   it('the empty filter state of the scenario list-filtered-empty', async () => {
@@ -509,6 +557,7 @@ describe('activity scenario mode', () => {
       'list-long',
       'list-filtered-empty',
       'list-with-failed',
+      'list-in-transition',
       'broker-unavailable',
       'action-flow',
       'action-timeout',
@@ -562,6 +611,9 @@ describe('activity scenario mode', () => {
           break;
         case 'list-long':
           expect(screen.getAllByTestId('act-row').length).toBe(100);
+          break;
+        case 'list-in-transition':
+          expect(text(byTestId('act-counts'))).toContain('1 im Übergang');
           break;
         default: {
           expect(screen.getAllByTestId('act-row').length).toBeGreaterThan(5);

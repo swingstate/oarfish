@@ -35,6 +35,23 @@ export interface ServiceRow {
   actions: string[];
 }
 
+/**
+ * The group of a row's active state for the count line and the state filter.
+ * The service counts only active, failed and inactive (internal/services,
+ * count); every other state of the closed set (reloading, activating,
+ * deactivating, maintenance, refreshing) is in transition.
+ */
+export type StateGroup = 'active' | 'failed' | 'inactive' | 'transition';
+
+export function stateGroup(activeState: string): StateGroup {
+  return activeState === 'active' || activeState === 'failed' || activeState === 'inactive' ? activeState : 'transition';
+}
+
+/** The rows in transition: in the total, in none of the three counts. */
+export function transitionCount(c: ServiceCounts): number {
+  return Math.max(0, c.total - c.active - c.failed - c.inactive);
+}
+
 export interface ServiceCounts {
   total: number;
   active: number;

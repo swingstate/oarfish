@@ -137,7 +137,11 @@ describe('power sentences', () => {
       texts.add(r.text);
     }
     expect(texts.size).toBe(powerCodes.length);
-    expect(powerErrorText({ ok: false, kind: 'error', code: 'wrong_password', retryAfter: null })).toEqual({ text: t.errorCurrentPassword, field: 'password' });
+    expect(powerErrorText({ ok: false, kind: 'error', code: 'wrong_password', retryAfter: null })).toEqual({ text: t['pwrErr.wrong_password'], field: 'password' });
+    // Its own sentence, not the account page's "current password" (G7-FIX1).
+    expect(de['pwrErr.wrong_password']).toBe('Das Passwort ist falsch.');
+    expect(en['pwrErr.wrong_password']).toBe('The password is wrong.');
+    expect(de.errorCurrentPassword).toBe('Das aktuelle Passwort ist falsch.');
     expect(powerErrorText({ ok: false, kind: 'error', code: 'rate_limited', retryAfter: 37 }).text).toBe(fmt('errorRateLimitedSeconds', { seconds: 37 }));
     expect(powerErrorText({ ok: false, kind: 'error', code: 'csrf_failed', retryAfter: null }).text).toBe(t['updErr.request_rejected']);
     expect(powerErrorText({ ok: false, kind: 'error', code: 'invalid_request', retryAfter: null }).text).toBe(t['updErr.bad_request']);
@@ -177,6 +181,8 @@ describe('power sentences', () => {
     expect(de.pwrRebootTitle).toBe('Gerät neu starten?');
     expect(de.pwrPoweroffBody).toContain('trennen Sie die Stromversorgung und schließen Sie sie wieder an');
     expect(de.pwrTunnel).toBe('Wenn Sie über einen SSH-Tunnel verbunden sind, wird er getrennt. Bauen Sie ihn danach neu auf.');
+    expect(de.pwrTunnelBack).toBe('Wenn Sie über einen SSH-Tunnel verbunden waren, bauen Sie ihn jetzt neu auf. Dann melden Sie sich an.');
+    expect(en.pwrTunnelBack).toBe('If you were connected through an SSH tunnel, set it up again now. Then sign in.');
     expect(de.pwrWaitingNone).toBe('Keine wartenden Aktionen');
   });
 });

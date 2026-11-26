@@ -250,7 +250,9 @@ These texts go into the release notes with `gh release edit` after the release w
 >
 > What changes: services whose name holds an escape sequence such as `\x2d` (systemd writes some characters of a name this way, for example a `-` in the instance part of a name that holds a device path) are now judged by the broker by the same rules as every other service on the page "Aktivität". Before, the broker refused every action on them with an internal error. The rules themselves are unchanged: a service that they refuse, such as every service whose name begins with `systemd-`, stays refused.
 >
-> Not verified: at the time of this release, the fix and the replacement of the broker from the update page are checked by tests only, not on a device. The reference device stays "Compatible".
+> The page "Aktivität" also has three small corrections. A wrong password in the dialog for restart and shutdown now reads "Das Passwort ist falsch." ("The password is wrong."). The count line now adds up: services that are just starting, stopping or reloading are counted as their own group ("in transition"), and the state filter can show them. After a restart, when the device can be reached again, the page says to set up an SSH tunnel again now and then sign in.
+>
+> Not verified: at the time of this release, the fix, the three corrections of the page and the replacement of the broker from the update page are checked by tests only, not on a device. The reference device stays "Compatible".
 
 **German**
 
@@ -260,7 +262,9 @@ These texts go into the release notes with `gh release edit` after the release w
 >
 > Was sich ändert: Dienste, deren Name eine Escape-Folge wie `\x2d` enthält (systemd schreibt manche Zeichen eines Namens so, zum Beispiel ein `-` im Instanzteil eines Namens, der einen Gerätepfad enthält), prüft der Broker jetzt nach denselben Regeln wie jeden anderen Dienst auf der Seite „Aktivität“. Bisher lehnte der Broker jede Aktion für sie mit einem internen Fehler ab. Die Regeln selbst ändern sich nicht: Ein Dienst, den sie ablehnen, zum Beispiel jeder Dienst, dessen Name mit `systemd-` beginnt, bleibt abgelehnt.
 >
-> Nicht verifiziert: Zum Zeitpunkt dieses Releases sind die Korrektur und der Austausch des Brokers über die Update-Seite nur durch Tests geprüft, nicht auf einem Gerät. Das Referenzgerät bleibt „Compatible“.
+> Die Seite „Aktivität“ hat außerdem drei kleine Korrekturen. Ein falsches Passwort im Dialog für Neustart und Herunterfahren meldet jetzt „Das Passwort ist falsch.“. Die Zeile mit den Anzahlen geht jetzt auf: Dienste, die gerade starten, stoppen oder neu laden, zählen als eigene Gruppe („im Übergang“), und der Zustandsfilter kann sie anzeigen. Nach einem Neustart sagt die Seite, sobald das Gerät wieder erreichbar ist, dass Sie einen SSH-Tunnel jetzt neu aufbauen und sich dann anmelden.
+>
+> Nicht verifiziert: Zum Zeitpunkt dieses Releases sind die Korrektur des Brokers, die drei Korrekturen der Seite und der Austausch des Brokers über die Update-Seite nur durch Tests geprüft, nicht auf einem Gerät. Das Referenzgerät bleibt „Compatible“.
 
 ## Release notes for G6.10
 

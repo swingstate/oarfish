@@ -20,6 +20,7 @@ import {
   noFailedList,
   running,
   sampleList,
+  transitionList,
 } from '../lib/services.fixtures';
 import type { ActionState, ServicesList } from '../lib/services';
 import { everyWaitingKind, powerState } from '../lib/power.fixtures';
@@ -70,6 +71,7 @@ const scenarios: Record<string, () => Scenario> = {
   'list-long': () => ({ list: longList(), after: success }),
   'list-filtered-empty': () => ({ list: noFailedList(), after: success }),
   'list-with-failed': () => ({ list: failedList(), after: success }),
+  'list-in-transition': () => ({ list: transitionList(), after: success }),
   'broker-unavailable': () => ({ list: brokerMissingList(), after: success }),
   'action-flow': () => ({ list: sampleList(), after: success }),
   'action-timeout': () => ({ list: sampleList(), after: flow('timeout', { state: 'activating' }) }),
