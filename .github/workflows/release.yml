@@ -118,6 +118,15 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
           COMMIT: ${{ steps.meta.outputs.commit }}
         run: scripts/release-bundle.sh -o dist/release
+      # Before anything is signed, also in a dry run. Both read the tags of
+      # this checkout (fetch-depth: 0); the first downloads the manifests of the
+      # earlier releases anonymously and fails the job when one cannot be read.
+      # An exception comes only from the reviewed file release/release-exceptions.txt
+      # (docs/RELEASING.md, "Release checks").
+      - name: No older component set (D-C92)
+        run: scripts/check-component-history.sh --exceptions release/release-exceptions.txt dist/release
+      - name: Unit texts pass the lint of the preceding release's helper (two-step rule)
+        run: scripts/check-unit-forms.sh --exceptions release/release-exceptions.txt dist/release
       - name: Reproducibility, two clean rebuilds must match this bundle
         env:
           VERSION: ${{ steps.meta.outputs.version }}

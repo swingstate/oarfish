@@ -15,8 +15,10 @@
 //	                    [-min-installed-version V] [-requires-helper-protocol N]
 //	bundlegen checksums -dir DIR FILE...
 //	bundlegen check     -dir DIR [-expect-key-id HEX16]
+//	bundlegen history   -manifest F [-exception TAG] (-base-url URL | -manifests-dir DIR) TAG...
 //
 // Without the nine components flags, bundle writes the legacy bundle (docs/RELEASING.md).
+// history is the release check of D-C92 (history.go).
 package main
 
 import (
@@ -36,6 +38,8 @@ func main() {
 		err = runChecksums(os.Args[2:])
 	case "check":
 		err = runCheck(os.Args[2:])
+	case "history":
+		err = runHistory(os.Args[2:])
 	default:
 		usage()
 	}
@@ -46,6 +50,6 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: bundlegen bundle|checksums|check [flags]")
+	fmt.Fprintln(os.Stderr, "usage: bundlegen bundle|checksums|check|history [flags]")
 	os.Exit(2)
 }

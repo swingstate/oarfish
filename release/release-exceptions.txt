@@ -1,0 +1,16 @@
+# Exceptions to the release checks (docs/RELEASING.md, "Release checks").
+#
+# One line per exception: TAG CHECK REASON
+#   TAG     the exact tag of the one release the exception is for
+#   CHECK   component-set (D-C92: a release brings an older component set) or
+#           unit-forms (the two-step rule: a unit text the helper of the
+#           preceding release does not accept)
+#   REASON  why, with the date of the owner's approval in chat
+#
+# A line is added only after the owner approved the exception for that tag in
+# chat, in a pull request that the owner merges before the tag is pushed. The
+# release notes of that release say so. Tags are never reused, so a line can
+# never apply to another release. A malformed line fails both checks.
+#
+# Example (not active, because it is a comment):
+# v0.1.0-alpha.99 component-set revert of the helper fix of alpha.98, owner approval in chat 2026-12-01

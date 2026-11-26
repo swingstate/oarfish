@@ -17,7 +17,7 @@ FUZZTIME ?= 10s
 	lint lint-backend lint-frontend fuzz frontend-build build build-arm64 bench-arm64 \
 	release-bundle check-reproducible test-signing test-installer lint-shell clean \
 	build-helper test-helper check-helper test-relverify-producer \
-	build-broker test-broker check-broker
+	build-broker test-broker check-broker check-release-history test-release-history
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -42,6 +42,7 @@ test-backend:
 
 test-release-tools:
 	cd scripts/bundlegen && go test ./...
+	scripts/test-release-history.sh
 
 test-frontend:
 	cd frontend && npm test
@@ -99,6 +100,13 @@ bench-arm64: ## Cross-build the Argon2id benchmark test binary to build/bench/ (
 
 release-bundle: frontend-build ## Build the unsigned release bundle + manifest into dist/release (same script as CI)
 	scripts/release-bundle.sh
+
+check-release-history: ## Release checks of D-C92 (no older component set) and of the two-step rule against dist/release (make release-bundle first; needs every tag; downloads the earlier manifests anonymously)
+	scripts/check-component-history.sh --exceptions release/release-exceptions.txt dist/release
+	scripts/check-unit-forms.sh --exceptions release/release-exceptions.txt dist/release
+
+test-release-history: ## Fixture tests of the two release history checks (throwaway repositories, nothing downloaded)
+	scripts/test-release-history.sh
 
 check-reproducible: ## Build the bundle twice from scratch and compare SHA-256 (rebuilds the frontend)
 	scripts/check-reproducible.sh --rebuild-frontend
