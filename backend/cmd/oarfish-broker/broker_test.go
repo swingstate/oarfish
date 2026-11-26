@@ -289,6 +289,81 @@ func TestRule10Denied(t *testing.T) {
 	wantCode(t, tb.ask(t, svc(opServiceStart, "getty@tty1.service")), codeUnitDenied, "")
 }
 
+// A8 (finding A7.5): a unit whose Id or alias holds a \xHH escape is judged
+// by rules 2 to 11 like any other unit. showOut prints Names quoted as
+// systemd does; each answer is the rule's own code, never internal.
+func TestEscapedNames(t *testing.T) {
+	const inst = `demo-disk@dev-disk-by\x2dlabel-data.service`
+	t.Run("the device shape of a systemd-fsck@ instance", func(t *testing.T) {
+		// A one-shot unit: rule 8 answers before the deny list.
+		for _, op := range []string{opServiceStart, opServiceStop, opServiceRestart} {
+			tb := newTestBroker(t, (&fakeSys{}).show(fsckShow))
+			wantCode(t, tb.ask(t, svc(op, fsckUnit)), codeUnitOneshot, "")
+			wantCalls(t, tb, show(fsckUnit))
+		}
+		// The same instance as a long-running service: rule 10.
+		tb := newTestBroker(t, (&fakeSys{}).show(showOut(fsckUnit)))
+		wantCode(t, tb.ask(t, svc(opServiceRestart, fsckUnit)), codeUnitDenied, "")
+	})
+	t.Run("success", func(t *testing.T) {
+		tb := newTestBroker(t, (&fakeSys{}).show(showOut(inst), showOut(inst, "MainPID", "4343")))
+		wantCode(t, tb.ask(t, svc(opServiceRestart, inst)), codeSuccess, "active")
+		wantCalls(t, tb, show(inst), job("restart", inst), show(inst))
+		tb = newTestBroker(t, (&fakeSys{}).show(showOut(inst), showOut(inst, "ActiveState", "inactive")))
+		wantCode(t, tb.ask(t, svc(opServiceStop, inst)), codeSuccess, "inactive")
+	})
+	t.Run("rules 4 to 9", func(t *testing.T) {
+		tb := newTestBroker(t, (&fakeSys{}).show(showOut(inst, "ActiveState", "inactive")))
+		wantCode(t, tb.ask(t, svc(opServiceRestart, inst)), codeUnitTemplate, "")
+		tb = newTestBroker(t, (&fakeSys{}).show(showOut(inst, "LoadState", "masked")))
+		wantCode(t, tb.ask(t, svc(opServiceRestart, inst)), codeUnitMasked, "")
+		tb = newTestBroker(t, (&fakeSys{}).show(showOut(inst, "Transient", "yes")))
+		wantCode(t, tb.ask(t, svc(opServiceStop, inst)), codeUnitTransient, "")
+		tb = newTestBroker(t, (&fakeSys{}).show(showOut(inst, "RefuseManualStop", "yes")))
+		wantCode(t, tb.ask(t, svc(opServiceStop, inst)), codeRefusedByUnit, "")
+		tb = newTestBroker(t, (&fakeSys{}).show(showOut(inst)))
+		wantCode(t, tb.ask(t, svc(opServiceStart, inst)), codeAlreadyInState, "")
+	})
+	t.Run("aliases with and without escapes", func(t *testing.T) {
+		// Requested by an escaped alias: rule 4.
+		tb := newTestBroker(t, (&fakeSys{}).show(showOut(demo, "Names", sdNames(demo, `demo@a\x2db.service`))))
+		wantCode(t, tb.ask(t, svc(opServiceRestart, `demo@a\x2db.service`)), codeUnitNotCanonical, "")
+		// An escaped canonical name with a plain alias, and a plain one with an
+		// escaped alias, both allowed.
+		for _, names := range [][]string{{inst, "demo-alias.service"}, {demo, `demo@a\x2db.service`}} {
+			tb = newTestBroker(t, (&fakeSys{}).show(showOut(names[0], "Names", sdNames(names...)), showOut(names[0], "MainPID", "1")))
+			wantCode(t, tb.ask(t, svc(opServiceRestart, names[0])), codeSuccess, "active")
+		}
+	})
+	t.Run("deny list", func(t *testing.T) {
+		for _, n := range []string{`getty@tty\x2d1.service`, `user@1\x2d0.service`, `systemd-x@a\x2dy.service`, `sshd@a\x2db.service`} {
+			tb := newTestBroker(t, (&fakeSys{}).show(showOut(n)))
+			wantCode(t, tb.ask(t, svc(opServiceRestart, n)), codeUnitDenied, "")
+			// As an escaped alias of an allowed-looking canonical name.
+			tb = newTestBroker(t, (&fakeSys{}).show(showOut(demo, "Names", sdNames(demo, n))))
+			wantCode(t, tb.ask(t, svc(opServiceRestart, demo)), codeUnitDenied, "")
+		}
+	})
+	t.Run("restart only", func(t *testing.T) {
+		for _, n := range []string{`wpa_supplicant@wl\x2d0.service`, `ppp@my\x2ddsl.service`} {
+			tb := newTestBroker(t, (&fakeSys{}).show(showOut(n)))
+			wantCode(t, tb.ask(t, svc(opServiceStop, n)), codeOperationNotOffered, "")
+			tb = newTestBroker(t, (&fakeSys{}).show(showOut(n), showOut(n, "MainPID", "1")))
+			wantCode(t, tb.ask(t, svc(opServiceRestart, n)), codeSuccess, "active")
+		}
+		tb := newTestBroker(t, (&fakeSys{}).show(showOut(inst, "Names", sdNames(inst, `wpa_supplicant@wl\x2d0.service`))))
+		wantCode(t, tb.ask(t, svc(opServiceStop, inst)), codeOperationNotOffered, "")
+	})
+	t.Run("malformed quoting is internal", func(t *testing.T) {
+		for _, v := range []string{`"` + `demo-disk@dev-disk-by\\x2dlabel-data.service`, `"demo-disk@dev-disk-by\x2dlabel-data.service"`,
+			`"demo-disk@dev-disk-by\\x2dlabel-data.service"x.service`, inst} {
+			tb := newTestBroker(t, (&fakeSys{}).show(showOut(inst, "Names", v)))
+			wantCode(t, tb.ask(t, svc(opServiceRestart, inst)), codeInternal, "")
+			wantCalls(t, tb, show(inst))
+		}
+	})
+}
+
 // BF12 with A1.2 and A3.7: restart only.
 func TestRule11RestartOnly(t *testing.T) {
 	for _, n := range []string{

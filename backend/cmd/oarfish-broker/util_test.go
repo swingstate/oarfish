@@ -35,7 +35,7 @@ var fixtureOrder = []string{
 func showOut(name string, kv ...string) string {
 	v := map[string]string{
 		"Type": "exec", "Result": "success", "MainPID": "4242", "ExecMainStartTimestampMonotonic": "1000000",
-		"Id": name, "Names": name, "LoadState": "loaded", "ActiveState": "active", "SubState": "running",
+		"Id": name, "Names": sdQuote(name), "LoadState": "loaded", "ActiveState": "active", "SubState": "running",
 		"UnitFileState": "enabled", "RefuseManualStart": "no", "RefuseManualStop": "no", "Transient": "no",
 	}
 	for i := 0; i+1 < len(kv); i += 2 {
@@ -53,6 +53,36 @@ func showOut(name string, kv ...string) string {
 
 // notFoundOut is what show answers, with exit code 0, for a name systemd does
 // not know (A2 S7).
+// sdQuote is shell_maybe_quote(s, 0) of systemd 257 for printable ASCII, the
+// way systemctl show prints each entry of Names (ADR 0011 A8), written from
+// the systemd source and independent of splitNames: unchanged unless s holds
+// white space or one of "\`$*?['()<>|&;!, else in double quotes with a
+// backslash before each of "\`$.
+func sdQuote(s string) string {
+	if !strings.ContainsAny(s, " \t\n\r\"\\`$*?['()<>|&;!") {
+		return s
+	}
+	var b strings.Builder
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		if strings.IndexByte("\"\\`$", s[i]) >= 0 {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(s[i])
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// sdNames is the value of Names for these entries, as systemctl show prints it.
+func sdNames(names ...string) string {
+	q := make([]string, len(names))
+	for i, n := range names {
+		q[i] = sdQuote(n)
+	}
+	return strings.Join(q, " ")
+}
+
 func notFoundOut(name string) string {
 	return showOut(name, "Type", "simple", "MainPID", "0", "ExecMainStartTimestampMonotonic", "0",
 		"LoadState", "not-found", "ActiveState", "inactive", "SubState", "dead", "UnitFileState", "")

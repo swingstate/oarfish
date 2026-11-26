@@ -218,6 +218,11 @@ func TestServicesActionSubmit(t *testing.T) {
 	if got.Unit != "getty@tty1.service" || got.Action != "restart" || got.User != testUser || got.CorrelationID != rec.Header().Get("X-Correlation-ID") || len(got.CorrelationID) != 16 {
 		t.Errorf("%+v", got)
 	}
+	// A name with a \xHH escape reaches the job byte for byte (ADR 0011 A8).
+	expect(t, f.do(req{method: http.MethodPost, path: actionPath, session: &s, body: `{"unit":"demo-disk@dev-disk-by\\x2dlabel-data.service","action":"restart"}`}), http.StatusAccepted, "")
+	if got := fake.submitted[1].Unit; got != `demo-disk@dev-disk-by\x2dlabel-data.service` {
+		t.Errorf("unit %q", got)
+	}
 	fake.submit = services.SubmitBusy
 	expect(t, f.do(req{method: http.MethodPost, path: actionPath, session: &s, body: `{"unit":"demo-app.service","action":"stop"}`}), http.StatusConflict, "busy")
 	fake.submit = services.SubmitUnavailable

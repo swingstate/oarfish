@@ -78,6 +78,11 @@ describe('requests', () => {
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ unit: 'demo-app.service', action: 'restart' });
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    // A name with a \xHH escape is sent exactly as the list gave it (ADR 0011 A8).
+    const escaped = String.raw`demo-disk@dev-disk-by\x2dlabel-data.service`;
+    expect(await submitAction(escaped, 'restart', f)).toEqual({ ok: true });
+    const [, init2] = (f as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[1]!;
+    expect(JSON.parse(init2.body as string)).toEqual({ unit: escaped, action: 'restart' });
     expect(await submitAction('a.service', 'stop', fetchOf(reply(200, { schema_version: 1, accepted: true })))).toEqual({ ok: false, kind: 'shape' });
     expect(await submitAction('a.service', 'stop', fetchOf(reply(409, { error: { code: 'busy' } })))).toEqual({ ok: false, kind: 'error', code: 'busy', retryAfter: null });
     expect(await submitAction('a.service', 'stop', fetchOf(new TypeError('x')))).toEqual({ ok: false, kind: 'network' });

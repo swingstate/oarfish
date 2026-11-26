@@ -235,9 +235,9 @@ func unitFacts(m rawShow) (unitInfo, error) {
 	if !validUnitName(u.ID) || !activeStates[u.ActiveState] || !serviceTypes[u.Type] {
 		return unitInfo{}, errShowShape
 	}
-	names := strings.Fields(m["Names"])
-	if len(names) == 0 || len(names) > maxNames || strings.Join(names, " ") != m["Names"] {
-		return unitInfo{}, errShowShape
+	names, err := splitNames(m["Names"])
+	if err != nil {
+		return unitInfo{}, err
 	}
 	for _, n := range names {
 		if !validUnitName(n) {
@@ -250,7 +250,6 @@ func unitFacts(m rawShow) (unitInfo, error) {
 			return unitInfo{}, errShowShape
 		}
 	}
-	var err error
 	if u.Transient, err = yesNo(m["Transient"]); err != nil {
 		return unitInfo{}, err
 	}
@@ -267,6 +266,104 @@ func unitFacts(m rawShow) (unitInfo, error) {
 		return unitInfo{}, err
 	}
 	return u, nil
+}
+
+// ---- the quoting of Names (ADR 0011 A8) -------------------------------------
+
+// systemctl show prints a string-array property such as Names as its entries
+// separated by one space, each passed through shell_maybe_quote(s, 0)
+// (systemd 257, src/shared/bus-print-properties.c and src/basic/escape.c). A
+// string-valued property such as Id is printed as it is. shell_maybe_quote
+// leaves an entry alone unless it holds a control character, invalid UTF-8,
+// white space or a character of SHELL_NEED_QUOTES; then it encloses the
+// entry in double quotes and puts a backslash before each character of
+// SHELL_NEED_ESCAPE. A backslash of a `\xHH` unit name escape is such a
+// character, so `a@x\x2dy.service` is printed as `"a@x\\x2dy.service"`.
+// Control characters, which it would write as C escapes, cannot reach here:
+// parseShow allows printable ASCII only.
+const (
+	shellNeedEscape = "\"\\`$"                                          // SHELL_NEED_ESCAPE (src/basic/escape.h)
+	shellNeedQuotes = " \t\n\r" + shellNeedEscape + "*?[" + "'()<>|&;!" // WHITESPACE, SHELL_NEED_QUOTES (escape.h, string-util.h)
+)
+
+// splitNames is the inverse of that rule for the value of Names: 1 to
+// maxNames entries separated by single spaces, each either a plain word with
+// no character of shellNeedQuotes, or a quoted word that systemd would have
+// quoted (it holds a character of shellNeedQuotes) whose only escapes are a
+// backslash before a character of shellNeedEscape, and in which no other
+// character of shellNeedEscape stands alone. Anything else (an empty entry,
+// an unterminated quote, a bad escape, a quoted word joined to the next one)
+// is errShowShape. The entries come back unquoted; rule 1 is the caller's.
+func splitNames(v string) ([]string, error) {
+	var names []string
+	for i := 0; ; i++ {
+		if len(names) == maxNames {
+			return nil, errShowShape
+		}
+		var w string
+		var err error
+		if i < len(v) && v[i] == '"' {
+			w, i, err = quotedName(v, i+1)
+		} else {
+			w, i, err = plainName(v, i)
+		}
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, w)
+		if i == len(v) {
+			return names, nil
+		}
+		if v[i] != ' ' {
+			return nil, errShowShape
+		}
+	}
+}
+
+// plainName reads an unquoted entry from v[i:] up to the next space.
+func plainName(v string, i int) (string, int, error) {
+	j := i
+	for ; j < len(v) && v[j] != ' '; j++ {
+		if strings.IndexByte(shellNeedQuotes, v[j]) >= 0 {
+			return "", 0, errShowShape
+		}
+	}
+	if j == i {
+		return "", 0, errShowShape
+	}
+	return v[i:j], j, nil
+}
+
+// quotedName reads a quoted entry whose opening quote is v[i-1], and returns
+// it unquoted with the index after its closing quote.
+func quotedName(v string, i int) (string, int, error) {
+	var b strings.Builder
+	needed := false
+	for i < len(v) {
+		c := v[i]
+		switch {
+		case c == '"':
+			if !needed {
+				return "", 0, errShowShape
+			}
+			return b.String(), i + 1, nil
+		case c == '\\':
+			if i+1 == len(v) || strings.IndexByte(shellNeedEscape, v[i+1]) < 0 {
+				return "", 0, errShowShape
+			}
+			b.WriteByte(v[i+1])
+			needed = true
+			i += 2
+			continue
+		case strings.IndexByte(shellNeedEscape, c) >= 0:
+			return "", 0, errShowShape
+		case strings.IndexByte(shellNeedQuotes, c) >= 0:
+			needed = true
+		}
+		b.WriteByte(c)
+		i++
+	}
+	return "", 0, errShowShape
 }
 
 func yesNo(s string) (bool, error) {
