@@ -231,6 +231,11 @@ jobs:
       # Throwaway keys generated inside the test. The release key is not involved.
       - name: Sign, verify and reject tampered input
         run: scripts/test-signing.sh
+      # The release history checks (D-C92, the two-step rule) against fixtures:
+      # throwaway repositories and manifests, nothing downloaded. The real
+      # check runs in release.yml before signing.
+      - name: Release history checks against fixtures
+        run: scripts/test-release-history.sh
       # G6.4: the shared verification package (backend/internal/relverify) must
       # accept what the release tooling produces. This builds bundlegen, makes a
       # legacy and a components release, signs each with a throwaway key and
