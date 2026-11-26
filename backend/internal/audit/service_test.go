@@ -23,20 +23,22 @@ func sorted(s ...string) []string {
 
 // The closed sets, written out in full: adding or removing a value without
 // changing this test (and ADR 0009) fails here. A7 adds the three service
-// actions and the service results; the power part of A7 (system_reboot,
-// system_poweroff, update_running, already_requested, the target system) is
-// G7.5 and must not be here yet.
-func TestClosedSetsAfterA7ServicePart(t *testing.T) {
+// actions and the service results (G7.4) and, on purpose in G7.5, the two
+// power actions, the target system and the results update_running and
+// already_requested. Nothing else is new.
+func TestClosedSetsAfterA7(t *testing.T) {
 	wantActions := sorted("setup_completed", "login_succeeded", "login_failed", "logout", "password_changed",
 		"password_change_failed", "request_rejected", "update_started", "update_finished",
-		"service_start", "service_stop", "service_restart")
+		"service_start", "service_stop", "service_restart",
+		// A7, power part
+		"system_reboot", "system_poweroff")
 	if got := keys(actions); !slices.Equal(got, wantActions) {
 		t.Errorf("actions %v\nwant %v", got, wantActions)
 	}
 	if got := keys(aggregated); !slices.Equal(got, sorted("login_failed", "request_rejected")) {
 		t.Errorf("aggregated %v", got)
 	}
-	wantTargets := sorted("-", "setup", "session", "account/password", "device", "metrics", "events")
+	wantTargets := sorted("-", "setup", "session", "account/password", "device", "metrics", "events", "system")
 	if got := keys(targets); !slices.Equal(got, wantTargets) {
 		t.Errorf("targets %v\nwant %v", got, wantTargets)
 	}
@@ -50,22 +52,15 @@ func TestClosedSetsAfterA7ServicePart(t *testing.T) {
 		// A7, service part
 		"unit_invalid", "unit_unknown", "unit_not_canonical", "unit_denied", "unit_masked", "unit_transient",
 		"unit_oneshot", "unit_template", "refused_by_unit", "operation_not_offered", "already_in_state",
-		"job_failed", "timeout", "state_unexpected")
+		"job_failed", "timeout", "state_unexpected",
+		// A7, power part
+		"update_running", "already_requested")
 	if got := keys(results); !slices.Equal(got, wantResults) {
 		t.Errorf("results %v\nwant %v", got, wantResults)
 	}
-	for _, power := range []string{"system_reboot", "system_poweroff"} {
-		if actions[Action(power)] {
-			t.Errorf("%s is G7.5", power)
-		}
-	}
-	for _, power := range []string{"update_running", "already_requested"} {
-		if results[Result(power)] {
-			t.Errorf("%s is G7.5", power)
-		}
-	}
-	if targets["system"] {
-		t.Error("the target system is G7.5")
+	// accepted is recorded as success; it is not a result of its own.
+	if results["accepted"] {
+		t.Error("accepted is a result")
 	}
 }
 
