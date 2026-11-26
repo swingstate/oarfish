@@ -169,7 +169,7 @@ Since step G6.3b of ADR 0010 the release bundle carries the update helper by def
 - **A changed text of `oarfish-broker.socket` is applied by an installer run, not by a GUI update.** The installer stops the broker service and restarts the socket, as it does for the helper socket. The update helper replaces the file and restarts no broker unit, so after a GUI update the new text takes effect at the next restart of the socket or at boot (ADR 0010 A20.5, A21).
 - A release that differs only in the broker binary or in `oarfish-broker.service` moves `active` and restarts neither socket; the next start of the broker uses the new files.
 
-All of this is tested against the fake root and in the arm64 containers (class C). It is **not verified on a device**: no installer run with the broker and no real systemd behaviour of the broker socket under the installer has been observed.
+All of this is tested against the fake root and in the arm64 containers (class C). It is **not verified on a device**: no installer run with the broker and no real systemd behaviour of the broker socket under the installer has been observed. (Pointer, G7.6c: the installer run of `v0.1.0-alpha.13` with the broker over a device of `v0.1.0-alpha.12` was observed on one device, class D, not Verified; see [Results on the reference device (G7.6c)](#results-on-the-reference-device-g76c).)
 
 For the components shape the installer, under the lock described below, creates:
 
@@ -442,6 +442,23 @@ The same rules as above apply: one device, one image, one moment. No host or use
 - A crash loop up to the start limit, and a helper that does not start.
 - Two installer runs at the same time (tested only against the fake root) and a helper that holds the lock (the helper core of G6.5 takes it for `stage` and `discard`; never run on a device).
 
+### Results on the reference device (G7.6c)
+
+Label for every row below: **device observation (G7.6c, 2026-11-26): one Raspberry Pi Zero 2 W, Debian 13 (trixie) aarch64, kernel 6.18.50, systemd 257, one image, one moment, class D** (the production release `v0.1.0-alpha.13`, signed with the production key, installed with its official `install.sh`). Not Verified; the support status stays Compatible. The device ran `v0.1.0-alpha.12` with the helper layout before. The broker's own evidence (the failure matrix) is in [ADR 0011 amendment A7](adr/0011-privilege-broker.md#amendment-a7-g76-release-and-device-evidence).
+
+| Item | Result (device observation, G7.6c, 2026-11-26) |
+|---|---|
+| Download and check of `install.sh` | Downloaded anonymously on the device. Its SHA-256 equals the value in the signed `checksums.txt` (`sha256sum -c`), and the three files are byte-identical to copies whose signature `minisign` verified on another computer (the device has no `minisign`). The stamp is `0.1.0-alpha.13`; the installer printed the key id `11F1C52777090BFC`. |
+| Dry run | Printed the plan, including the broker steps of the components shape; nothing was downloaded or changed. |
+| The installer run | Exit 0 after 12 s: signature OK, SHA-256 of the manifest and the bundle OK, components shape; `components/0.1.0-alpha.13` installed, `active` and `current` switched, the broker's three links and the wants link created, the helper socket and the broker socket (re)started, the service restarted, `/healthz` healthy, then `known-good` moved. systemd printed one warning while the helper service was stopped before its socket was restarted ("Stopping 'oarfish-update-helper.service', but its triggering units are still active"), as the order of ADR 0010 A9 makes it. |
+| The component set | `components/0.1.0-alpha.13` holds the seven files, `root:root`, the helper and the broker 0755, the units 0644, each SHA-256 equal to the `contents` of the published manifest. `active` and `known-good` name `0.1.0-alpha.13`; the sets of `0.1.0-alpha.11` and `0.1.0-alpha.12` were kept. |
+| Links | `/usr/libexec/oarfish-broker`, `/etc/systemd/system/oarfish-broker.socket` and `.service` point into `components/active`; `sockets.target.wants/oarfish-broker.socket` is the relative link `../oarfish-broker.socket`; the broker service has no wants link. The helper's links and `oarfish.service` as before. |
+| Units after the run | `oarfish.service` active (running), `/healthz` `0.1.0-alpha.13`; `oarfish-broker.socket` active (listening) and enabled through its link, the socket `/run/oarfish-broker/broker.sock` `root:oarfish` 0660; `oarfish-broker.service` inactive until the first request (socket activation); the helper socket active; 0 failed units. |
+| Account | The owner signed in with the existing account after the run and saw the version `0.1.0-alpha.13`. That the settings were kept was not reported separately. |
+| Two boots | After a reboot and after a power-off and power-on from the page Aktivität: the broker socket active, 0 failed units, 0 lines "ordering cycle" in the boot journal; boot time 41.000 s and 40.952 s (42.091 s before the run, with `v0.1.0-alpha.12`). |
+
+**Not exercised on the device (G7.6c):** an interrupted first run and the repair of ADR 0010 A21 and A22.4; `--uninstall` and `--purge` with the broker; a second run of the same release; the rollback after a failed health check; a first installation without a previous release; Ubuntu Server, another board or image.
+
 ## Uninstall
 
 ```bash
@@ -515,6 +532,8 @@ The installer stops with a message that starts with `oarfish-install: error:`.
 **Measured on hardware, G5.1 closeout (one device; the evidence the owner reviewed before Gate G5.1 passed on 2026-11-02):** Access control and audit (`v0.1.0-alpha.6`): in-place upgrade from `v0.1.0-alpha.5` with the stamped installer into setup mode; the state directory 0700 after the update; setup, login, logout, the rate limit, a password change, restart behaviour and lost-password recovery; the session cookie in Safari, Chrome and Firefox over `http://127.0.0.1`; the Argon2id cost; memory readings including one after 24 h 41 min; idle CPU; no test password or token in the journal or the audit file; the audit write load over 24 h 41 min. Details in [Access control and audit](#access-control-and-audit-v010-alpha6) and [`AUTH.md`](AUTH.md#results-on-the-reference-device-v010-alpha6).
 
 **Observed on hardware, G6.3 owner stop (one device, a test release with a throwaway key, never published; not Verified):** the components install over a `v0.1.0-alpha.6` device with the layout as designed, socket activation with the idle exit and the refusal of other users, the `systemd-analyze security` rating of the helper units, the relative wants links after the old release directory was removed and a reboot, the boot order of the recover unit, an installer re-run that changed nothing, the `SIGKILL` recovery path, and uninstall without `--purge`. Details and the list of what was not exercised in [Results on the reference device (G6.3)](#results-on-the-reference-device-g63).
+
+**Observed on hardware, G7.6c (one device, the production release `v0.1.0-alpha.13`, class D; not Verified):** the installer run with the broker over a device of `v0.1.0-alpha.12`, the component set and the broker's links and wants link, socket activation of the broker, the sign-in with the existing account, and two boots with the broker socket. Details and the list of what was not exercised in [Results on the reference device (G7.6c)](#results-on-the-reference-device-g76c).
 
 **Not verified:**
 
