@@ -198,7 +198,7 @@ The first broker release is made by its own step, G7.6b, with the procedure abov
 5. **No exception line.** `release/release-exceptions.txt` holds no active line, unless the owner approved an exception for this tag in chat and merged the pull request with that line before the tag is pushed (D-C96). A line is not added by this step.
 6. Procedure item 5: the tag is created on the full commit ID of the commit on `origin/main` and pushed, with the confirmed tag name.
 7. Procedure item 6: `gh run watch`. **Both release checks pass in the real run**; their log lines are the first ever from a real tag. If a job fails, the step stops and reports (AGENT_RULES 10.10); it does not retry with changes and changes no workflow file.
-8. **The broker files are in the bundle and the set is new.** The published `manifest.json` lists the twelve entries, including `oarfish-broker`, `oarfish-broker.service` and `oarfish-broker.socket`, with `components.key_id` equal to the key id of `release/oarfish-release.pub`; the log line of the component-set check prints a set hash that differs from the set hash of every earlier release.
+8. **The broker files are in the bundle and the set is new.** The bundle has the twelve tarball entries (the root directory and eleven files), and the `contents` of the published `manifest.json` list the eleven files, including `oarfish-broker`, `oarfish-broker.service` and `oarfish-broker.socket`, with `components.key_id` equal to the key id of `release/oarfish-release.pub`; the log line of the component-set check prints a set hash that differs from the set hash of every earlier release.
 9. Append the notes with `gh release edit`: the section [Release notes for the first broker release](#release-notes-for-the-first-broker-release) with `<TAG>` replaced, and the further texts that procedure item 3 or 4 requires.
 10. Procedure item 7: verify the published assets, anonymously ([Verify a release anonymously](#verify-a-release-anonymously)); `scripts/verify-release.sh` prints `VERIFIED`.
 11. Report, with the evidence class: the release is class C and anonymous verification only. Nothing of the broker is Verified, and the device evidence is the step G7.6c.
@@ -209,7 +209,7 @@ These texts go into the release notes with `gh release edit` after the release w
 
 **What a device of `v0.1.0-alpha.12` shows for this release.** Read from the code of the tag `v0.1.0-alpha.12`; not run on a device with this release, which does not exist yet.
 
-- The service verifies the three small files of the newest release when the update page checks (`doCheck`, `advisory`, `verifyMetadata` in `backend/internal/updater/check.go`) with `relverify.VerifyMetadata`. Its layout allows nine entries for the components shape (`layout` in `backend/internal/relverify/layout.go`); the manifest of this release lists twelve, so `buildContents` in `manifest.go` answers `manifest_invalid`.
+- The service verifies the three small files of the newest release when the update page checks (`doCheck`, `advisory`, `verifyMetadata` in `backend/internal/updater/check.go`) with `relverify.VerifyMetadata`. Its layout allows eight files in `contents` for the components shape (`layout` in `backend/internal/relverify/layout.go`; nine tarball entries with the root directory); the `contents` of this release list eleven files (twelve tarball entries), so `buildContents` in `manifest.go` answers `manifest_invalid`.
 - The card "Verfügbare Version" (`Update.svelte`) shows the version and "Vorabversion", the download size `0 B` (it is not filled), the signature as "Nicht bestätigt", and a critical notice with two sentences: "Die Beschreibung des Releases (Manifest) ist ungültig. Diese Version wird nicht installiert." (`updErr.manifest_invalid`) and "Diese Version wird nicht angeboten." (`updSignatureFailedNote`). It shows the release notes below, labelled "Von GitHub, nicht signiert". The English page reads "The release description (manifest) is not valid. This version is not installed." and "This version is not offered."
 - There is no button to apply it: `canApply` needs `verified`. `stage` never runs, so the installer view ("Installer nötig", `InstallerView`) is never built; it exists only for a refusal of `stage` (`installerCase`). **The page shows no hint about the installer.** The release notes on that card are the only text of this release that such a device shows, so the first lines of the notes carry the hint. This is the only channel the code of that release offers for the question that this document and `UPDATE.md` left to step G7.6 (how a device of `v0.1.0-alpha.12` learns that the first broker release needs the installer); whether another way is wanted is for the owner.
 - The code of releases before `v0.1.0-alpha.12` was not read for this. Whatever those devices show, every device needs the installer.
@@ -237,6 +237,30 @@ These texts go into the release notes with `gh release edit` after the release w
 > Bekannte Grenze: Wird der erste Lauf des Installers unterbrochen (zum Beispiel durch einen Stromausfall), führen Sie den Installer erneut aus. Meldet die Update-Seite danach im seltenen Fall einen beschädigten bekannten guten Stand des Update Helpers, entfernen Sie `/var/lib/oarfish-update/state.json` mit `sudo rm`, solange kein Update läuft, und führen Sie den Installer erneut aus.
 >
 > Nicht verifiziert: Zum Zeitpunkt dieses Releases ist nichts vom Broker auf einem Gerät verifiziert. Nachweise vom Gerät folgen im nächsten Schritt (G7.6c). Das Referenzgerät bleibt „Compatible“.
+
+## Release notes for G7-FIX1
+
+These texts go into the release notes with `gh release edit` after the release workflow (AGENT_RULES 10.8), for the release that carries the fix of [ADR 0011 amendment A8](adr/0011-privilege-broker.md#amendment-a8-g7-fix1-quoted-names-in-show). Replace `<TAG>` with the tag of the release, which is known only after the owner confirmed it. Keep the meaning. Against `v0.1.0-alpha.13`, only the broker's executable `oarfish-broker` differs among the eight compared files (procedure item 3); no unit changes, so the two-step rule (item 4) does not apply. Add the paragraph that item 3 asks for (the files that differ) when the release is published.
+
+**English**
+
+> This release (`<TAG>`) replaces the privilege broker (`oarfish-broker`). On a device with `v0.1.0-alpha.13`, apply it from the update page: the page asks for a second confirmation that names the privilege broker, and for your password again. No installer run is needed there. If the update fails, the previous version is restored. The broker is started for each action and exits when idle, so the new one is used from its next start.
+>
+> A device older than `v0.1.0-alpha.13` still needs one run of the installer, as described for `v0.1.0-alpha.13`: download `install.sh` from this release page, read it, and run it on the device with `sudo sh install.sh`. Your settings and your account are kept. The update page of such a device lists this release as "Nicht bestätigt" and does not offer it; that is expected and does not mean that the device is damaged.
+>
+> What changes: services whose name holds an escape sequence such as `\x2d` (systemd writes some characters of a name this way, for example a `-` in the instance part of a name that holds a device path) are now judged by the broker by the same rules as every other service on the page "Aktivität". Before, the broker refused every action on them with an internal error. The rules themselves are unchanged: a service that they refuse, such as every service whose name begins with `systemd-`, stays refused.
+>
+> Not verified: at the time of this release, the fix and the replacement of the broker from the update page are checked by tests only, not on a device. The reference device stays "Compatible".
+
+**German**
+
+> Dieses Release (`<TAG>`) ersetzt den Privilege Broker (`oarfish-broker`). Auf einem Gerät mit `v0.1.0-alpha.13` installieren Sie es über die Update-Seite: Die Seite fragt nach einer zweiten Bestätigung, die den Privilege Broker nennt, und noch einmal nach Ihrem Passwort. Der Installer ist dort nicht nötig. Schlägt das Update fehl, wird die vorherige Version wiederhergestellt. Der Broker startet für jede Aktion und beendet sich, wenn er nichts zu tun hat. Der neue Broker gilt deshalb ab seinem nächsten Start.
+>
+> Ein Gerät mit einer älteren Version als `v0.1.0-alpha.13` braucht weiterhin einmal den Installer, wie für `v0.1.0-alpha.13` beschrieben: Laden Sie `install.sh` von dieser Release-Seite, lesen Sie es und führen Sie es auf dem Gerät mit `sudo sh install.sh` aus. Ihre Einstellungen und Ihr Konto bleiben erhalten. Die Update-Seite eines solchen Geräts zeigt dieses Release als „Nicht bestätigt“ und bietet es nicht an. Das ist zu erwarten und bedeutet nicht, dass das Gerät beschädigt ist.
+>
+> Was sich ändert: Dienste, deren Name eine Escape-Folge wie `\x2d` enthält (systemd schreibt manche Zeichen eines Namens so, zum Beispiel ein `-` im Instanzteil eines Namens, der einen Gerätepfad enthält), prüft der Broker jetzt nach denselben Regeln wie jeden anderen Dienst auf der Seite „Aktivität“. Bisher lehnte der Broker jede Aktion für sie mit einem internen Fehler ab. Die Regeln selbst ändern sich nicht: Ein Dienst, den sie ablehnen, zum Beispiel jeder Dienst, dessen Name mit `systemd-` beginnt, bleibt abgelehnt.
+>
+> Nicht verifiziert: Zum Zeitpunkt dieses Releases sind die Korrektur und der Austausch des Brokers über die Update-Seite nur durch Tests geprüft, nicht auf einem Gerät. Das Referenzgerät bleibt „Compatible“.
 
 ## Release notes for G6.10
 
