@@ -81,7 +81,7 @@ Settings → means the repository's Settings tab: `https://github.com/swingstate
   - Target tags: Add target → Include by pattern → `v*`.
   - Rules: check "Restrict deletions" and "Block updates" (the tag rule that stops moving a tag; it appears as "Restrict updates" in some UI versions). Do **not** check "Restrict creations": the maintainer must still be able to push a release tag.
   - Bypass list: empty.
-- **Consequence:** a published tag such as `v0.1.0-alpha.1` cannot be deleted or moved. `docs/RELEASING.md` says to delete a failed release's tag and tag again; that now requires temporarily disabling this ruleset, which is the intended friction. A published version is never reused.
+- **Consequence:** a published tag such as `v0.1.0-alpha.1` cannot be deleted or moved. Deleting or moving a tag would need the ruleset to be disabled by the owner, which is the intended friction. No tag and no release is deleted or reused without the owner's decision (AGENT_RULES 10.9); `docs/RELEASING.md` says what to do when a release job fails.
 - **Verify:**
   ```bash
   gh api repos/swingstate/oarfish/rulesets --jq '.[] | select(.target=="tag") | {name, enforcement}'
