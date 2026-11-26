@@ -1106,7 +1106,7 @@ The table has 38 rows: 32 baseline and 6 extras.
 ### Open points of A15
 
 1. **Password at the second confirmation (C4, D7): open owner question.** The present behaviour stays until the owner decides.
-2. **A release tooling check for the two-step rule: not decided.** Nothing in `scripts/` or in CI compares the helper units of a release with the accepted forms of the helper of the release before it. `TestInstallUnitsPassTheLint` only proves that the units and the tables of the same commit agree. `docs/RELEASING.md` has a checklist item; whether a tool should enforce it is an owner decision.
+2. **A release tooling check for the two-step rule: not decided.** Nothing in `scripts/` or in CI compares the helper units of a release with the accepted forms of the helper of the release before it. `TestInstallUnitsPassTheLint` only proves that the units and the tables of the same commit agree. `docs/RELEASING.md` has a checklist item; whether a tool should enforce it is an owner decision. (Pointer, R-check, 2026-11-26: the tooling check is built as class C, `scripts/check-unit-forms.sh` in the release workflow before signing, which runs the lint of the preceding release's helper source over the units of the release; recorded with D-C92, described in [`RELEASING.md`](../RELEASING.md#release-checks-d-c92-and-the-two-step-rule); its choices are for the owner's review.)
 3. **The wording of the U13 row F14 against the U6 sentence about the hash recorded "before a transaction starts": pending owner check.** Neither text is edited by A15.
 4. **The assumption of D1** (the helper can read its own executable image under its sandbox) is to be observed on the device before the first release that carries the code of step b (observed, see A18).
 5. **Statement 1 of A15.2** contains a proposal about `installer_required` after step b; it is confirmed or changed at the review of step b.
@@ -1681,7 +1681,7 @@ A21.5 item 2 does not cover this case: **no reboot, and `state.json` unreadable.
 
 ### A22.5 Open
 
-Finding 1.2 of the review: a component set is selected by its digest only, so a newer release may bring a component set that is older than the active one. Whether a release may do that is a question for the owner (D-C91 item 8). A22 does not change it.
+Finding 1.2 of the review: a component set is selected by its digest only, so a newer release may bring a component set that is older than the active one. Whether a release may do that is a question for the owner (D-C91 item 8). A22 does not change it. (Pointer, R-check: the owner decided D-C92, no release brings an older component set; the release check of path A is built as class C, [`RELEASING.md`](../RELEASING.md#release-checks-d-c92-and-the-two-step-rule); the helper is unchanged, path B is not built.)
 
 ### A22.6 Not verified, and assumptions
 
