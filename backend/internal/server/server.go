@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -146,6 +147,14 @@ func readyHandler(cfg config, assets fs.FS) http.HandlerFunc {
 
 // staticHandler serves the embedded frontend. A build without frontend assets
 // answers 503 rather than a misleading 404.
+//
+// Caching (task N0, ADR 0011 A8.8): the embedded files have no modification
+// time, so the file server sends no validator and no Cache-Control, and a
+// browser may keep showing the page of the previous version after an update.
+// index.html and every other file without a content hash in its name are
+// therefore sent with "no-cache" (the browser must ask again before it uses a
+// copy). A file that Vite names by its content hash cannot change under its
+// name and may be kept; an answer for a name that does not exist is not.
 func staticHandler(assets fs.FS) http.Handler {
 	files := http.FileServerFS(assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -153,8 +162,30 @@ func staticHandler(assets fs.FS) http.Handler {
 			http.Error(w, "frontend assets are not embedded in this build", http.StatusServiceUnavailable)
 			return
 		}
+		w.Header().Set("Cache-Control", cacheControlFor(assets, r.URL.Path))
 		files.ServeHTTP(w, r)
 	})
+}
+
+// hashedAsset is the name Vite gives a built file: assets/<name>-<hash>.<ext>,
+// the hash 8 or more characters of the URL-safe base64 alphabet.
+var hashedAsset = regexp.MustCompile(`^assets/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.[a-z0-9]{1,8}$`)
+
+// Cache-Control values of the frontend.
+const (
+	cacheRevalidate = "no-cache"
+	cacheImmutable  = "public, max-age=31536000, immutable"
+)
+
+func cacheControlFor(assets fs.FS, urlPath string) string {
+	name := strings.TrimPrefix(urlPath, "/")
+	if !hashedAsset.MatchString(name) || strings.Contains(name, "..") {
+		return cacheRevalidate
+	}
+	if info, err := fs.Stat(assets, name); err != nil || info.IsDir() {
+		return cacheRevalidate
+	}
+	return cacheImmutable
 }
 
 func securityHeaders(next http.Handler) http.Handler {
