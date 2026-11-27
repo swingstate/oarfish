@@ -1,6 +1,6 @@
 # Oarfish delivery roadmap
 
-The status of every gate and task, and the order of the work from now (D-C101 item 5). A row says what holds now in at most three sentences (D-C102); the history is in the ADRs, [`UPDATE.md`](UPDATE.md) and [`DECISIONS.md`](DECISIONS.md). One task at a time, nothing in parallel. Updating the status line of a gate or task is part of its definition of done; the rules for the implementation agent are in [`AGENT_RULES.md`](AGENT_RULES.md) (D-C79), and each gate gets its own prompt. A later gate is not implemented early unless the specification is changed first.
+The status of every gate and task, and the order of the work from now (D-C101 item 5, with D-C103 item 4 and D-C104 item 1). A row says what holds now in at most three sentences (D-C102); the history is in the ADRs, [`UPDATE.md`](UPDATE.md) and [`DECISIONS.md`](DECISIONS.md). One task at a time, nothing in parallel. Updating the status line of a gate or task is part of its definition of done; the rules for the implementation agent are in [`AGENT_RULES.md`](AGENT_RULES.md) (D-C79), and each gate gets its own prompt. A later gate is not implemented early unless the specification is changed first.
 
 ## Done
 
@@ -20,14 +20,15 @@ The status of every gate and task, and the order of the work from now (D-C101 it
 | (task) HB | Helper bytes independent of the release version (D-C80, ADR 0010 A13; PR #38). |
 | (task) metrics test race | A racy test of the metrics sampler fixed, test file only (PR #40). |
 | (task) U1 | UI shell: navigation, language choice, tokens, colour baseline, logo mark (PR #34; [`UI.md`](UI.md)). |
-| (task) N0 | Default route and DNS on the network card, the installed memory on the Gerät page (ADR 0008 "N0 as implemented", PR #68). Released in `v0.1.0-alpha.15` and observed on the reference device (ADR 0008 N0.9). Open: the resolver-stub fallback, the SSID (with D-D10) and the reload after the next update. |
+| (task) N0 | Default route and DNS on the network card, the installed memory on the Gerät page (ADR 0008 "N0 as implemented", PR #68). Released in `v0.1.0-alpha.15` and observed on the reference device (ADR 0008 N0.9). Open: the SSID (with D-D10) and the reload after the next update; the resolver-stub fallback came with N1. |
 | (task) C1 | Documentation cleanup, D-C101 and D-C102, `debian:13` and the N0 fuzz targets in CI, the signing approval in `release.yml`, board profile 1.2.0 (limitation `evidence_one_device`). Merged (PR #70). |
-| (task) C2 | Specification 0.4.6 after D-C101, and the owner's choices as D-C103: OS and kernel updates through the GUI in the MVP, history and G12 behind it, the rule for Verified ([`VERIFIED.md`](VERIFIED.md)). Status: pull request open. |
-| (probe) UBU0 | Ubuntu Server 24.04 LTS on the reference board with `v0.1.0-alpha.14` and `v0.1.0-alpha.15`, class D, one device and one image ([`UBUNTU_PROBE.md`](UBUNTU_PROBE.md)). Install, units, detection, dashboard, GUI update and reboot work; the services list fails because `list-unit-files` takes 17 s there and blocks PID 1 (U1). Fix proposals U1 and U4 and inputs for DB1 and N1 are in the document; status: pull request open. |
+| (task) C2 | Specification 0.4.6 after D-C101, and the owner's choices as D-C103: OS and kernel updates through the GUI in the MVP, history and G12 behind it, the rule for Verified ([`VERIFIED.md`](VERIFIED.md)). Merged (PR #71). |
+| (probe) UBU0 | Ubuntu Server 24.04 LTS on the reference board with `v0.1.0-alpha.14` and `v0.1.0-alpha.15`, class D, one device and one image ([`UBUNTU_PROBE.md`](UBUNTU_PROBE.md)). Install, units, detection, dashboard, GUI update and reboot work; the services list fails because `list-unit-files` takes 17 s there and blocks PID 1 (U1). Fix proposals U1 and U4 and inputs for DB1 and N1 are in the document; merged (PR #72). |
+| (step) UF1, N1, ST1 | The fixes U1 (the unit-file states apart from the unit list, [ADR 0011 A9](adr/0011-privilege-broker.md#amendment-a9-uf1-the-read-path-and-the-ubuntu-wi-fi-unit)) and U4 (`netplan-wpa-` restart only), the page Netzwerk with the signal, prefixes and the servers behind a resolver stub (U3), and the read-only page Speicher ([ADR 0008](adr/0008-dashboard-metrics.md#amendment-n1-and-st1-as-implemented); D-C104). Class C in its pull request; the fixes are not rechecked on Ubuntu. Open: the SSID (with D-D10), the write-load hint of ORB-STO-004. |
 
 Nothing is Verified; the reference device (one Raspberry Pi Zero 2 W with Raspberry Pi OS Lite 64-bit) is Compatible.
 
-## Next, in this order (D-C101 item 5)
+## Next, in this order (D-C101 item 5, D-C103, D-C104)
 
 | Step | Scope and status |
 |---|---|
@@ -36,8 +37,6 @@ Nothing is Verified; the reference device (one Raspberry Pi Zero 2 W with Raspbe
 | (design stop) F1, (task) F2 | Files, read-only: the first fixed roots, block list, size limit and acceptance criteria with an ADR, then the implementation; root reading through typed operations after authentication (D-C101 item 5; D-C75). Not started. |
 | (design stop) H1 | The settings store only, which SET1 needs (D-C101 item 6; D-C73). Input from S1: the medium is an SD card, the idle write baseline is about 392 KB per hour. Not started. |
 | (task) SET1 | Settings page in the light procedure (one PR, short row, no ADR amendment unless root code changes): language (D-C77, ORB-GEN-006), the off switch of the update notice (D-C68), later the certificate fingerprint (ORB-SEC-011). Depends on H1. Not started. |
-| (task) N1 | Network page in the light procedure: signal strength from `/proc/net/wireless` and IP details (prefix, gateway, IPv6); the SSID needs netlink and comes with D-D10 (D-C72). Not started. |
-| (task) ST1 | Storage page in the light procedure, read-only: file systems, mounts, capacity, the detected boot medium (ORB-STO-001 to ORB-STO-004, D-C69 item 4). The backend already parses `mountinfo` and detects the boot medium. Not started. |
 | (task) ONB1 | First-start assistant in the light procedure (ORB-ONB-001: account, binding, device name, detected platform, optional plugins); the binding part follows D-D10, the plugin part follows G8. Not started. |
 | (probe) ENG0, (design) G8.0 | Container engine probe on the device, then the G8 design (plugin process model). Not started. |
 | G8 | Plugin runtime and permission model; the capability check at the privileged side (ORB-SEC-003). |

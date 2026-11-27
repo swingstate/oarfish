@@ -1,6 +1,6 @@
 # User interface foundation
 
-Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and the pages built on them, in a light and a dark theme: Dashboard and Gerät (UI foundation task, D-C42, D-C43; the first page was called Home until the shell of task U1, D-C71), since Gate G5.1 the access pages Einrichten (setup), Anmelden (login) and Konto (account), described in [`AUTH.md`](AUTH.md) and in [Access states](#access-states-gate-g51) below, since step G6.8 the page Update, described in [Update page](#update-page-step-g68) below, since step G7.4 the page Aktivität with the service list and start, stop and restart, described in [Activity page](#activity-page-step-g74) below, and since step G7.5 restart and shutdown of the device on the same page, described in [Restart and shutdown](#restart-and-shutdown-step-g75) below. The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). The Dashboard itself is described in [`DASHBOARD.md`](DASHBOARD.md#dashboard-page).
+Oarfish has one app shell, one set of design tokens, a small set of components, designed states, and the pages built on them, in a light and a dark theme: Dashboard and Gerät (UI foundation task, D-C42, D-C43; the first page was called Home until the shell of task U1, D-C71), since Gate G5.1 the access pages Einrichten (setup), Anmelden (login) and Konto (account), described in [`AUTH.md`](AUTH.md) and in [Access states](#access-states-gate-g51) below, since step G6.8 the page Update, described in [Update page](#update-page-step-g68) below, since step G7.4 the page Aktivität with the service list and start, stop and restart, described in [Activity page](#activity-page-step-g74) below, since step G7.5 restart and shutdown of the device on the same page, described in [Restart and shutdown](#restart-and-shutdown-step-g75) below, and since the step UF1 with N1 and ST1 the pages Netzwerk and Speicher, described in [Network page](#network-page-task-n1) and [Storage page](#storage-page-task-st1) below. The normative sources are specification 7 (GUI principles), ORB-GEN-003 (progressive disclosure), ORB-GEN-006 (texts from translation resources), ORB-NFR-006 (bundle size), ORB-NFR-011 (keyboard, WCAG 2.2 AA) and ORB-NFR-012 (browsers). The Dashboard itself is described in [`DASHBOARD.md`](DASHBOARD.md#dashboard-page).
 
 **Status: implemented and tested** with jsdom unit tests and with headless Chrome on one developer Mac (layout checks at five widths, reference screenshots). **Checked once on a Raspberry Pi Zero 2 W with `v0.1.0-alpha.5`** in Safari, Chrome and Firefox ([hardware result](INSTALL.md#ui-foundation-v010-alpha5)). The shell of task U1 (navigation groups, language choice, version line, tokens) was checked in Chrome on one Mac only. The Update page of step G6.8 was checked in Chrome on one Mac against the development scenario mode only; it has not run against a real update service or device. The second confirmation and the texts of G6.10 step c were checked in jsdom and, for layout only, in headless Chrome on one Mac against the scenario mode. The Activity page of step G7.4 and its restart and shutdown part of step G7.5 were checked in jsdom only (class C): not in any real browser, not against a real service, broker or device, and no real restart or shutdown was made. **Not verified:** a screen reader, keyboard use in Safari, forced-colours mode in a real browser, the lost-connection display on the device, the U1 shell on the device and in Safari and Firefox, the Update page against a device, and the Activity page in any real browser or against a device. See [Verification status](#verification-status) and [Known gaps](#known-gaps).
 
@@ -18,6 +18,8 @@ The tokens in this file are named and explicit on purpose. They are meant to be 
    - [Update page](#update-page-step-g68)
    - [Activity page](#activity-page-step-g74)
    - [Restart and shutdown](#restart-and-shutdown-step-g75)
+   - [Network page](#network-page-task-n1)
+   - [Storage page](#storage-page-task-st1)
 6. [State and label texts](#state-and-label-texts)
 7. [Text rules](#text-rules)
 8. [Accessibility](#accessibility)
@@ -49,6 +51,13 @@ frontend/src/
   pages/Activity.svelte    Aktivität: the service list, its filter, and start, stop and restart (G7.4)
   pages/ActivityPower.svelte the card "Neustart und Herunterfahren" and its confirmation dialog (G7.5)
   pages/PowerStatus.svelte the status view after an accepted restart or shutdown; asks /healthz only (G7.5)
+  pages/Network.svelte     Netzwerk: interfaces, addresses with prefix, Wi-Fi signal, routes and name servers (N1)
+  pages/Storage.svelte     Speicher: file systems, boot medium, marks, other mounts; read-only (ST1)
+  lib/live.svelte.ts       the live snapshot of a page other than the Dashboard (the Dashboard's data path, N1, ST1)
+  lib/network.ts           the signal word and texts, the addresses with prefix (N1)
+  lib/routing.ts           the texts of the default routes and the name servers (N0, N1)
+  lib/storage.ts           the marks, the low-capacity warning and the kinds of the page Speicher (ST1)
+  dev/metricsMock.ts       scenario mode of the network card, Gerät, Netzwerk and Speicher; never in a production build (N0, N1, ST1)
   lib/session.ts           the session client; the CSRF token lives in its module variable only
   lib/authErrors.ts        error codes of the access endpoints to sentences
   lib/update.ts            client of the update routes, with run-time shape checks of every answer (G6.8)
@@ -247,7 +256,7 @@ Icons: `home`, `device`, `chip`, `memory`, `thermometer`, `drive`, `network`, `w
 
 ### Shell, navigation and language (task U1)
 
-**Navigation (specification 7.2, D-C71).** The first entry is "Dashboard" (it was "Home"; the address `#/` did not change). Entries without a group come first, then the group "Workload" (Apps, Storage, Files), then "System" (Network, Activity, Update, Erweiterungen, Settings). An entry exists only when its function exists (specification 7.1). Today there are four entries: Dashboard (`#/`, `pages/Dashboard.svelte`) and Gerät (`#/device`, `pages/Device.svelte`) without a group, then in the group System Aktivität (`#/activity`, `pages/Activity.svelte`, step G7.4) and Update (`#/update`, `pages/Update.svelte`, step G6.8), in the order of specification 7.2 (Network, Activity, Update, …; Network does not exist yet). The group System appeared with Update in G6.8. The page name Aktivität / Activity is a proposal for the owner's review. The account page `#/account` is reached from the user menu and is not an entry. A page that comes later sets `group: 'workload'` or `group: 'system'` in `routes.ts`; the group name appears with its first entry.
+**Navigation (specification 7.2, D-C71).** The first entry is "Dashboard" (it was "Home"; the address `#/` did not change). Entries without a group come first, then the group "Workload" (Apps, Storage, Files), then "System" (Network, Activity, Update, Erweiterungen, Settings). An entry exists only when its function exists (specification 7.1). Today there are six entries: Dashboard (`#/`, `pages/Dashboard.svelte`) and Gerät (`#/device`, `pages/Device.svelte`) without a group, then in the group Workload Speicher (`#/storage`, `pages/Storage.svelte`, task ST1), then in the group System Netzwerk (`#/network`, `pages/Network.svelte`, task N1), Aktivität (`#/activity`, `pages/Activity.svelte`, step G7.4) and Update (`#/update`, `pages/Update.svelte`, step G6.8), in the order of specification 7.2. The group System appeared with Update in G6.8, the group Workload with Speicher. The page names Speicher / Storage and Netzwerk / Network follow specification 7.2; the German name of the entry "Storage" is a proposal for the owner's review. The page name Aktivität / Activity is a proposal for the owner's review. The account page `#/account` is reached from the user menu and is not an entry. A page that comes later sets `group: 'workload'` or `group: 'system'` in `routes.ts`; the group name appears with its first entry.
 
 **Language (ORB-GEN-006, D-C77).** German and English have the same keys; a test proves it. The start language follows the first language of `navigator.languages` that is German or English; anything else is English. The Deutsch and English buttons in the sidebar footer change the language at once, without a reload, and set `html lang`. The choice is kept in `localStorage` under the key `oarfish.lang`; only the code `de` or `en` is stored, and any other stored value is ignored. A store that cannot be read or written (private window, blocked site data) does not break the app: it starts from the browser language and does not remember. Components read `t`, `msg` and `fmt` from `lib/i18n.ts` where they show them, so a change reaches the whole page. Numbers keep the German format and units stay binary (MiB) in both languages. The language is not yet a setting: the settings page and a server-side store come later (H1).
 
@@ -370,9 +379,9 @@ Every fixture state also renders without a load error ("every state of the fixtu
 
 ### Activity page (step G7.4)
 
-`pages/Activity.svelte` on `#/activity`, the first entry of the group System (specification 7.2; ORB-SVC-001, ORB-SVC-002, ORB-SVC-003; ADR 0011 B2, B3, B4 and amendment A5). It reads `GET /api/v1/services` and `GET /api/v1/services/action` and sends `POST /api/v1/services/action` through `lib/services.ts`, with the CSRF token of `lib/session.ts` (`postJSON`). Rules:
+`pages/Activity.svelte` on `#/activity`, in the group System after Netzwerk (specification 7.2; ORB-SVC-001, ORB-SVC-002, ORB-SVC-003; ADR 0011 B2, B3, B4 and amendment A5). It reads `GET /api/v1/services` and `GET /api/v1/services/action` and sends `POST /api/v1/services/action` through `lib/services.ts`, with the CSRF token of `lib/session.ts` (`postJSON`). Rules:
 
-- **Reads.** The list is read on opening, on "Aktualisieren" and once after an action has ended; there is no automatic refresh and no timer while nothing runs. The service caches a read for 5 s device-wide. "Gelesen: …" shows the time of the reading the service answered with.
+- **Reads.** The list is read on opening, on "Aktualisieren" and once after an action has ended. The service caches the unit list for 5 s device-wide and keeps the start modes apart (ADR 0011 A9): "Gelesen: …" shows the time of the unit list, "Startmodi gelesen: …" the time of the start modes. While the start modes are pending (`start_modes` is `pending`), the page says "Die Startmodi werden noch gelesen. Die Liste ist vielleicht unvollständig: Dienste, die nicht geladen sind, fehlen noch." and reads the list again 3 s after each answer, at most 10 times in a row (any other read starts the count again; leaving the page stops it). When they could not be read (`unavailable`, or a word this version does not know), it says "Die Startmodi konnten nicht gelesen werden. …" and every start mode is "Unbekannt"; the list stays usable, and no button depends on the start mode. Otherwise there is no automatic refresh and no timer while nothing runs.
 - **The list.** A list of rows (`ul`), not a table, so it reflows at 320 CSS pixels. Each row: the name in `code`, the state as a `Badge` with a word, "Startmodus: …" in words, the description (or "Keine Beschreibung"), "Kritischer Dienst: <kind>" for a row of ADR 0011 B3 rule 11, and for a restricted row its note. At most 100 rows are rendered; "Mehr anzeigen" adds the next 100, and a new filter starts at 100 again. A count line says how many services there are and how many are active, failed and inactive; "<n> von <m> Diensten angezeigt." appears when a filter is set or rows are held back.
 - **Filter.** A labelled search field matches the name and the description (case ignored); a group of four radio inputs ("Zustand": Alle, Aktiv, Fehlgeschlagen, Inaktiv) matches the active state.
 - **Actions.** A row that is not denied has one native button "Aktionen" (its accessible name is "Aktionen für <name>"). It opens an inline panel below the row, not a modal: per offered action its effect sentence and its button (Start, Stop, Neustart), the note of the critical kind if any, and "Schließen". Only one panel is open at a time. The focus moves into the panel (the panel itself, `tabindex="-1"`, named by its `h3`) and back to the row's button when the panel closes; Escape and "Schließen" close it. A click on an action button is the one confirmation of D-C87 item 7; there is no password. The panel then closes, and while the action runs every action button is disabled.
@@ -399,6 +408,9 @@ Every fixture state also renders without a load error ("every state of the fixtu
 | Filtered, nothing matches | "Kein Dienst passt zum Filter." | "filters by name and description, and by state", "the empty filter state of the scenario list-filtered-empty" |
 | More than 100 rows | 100 rows, "Mehr anzeigen", "<n> von <m> Diensten angezeigt." | "renders at most 100 rows" |
 | Refresh | One read per click; none by itself; a failed refresh keeps the list and says so in the message area. | "\"Aktualisieren\" reads once", "a failed refresh keeps the list" |
+| Start modes known | "Startmodi gelesen: …"; no note; no re-read. | "activity start modes": "known …" |
+| Start modes pending | The note, every start mode "Unbekannt", the units that are not loaded missing, the count line counts what is shown; a re-read 3 s after each answer, at most 10 in a row. | "activity start modes": "pending …" (three tests) |
+| Start modes unavailable | The note, "Unbekannt", the list and its buttons usable; no re-read. | "activity start modes": "unavailable …", "a start-mode state this version does not know …" |
 | Panel | Effect texts, critical note, the buttons the row allows; focus in and back; Escape; one panel at a time. | "offers the buttons the row allows", "moves the focus into the panel and back" |
 | Action running | "<Aktion> für <name> läuft …"; reads every 2 s; every action button disabled. | "confirms with one click …", "follows an action that runs already" |
 | Action result | The sentence of the code (every code), success with the not-verified sentence; one new read of the list; polling stops. | "confirms with one click …", "says every result code as its own sentence" |
@@ -444,6 +456,59 @@ Every scenario of the development scenario mode renders in jsdom ("activity scen
 Every power scenario of the development scenario mode renders in jsdom without a request leaving the mock ("power scenario mode"; the scenarios are in [`DEVELOPMENT.md`](DEVELOPMENT.md#reboot-and-shutdown-scenarios-gate-g7-step-g75)).
 
 **Accessibility of restart and shutdown.** Native elements only: buttons, a native `dialog`, a labelled password input in a `form`; no `role="button"`, no `aria-modal` (the native modal dialog has it). One `h1` per view: the page's, or the status view's; the card's `h2`; the dialog's `h2` and its `h3` "Wartende Aktionen". Visible labels on every button; targets at least 24 by 24 CSS pixels. No meaning by colour alone; nothing animates. The error is an alert tied to the field; the status view has one polite live region and announces each change once. Checked in jsdom only; jsdom has no `showModal`, so the tests use a stand-in that sets the `open` attribute: the browser's focus trap and inert background are not tested.
+
+### Network page (task N1)
+
+`pages/Network.svelte` on `#/network`, the first entry of the group System (specification 7.2; ORB-NET-001, ORB-NET-002 in part; ADR 0008, amendment "N1 and ST1 as implemented"). It uses the Dashboard's data path through `lib/live.svelte.ts`: one `GET /api/v1/metrics` for the first paint, then the `metrics` events, which the service samples only while a page watches; the connection indicator and the stale marks work as on the Dashboard. Nothing on the page changes the device.
+
+- **Interfaces** (card "Schnittstellen", one list item per interface, an `h3` with its name): kind, link state (a `Badge` with a word, not colour alone), speed, the addresses with their prefix (`192.0.2.15/24`; the plain address when the service sent no prefix), receive and send rate, the totals.
+- **Wi-Fi signal** (only for an interface of kind `wifi`): "-52 dBm, Linkqualität 58" and a plain word in parentheses. **The word is a proposal** (thresholds not measured): "gut" from -60 dBm, "mittel" from -70 dBm, "schwach" below. Without a level in dBm there is no word; without a signal line "Nicht verfügbar". The link quality is the driver's number; no maximum is shown because the kernel file names none.
+- **Default routes and name servers** (card "Standardroute und DNS"): the rows of `lib/routing.ts`, as on the Dashboard. Servers behind a resolver stub on the device carry the note "genutzt über den Resolver auf dem Gerät".
+- **Not on the page:** the SSID (ADR 0008 S1.5; no row and no placeholder, specification 7.1), any hardware address (decision 9).
+- **Dashboard.** The network card stays and ends with the link "Details auf der Seite Netzwerk".
+
+| State | What the user sees | Test (`pages/Network.test.ts`) |
+|---|---|---|
+| Loading | "Die Netzwerkdaten werden gelesen …" as a status. | "loading, and a failed first read …" |
+| Load error | "Die Netzwerkdaten konnten nicht gelesen werden." as an alert with "Erneut versuchen", when the first read failed and the stream is down. | "loading, and a failed first read …" |
+| Wi-Fi | The interface with addresses with prefix and the signal with its word. | "shows an interface with kind, link, addresses with prefix, signal and counters, in German" |
+| Ethernet only | No signal row; speed; both families with prefix. | "Ethernet only …" |
+| Wi-Fi without signal, no address | "Nicht verfügbar"; "Keine Adresse". | "Wi-Fi without a signal line …" |
+| Older service | The plain addresses, the signal "Nicht verfügbar". | "an answer from a service before N1 …" |
+| Resolver stub | The servers behind it with the note. | "the servers behind a local resolver …" |
+| No interface | "Keine Netzwerkschnittstellen gefunden." | "no network interface: the empty state" |
+| Live | A new signal replaces the old one. | "follows the stream …" |
+| Privacy | No hardware address, no SSID. | "shows no hardware address and no SSID" |
+| English | The same page in English. | "shows the same in English" |
+
+**Accessibility of the page.** One `h1`, a card `h2` each, an `h3` per interface; native lists for the interfaces and the addresses; every state word is text; the address list wraps, so the page reflows at 390 CSS pixels (checked in jsdom only, not in a real browser).
+
+### Storage page (task ST1)
+
+`pages/Storage.svelte` on `#/storage`, the first entry of the group Workload, with which the group appears (specification 7.2; ORB-STO-001 to -003, the low-capacity part of -004, -005, -006; ADR 0008, amendment "N1 and ST1 as implemented"). The same live data path as the page Netzwerk; the boot medium comes from `GET /api/v1/device` (read once). **Read-only:** no button that changes a medium, no health value, no write-load hint.
+
+- **Boot- und Rootmedium** (card): the kind of the boot medium from the detection ("SD-/MMC-Karte", "NVMe", "USB-Datenträger", "Unbekannt") and the device of the root file system ("mmcblk0p2").
+- **Dateisysteme** (card, one list item per real file system, an `h3` with its mount point): a `Meter`, the marks, the warning, then device, file system, size, used (with percent) and free. The device is the kernel name the service sent, else "Unbekannt"; never a UUID, a label or the mount source.
+- **Marks** (text, never colour alone): the file systems on the disk of `/` say "Boot- und Rootmedium. Entfernen Sie es nicht, solange das Gerät läuft." and are never called removable; a removable or USB disk says "Wechselmedium. Entfernen Sie es nur, wenn das Gerät ausgeschaltet ist."
+- **Low-capacity warning:** the existing alert's sentence and impact as a notice, above 85 % (relevant, warning tone) and above 95 % (critical), for real file systems only; thresholds as in [`DASHBOARD.md`](DASHBOARD.md).
+- **Weitere Einhängepunkte** (card, only when there are any): memory, overlay and network mounts by their kind, with "Nicht dauerhaft: Der Inhalt geht beim Neustart verloren.", the overlay sentence or the share sentence; a share has no size ("Nicht verfügbar").
+- **Bound:** at most 8 real file systems and 8 other mounts (ADR 0008 ST1.2).
+
+| State | What the user sees | Test (`pages/Storage.test.ts`) |
+|---|---|---|
+| Loading, load error | "Die Speicherdaten werden gelesen …"; "Die Speicherdaten konnten nicht gelesen werden." with "Erneut versuchen". | "loading, and a failed first read …" |
+| Reference layout | Root and boot on the card, both marked as the boot medium; `/tmp` as memory. | "the reference layout …" |
+| Removable medium | A USB stick marked removable; the boot medium never, even with its flag set. | "a USB stick is marked removable; the boot medium never is" |
+| Unknown device | "Unbekannt", no mark. | "a file system with no known disk …" |
+| Other mounts | By kind; a share without size; an unknown kind neutral. | "other mounts are shown by kind …" |
+| Nearly full | The warning with the alert's thresholds. | "a nearly full file system shows the low-capacity warning …" |
+| Empty | "Keine Dateisysteme gefunden."; no card for other mounts. | "no file system: the empty state …" |
+| Older service | The file systems with "Unbekannt". | "an answer before ST1 …" |
+| Device summary unreadable | "Nicht verfügbar" for the boot medium. | "the device summary is unreadable …" |
+| Live, read-only | Follows the stream; no button. | "follows the stream", "offers no action …" |
+| English | The same page in English. | "the same in English" |
+
+**Accessibility of the page.** One `h1`, a card `h2` each, an `h3` per mount; native lists; the meter is a native `progress` with a label; marks and warnings are text; the page reflows at 390 CSS pixels (checked in jsdom only, not in a real browser).
 
 ## State and label texts
 
@@ -1108,7 +1173,7 @@ D-C43: the UI renders what the API sends.
 - No interface, port, hardware address or board name is in the UI code. `Dashboard.data.test.ts` scans every production `.svelte`, `.ts` and `.css` file outside the locale files.
 - Icons and labels follow the API field `kind` (`wifi`, `ethernet`, `other`). A kind this version does not know gets the neutral generic icon and the label "Sonstige".
 - A value the translations do not know (a link state, a sensor source) gets the neutral wording. The existing rule stays for texts chosen by a key (support explanation, limitation): an unknown key is shown as the key itself, so a gap is visible.
-- Lists render up to the API caps: 8 interfaces, 8 mounts, 16 sensors. Long names are cut with the full text in `title`.
+- Lists render up to the API caps: 8 interfaces, 8 mounts, 8 other mounts (page Speicher), 16 sensors. Long names are cut with the full text in `title`.
 - The mapping from API vocabulary to a look (support tier to tone, link state to tone) is keyed by the API's own enumerations in `lib/ui.ts`, never by a device.
 
 ## Add a page
@@ -1144,15 +1209,17 @@ Do not add an entry for a function that does not exist yet (specification 7.1, "
 
 Initial frontend, `gzip -9` per file (the budget in ORB-NFR-006 is 750,000 bytes):
 
-| | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task | After task U1 | After step G6.8 | After step G7.4 | After step G7.5 |
-|---|---|---|---|---|---|---|---|---|
-| `index.html` | 263 | 265 | 266 | 263 | 261 | 267 | 264 | 265 |
-| CSS | 1,806 | 4,522 | 5,003 | 5,013 | 5,144 | 5,405 | 5,702 | 5,917 |
-| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,632 | 56,273 | 66,045 | 70,941 |
-| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **50,037** | **61,945** | **72,011** | **77,123** |
+| | Before the UI foundation | After the UI foundation | After Gate G5.1 | After the known-gaps task | After task U1 | After step G6.8 | After step G7.4 | After step G7.5 | Before UF1, N1, ST1 | After UF1, N1, ST1 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `index.html` | 263 | 265 | 266 | 263 | 261 | 267 | 264 | 265 | 263 | 267 |
+| CSS | 1,806 | 4,522 | 5,003 | 5,013 | 5,144 | 5,405 | 5,702 | 5,917 | 5,928 | 6,056 |
+| JavaScript | 27,122 | 36,258 | 43,195 | 43,283 | 44,632 | 56,273 | 66,045 | 70,941 | 72,806 | 77,155 |
+| **Total** | **29,191** | **41,045** | **48,464** | **48,559** | **50,037** | **61,945** | **72,011** | **77,123** | **78,997** | **83,478** |
 
 The G5.1 column is the output of `scripts/check-budgets.sh` (`gzip -9 -n` per file) on a developer Mac; `main` before the change, rebuilt the same way, gave 41,108 (the alert tuning changed the script slightly after the 41,045 above). The access pages add 7,356 bytes. No dependency was added. The known-gaps task adds 95 bytes (measured the same way). Task U1 (with the colour baseline and the mark) adds 1,478 bytes (language choice, the English texts in the bundle, the grouped navigation, the footer); measured with `gzip -9 -n` per file on a developer Mac, no dependency added. Step G6.8 adds 11,907 bytes (the Update page, its client and 139 texts in each language); `main` before it was rebuilt and measured the same way (50,037). G6.10 step c adds 1,950 bytes (the second confirmation, the result and installer texts, 22 new texts in each language): 63,895 against 61,945 for `origin/main` before it, both built and measured the same way on a developer Mac. Step G7.4 adds 8,072 bytes (the Activity page, its client and 89 texts in each language): 72,011 against 63,939 for `origin/main` before it (commit `116e219`), both built and measured the same way (`gzip -9 -n` per file) on a developer Mac; no dependency was added. Step G7.5 adds 5,112 bytes (the power card, its dialog, the status view, their client and 39 texts in each language): 77,123 against 72,011 for the same tree before the frontend change (base `37f8d31` plus the backend commit of the step), both built and measured the same way; no dependency was added. The development scenario modes are not in the build: `vite.config.ts` fails the build if their marker string or the name of an installer appears in any output file.
 
+
+The step UF1 with N1 and ST1 adds 4,481 bytes: 83,478 against 78,997 for `origin/main` before it (`8dc909d`), both built and measured the same way (`gzip -9 -n` per file) on a developer Mac; per part: the start modes of the Activity page 318, the page Netzwerk 1,933, the page Speicher 2,230. No dependency and no icon was added.
 Updating a sample changes text and attributes in place: no element is added or removed and the cards stay the same nodes (`Dashboard.update.test.ts`). The sparkline path is derived from its values and changes only when a sample arrives. No CSS animation exists.
 
 ## Verification status
@@ -1170,6 +1237,8 @@ The word Verified is reserved for the support status of a board and operating sy
 **Checked for step G7.4 (2026-11-25), not Verified, class C only:** in jsdom, every state of the [Activity page](#activity-page-step-g74) and every scenario of its scenario mode, the filter and "Mehr anzeigen", the panel's focus rules and Escape, the polling and its end with fake timers, every result sentence, both languages, and that names and descriptions stay text. **Not checked for G7.4:** any real browser (not even headless Chrome: no layout check at 320 to 1920 CSS pixels and no screenshots were made in this step), a keyboard walk-through with real key events, Safari, Firefox, a screen reader, forced colours, text spacing and 200 percent text size, a real service, `systemctl` under the service's sandbox, the real broker, and the device.
 
 **Checked for step G7.5 (2026-11-25), not Verified, class C only:** in jsdom, every state of [Restart and shutdown](#restart-and-shutdown-step-g75) and every power scenario of the scenario mode, the dialog's focus rules and Escape with a stand-in for `showModal`, the password cleared on close, error and success and kept out of storage, the address and the page, the waiting list, every refusal sentence, the status view's polling with fake timers (5 s, the 5-minute switch, the end of the polling), that only `/healthz` is requested while the status view shows, and both languages. **Not checked for G7.5:** any real browser (no headless Chrome, no layout check, no screenshots), the browser's own focus trap and inert background of the modal dialog, a keyboard walk-through with real key events, Safari, Firefox, a screen reader, forced colours, text spacing and 200 percent text size, the real service, the real broker, Ubuntu, the device, and a real restart or shutdown (G7.6).
+
+**Checked for the step UF1 with N1 and ST1 (2026-11-27), not Verified, class C only:** in jsdom, the start-mode states of the [Activity page](#activity-page-step-g74), every state of the [Network page](#network-page-task-n1) and the [Storage page](#storage-page-task-st1), their scenarios, both languages, the navigation with the group Workload. **Not checked:** any real browser (no layout check, no screenshot), a keyboard walk-through with real key events, a screen reader, forced colours, and the pages against a device (the device check of the step follows the release).
 
 **Checked in headless Chrome on one Mac, by a script that is not in the repository:** the layout checks and the screenshots described above (and, for the known-gaps task, a mock server with synthetic data: the alerts card and the tab shown again with a stream that is still opening, and the shell at 360, 1280, 1920 and 2560 px in both themes); that the page loads and is styled under the server's `Content-Security-Policy` (`default-src 'self'`, no inline style attribute exists); and the Tab order (skip link, brand, navigation, links, `summary` elements) with a visible 2 px focus ring on each stop, in both themes.
 
