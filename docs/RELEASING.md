@@ -100,6 +100,22 @@ gh secret list --repo swingstate/oarfish
 
 Commit only `release/oarfish-release.pub`. `*.key` is git-ignored as a safety net. Recommended, not configured by this gate: a tag protection rule for `v*` so only maintainers can create release tags.
 
+## One-time setup: signing approval (owner, repository settings)
+
+Decision D-C101 item 7: the job `sign` of `release.yml`, the only job that reads the release secret, runs in the GitHub environment `release-signing`, which waits for the owner's approval. The implementation agent does not change repository settings; the owner does this once, before the next release tag:
+
+1. Repository → Settings → Environments → **New environment**, name exactly `release-signing`. Create it before the next tag: a job that names an environment that does not exist makes GitHub create it without any protection.
+2. In the environment, **Deployment protection rules**: tick **Required reviewers**, add your own account, **Save protection rules**. Leave **Prevent self-review** off, because you push or confirm the tag and approve the same run.
+3. **Deployment branches and tags**: choose **Selected branches and tags** and add the tag pattern `v*`.
+4. Recommended: make the key an environment secret, so that only a job in this environment can read it (a repository secret can be read by any workflow run that a person with write access starts):
+   ```bash
+   gh secret set OARFISH_RELEASE_SIGNING_KEY --env release-signing --repo swingstate/oarfish < ~/.config/oarfish-release/oarfish-release.key
+   gh secret delete OARFISH_RELEASE_SIGNING_KEY --repo swingstate/oarfish
+   gh secret list --env release-signing --repo swingstate/oarfish
+   ```
+
+On a tag push, `ci` and `build` run as before; then `sign` shows **Waiting for review** and GitHub notifies you. Open the run, choose **Review deployments**, tick `release-signing` and **Approve and deploy**; `sign` and then `publish` run. **Reject**, or no answer within 30 days, fails the run and publishes nothing; the tag stays, and the repair is the one under "Release procedure". Pull requests and manual runs skip `sign` and use `sign-dry-run`, which has no environment: they never wait and never read the secret.
+
 ## Dry run
 
 Actions → Release → Run workflow, or:
@@ -181,7 +197,7 @@ CI runs the fixture tests in the job "Signing and tamper tests" and the Go tests
    git tag v0.1.0-alpha.1 && git push origin v0.1.0-alpha.1
    ```
    The workflow rejects tags that are not `vMAJOR.MINOR.PATCH[-prerelease]` and tags whose commit is not on `main`.
-6. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` references the secret and it only starts for a tag push; only `publish` has `contents: write`.
+6. Watch it: `gh run watch`. Jobs: `ci` (the full CI workflow) → `build` → `sign` → `publish`. Only `sign` references the secret, it only starts for a tag push, and it waits for the owner's approval in the environment `release-signing` ([One-time setup: signing approval](#one-time-setup-signing-approval-owner-repository-settings)); only `publish` has `contents: write`.
 7. Verify the published assets (below).
 8. **Release notes of the G5.1 release (and any release a device may reach from `v0.1.0-alpha.5` or earlier)** must say: "After this update the device has no administrator account and starts in setup mode. The GUI shows the setup page; read the setup token on the device with `sudo cat /var/lib/oarfish/setup-token`. The dashboard and the device page show data only after setup and login. Every `/api/v1` route except the session status, login and setup now needs a session; `/healthz` stays public." (ADR 0009, Consequences; D-C46)
 
@@ -389,7 +405,7 @@ Rewriting history is not part of this list. If a scan ever finds a real secret i
 - The installer is described in `INSTALL.md`, including what has and has not been verified. It has run on one Raspberry Pi Zero 2 W (single data point, see the hardware test results there); nothing else has run on real hardware. The components shape was installed once on one device with a test release and a test copy of the installer (device observation, G6.3 owner stop, 2026-11-03), so the installer's rollback after a failed health check, `--purge` and a first installation without a previous release have not run on a device. The release-key path of the installer for that shape ran later, in the G6.9 run, with the official installers of `v0.1.0-alpha.7`, `v0.1.0-alpha.8` and `v0.1.0-alpha.10` (class D, observed on one device; [`UPDATE.md`](UPDATE.md#results-on-the-reference-device)).
 - `v0.1.0-alpha.1` was published before the installer existed. It has no `install.sh`, no `oarfish.service` and no `THIRD_PARTY_NOTICES.txt` in the bundle, so the current `verify-release.sh` and the installer reject it by design. Releases from `v0.1.0-alpha.2` on follow the layout described here.
 
-- Unverified until the first real release: the publish job, `gh release create`, prerelease flag, and the secret-based signing path. The dry run exercises everything except those and the committed public key.
+- The dry run exercises everything except the publish job, `gh release create`, the prerelease flag and the secret-based signing path; those run only on a tag (every published release since `v0.1.0-alpha.1`). The approval of the environment `release-signing` has not run yet; the first tag after task C1 is its first run.
 - The ARM64 smoke test runs under qemu-user on an x86-64 runner. It proves the binary starts and serves; it is not a test on real hardware (the hardware tests, G3, G4, G5, G5.1 and the G6.3 owner stop, are recorded in `INSTALL.md`).
 - No SLSA provenance or artifact attestation, no signature on the SBOMs other than through `checksums.txt`.
-- Key rotation and revocation are not designed (ADR 0005).
+- Key rotation and revocation are not designed yet; they are part of D-D12 in the design block of D-C101 (an offline root key per maintainer and a threshold that signs the list of valid release keys).
