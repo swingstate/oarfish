@@ -643,8 +643,8 @@ export const enApi: { [K in keyof typeof deApi]: string } = {
   'limitation.capability_missing_sysfs': 'sysfs is missing',
   'limitation.capability_missing_systemd': 'systemd is not the running init system',
   'limitation.memory_512mb': 'Only about 512 MiB of memory',
-  'limitation.evidence_install_only':
-    'So far only the installation has been tested on real hardware',
+  'limitation.evidence_one_device':
+    'Observed on one device: installation, updates with rollback, services, restart and shutdown. Not Verified.',
   'capability.procfs': 'Process information (procfs)',
   'capability.sysfs': 'Device information (sysfs)',
   'capability.systemd': 'Service management (systemd)',

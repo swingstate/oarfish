@@ -45,17 +45,21 @@ func TestPiZero2WWithRaspberryPiOSIsCompatible(t *testing.T) {
 	if r.OS.Adapter != "raspberry_pi_os" || r.OS.PrettyName != "Debian GNU/Linux 13 (trixie)" || r.OS.Kernel != "6.18.50+rpt-rpi-v8" {
 		t.Errorf("os = %+v", r.OS)
 	}
-	if r.Profile.ID != "raspberry-pi-zero-2-w" || r.Profile.MatchedBy != profiles.MatchedByCompatible || r.Profile.Version != "1.1.0" {
+	if r.Profile.ID != "raspberry-pi-zero-2-w" || r.Profile.MatchedBy != profiles.MatchedByCompatible || r.Profile.Version != "1.2.0" {
 		t.Errorf("profile = %+v", r.Profile)
 	}
 	s := r.Support
 	if s.Tier != TierCompatible || s.Reason != ReasonProfileNotVerified || s.ExplanationKey != "support.compatible.profile_not_verified" || !s.BoardActionsAllowed {
 		t.Errorf("support = %+v", s)
 	}
-	for _, want := range []string{"memory_512mb", "evidence_install_only"} {
+	for _, want := range []string{"memory_512mb", "evidence_one_device"} {
 		if !slices.Contains(s.Limitations, want) {
 			t.Errorf("limitation %q missing from %v", want, s.Limitations)
 		}
+	}
+	// Profile 1.2.0: the device evidence goes beyond the installation.
+	if slices.Contains(s.Limitations, "evidence_install_only") {
+		t.Errorf("outdated limitation evidence_install_only in %v", s.Limitations)
 	}
 	if r.BootMedium.Type != "mmc" {
 		t.Errorf("boot medium = %q", r.BootMedium.Type)

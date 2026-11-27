@@ -660,8 +660,8 @@ export const deApi = {
   'limitation.capability_missing_sysfs': 'sysfs fehlt',
   'limitation.capability_missing_systemd': 'systemd läuft nicht als Init-System',
   'limitation.memory_512mb': 'Nur etwa 512 MiB Arbeitsspeicher',
-  'limitation.evidence_install_only':
-    'Auf echter Hardware wurde bisher nur die Installation getestet',
+  'limitation.evidence_one_device':
+    'Auf einem Gerät beobachtet: Installation, Updates mit Rollback, Dienste, Neustart und Herunterfahren. Nicht verifiziert.',
   'capability.procfs': 'Prozessinformationen (procfs)',
   'capability.sysfs': 'Geräteinformationen (sysfs)',
   'capability.systemd': 'Dienstverwaltung (systemd)',
