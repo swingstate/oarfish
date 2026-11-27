@@ -123,6 +123,9 @@ var restartOnly = unitList{
 		"tailscaled.service",
 	),
 	families: []string{"wpa_supplicant@", "wpa_supplicant-nl80211@", "wpa_supplicant-wired@", "ppp@"},
+	// The Wi-Fi link of netplan on Ubuntu (netplan-wpa-<interface>.service,
+	// ADR 0011 A9): a name prefix, not a template.
+	prefixes: []string{"netplan-wpa-"},
 }
 
 // anyMatches reports whether l matches the Id or any entry of Names (rule 4).

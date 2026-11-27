@@ -204,10 +204,14 @@ func TestLists(t *testing.T) {
 			t.Errorf("%s denied", n)
 		}
 	}
-	for _, n := range []string{"ModemManager.service", "wpa_supplicant-other@x.service", "pppd.service"} {
+	for _, n := range []string{"ModemManager.service", "wpa_supplicant-other@x.service", "pppd.service",
+		"netplan-ovs-cleanup.service", "netplan-wpa.service", "my-netplan-wpa-wlan0.service", "xnetplan-wpa-wlan0.service"} {
 		if restartOnly.matches(n) {
 			t.Errorf("%s restart only", n)
 		}
+	}
+	if !restartOnly.matches("netplan-wpa-wlan0.service") {
+		t.Error("netplan-wpa-wlan0.service is not restart only")
 	}
 }
 

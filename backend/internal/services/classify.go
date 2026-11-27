@@ -60,6 +60,9 @@ var restartOnly = unitList{
 		"tailscaled.service",
 	),
 	families: []string{"wpa_supplicant@", "wpa_supplicant-nl80211@", "wpa_supplicant-wired@", "ppp@"},
+	// The Wi-Fi link of netplan on Ubuntu (netplan-wpa-<interface>.service,
+	// ADR 0011 A9, docs/UBUNTU_PROBE.md U4): a name prefix, not a template.
+	prefixes: []string{"netplan-wpa-"},
 }
 
 // The kinds of rule 11 (ORB-SVC-003): each has its own note on the page.
@@ -80,6 +83,7 @@ var criticalKinds = []struct {
 		exact: set("NetworkManager.service", "networking.service", "dhcpcd.service", "wpa_supplicant.service",
 			"ModemManager.service", "avahi-daemon.service", "rpi-usb-gadget-ics.service"),
 		families: []string{"wpa_supplicant@", "wpa_supplicant-nl80211@", "wpa_supplicant-wired@", "ppp@"},
+		prefixes: []string{"netplan-wpa-"},
 	}},
 	{KindSSH, unitList{exact: set("ssh.service", "sshd.service")}},
 	{KindRemoteAccess, unitList{exact: set("tailscaled.service")}},

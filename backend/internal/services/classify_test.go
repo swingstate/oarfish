@@ -107,7 +107,7 @@ func TestListsMatchTheBroker(t *testing.T) {
 // The restart-only list is exactly the "No" rows of the rule 11 table: every
 // entry of the kinds network, ssh and remote access except ModemManager.
 func TestRestartOnlyIsTheNoRowsOfRule11(t *testing.T) {
-	var exact, families []string
+	var exact, families, prefixes []string
 	for _, k := range criticalKinds {
 		if k.kind == KindNetwork || k.kind == KindSSH || k.kind == KindRemoteAccess {
 			for n := range k.list.exact {
@@ -116,11 +116,12 @@ func TestRestartOnlyIsTheNoRowsOfRule11(t *testing.T) {
 				}
 			}
 			families = append(families, k.list.families...)
+			prefixes = append(prefixes, k.list.prefixes...)
 		}
 	}
 	oe, of, op := listOf(restartOnly)
-	if !sameSet(exact, oe) || !sameSet(families, of) || len(op) != 0 {
-		t.Errorf("restart only %v %v, table %v %v", oe, of, exact, families)
+	if !sameSet(exact, oe) || !sameSet(families, of) || !sameSet(prefixes, op) || !sameSet(op, []string{"netplan-wpa-"}) {
+		t.Errorf("restart only %v %v %v, table %v %v %v", oe, of, op, exact, families, prefixes)
 	}
 }
 
@@ -170,6 +171,25 @@ func TestRestartOnlyClassification(t *testing.T) {
 			if a := offeredActions(c, active); !slices.Equal(a, []string{ActionRestart}) {
 				t.Errorf("%s (%s) offers %v", n, active, a)
 			}
+		}
+	}
+	// The netplan Wi-Fi family of Ubuntu (U4, ADR 0011 A9): network, restart only.
+	for _, n := range []string{"netplan-wpa-wlan0.service", "netplan-wpa-wlp1s0.service"} {
+		c := classify(n)
+		if !c.restartOnly || c.denied || c.critical != KindNetwork {
+			t.Errorf("%s: %+v", n, c)
+		}
+		for _, active := range []string{"active", "inactive", "failed"} {
+			if a := offeredActions(c, active); !slices.Equal(a, []string{ActionRestart}) {
+				t.Errorf("%s (%s) offers %v", n, active, a)
+			}
+		}
+	}
+	// Names that only look similar stay ordinary units: the prefix is matched
+	// at the start of the name, not as a substring.
+	for _, n := range []string{"netplan-ovs-cleanup.service", "netplan-wpa.service", "my-netplan-wpa-wlan0.service", "netplan_wpa-wlan0.service", "xnetplan-wpa-wlan0.service"} {
+		if c := classify(n); c.restartOnly || c.denied || c.critical != "" {
+			t.Errorf("%s: %+v", n, c)
 		}
 	}
 	// ModemManager is critical (network) but may be stopped.
