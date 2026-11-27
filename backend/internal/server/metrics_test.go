@@ -120,6 +120,17 @@ func TestMetricsEndpointPiZero2W(t *testing.T) {
 	if resp.CPU.UsagePercent == nil {
 		t.Error("a one-shot snapshot reads the CPU twice and has a usage value")
 	}
+	// Task N0 (ORB-NET-001): the default routes and the name servers.
+	var wire map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil {
+		t.Fatal(err)
+	}
+	routing, _ := json.Marshal(wire["routing"])
+	if want := `{"dns":{"hidden":0,"servers":[{"address":"192.0.2.53","local":false},{"address":"2001:db8::53","local":false}],"status":"found"},` +
+		`"ipv4":{"gateway":"192.0.2.1","gateway_hidden":false,"interface":"wlan0","status":"found"},` +
+		`"ipv6":{"gateway":"2001:db8::1","gateway_hidden":false,"interface":"wlan0","status":"found"}}`; string(routing) != want {
+		t.Errorf("routing = %s\nwant      %s", routing, want)
+	}
 
 	d := resp.Device
 	if str(d.Model) != "Raspberry Pi Zero 2 W Rev 1.0" || str(d.SoCFamily) != "BCM2837" || str(d.Arch) != "arm64" ||
@@ -131,7 +142,7 @@ func TestMetricsEndpointPiZero2W(t *testing.T) {
 		t.Errorf("alerts = %+v (nil: %v), want an empty list", resp.Alerts, resp.Alerts == nil)
 	}
 
-	// The device endpoint is unchanged and still works next to it.
+	// The device endpoint still works next to it.
 	if rec := get(t, f.handler, http.MethodGet, "/api/v1/device"); rec.Code != http.StatusOK {
 		t.Errorf("/api/v1/device = %d", rec.Code)
 	}
@@ -164,10 +175,18 @@ func TestMetricsSchemaUsesNullsAndEmptyLists(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"schema_version", "collected_at", "hostname", "uptime_seconds", "cpu", "memory", "temperatures", "storage", "network", "device", "alerts", "history"} {
+	for _, key := range []string{"schema_version", "collected_at", "hostname", "uptime_seconds", "cpu", "memory", "temperatures", "storage", "network", "routing", "device", "alerts", "history"} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("missing key %q", key)
 		}
+	}
+	// Task N0: without the files every routing part says "unreadable", with
+	// null values and an empty server list.
+	routing, _ := json.Marshal(m["routing"])
+	if want := `{"dns":{"hidden":0,"servers":[],"status":"unreadable"},` +
+		`"ipv4":{"gateway":null,"gateway_hidden":false,"interface":null,"status":"unreadable"},` +
+		`"ipv6":{"gateway":null,"gateway_hidden":false,"interface":null,"status":"unreadable"}}`; string(routing) != want {
+		t.Errorf("routing = %s\nwant      %s", routing, want)
 	}
 	for _, key := range []string{"temperatures", "storage", "network", "alerts"} {
 		if l, ok := m[key].([]any); !ok || len(l) != 0 && key != "alerts" {

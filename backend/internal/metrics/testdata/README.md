@@ -19,4 +19,6 @@ What the fixtures may contain, and nothing else (enforced by `TestFixturesContai
 | `minimal` | procfs only: no cpufreq, no sensors, no mount table, no network directory, no `MemAvailable` |
 | `hostile` | NUL bytes, escape sequences, invalid UTF-8, absurd and negative numbers, a space in an interface name |
 
+Since task N0 the trees also hold `proc/net/ipv6_route` and `etc/resolv.conf`: `pi-zero-2w` a default route of each family and two name servers; `generic-arm64` two IPv4 default rows with different metrics, no IPv6 default route (only the kernel's unreachable route on `lo`), and a `resolv.conf` with comments, `domain`, `search`, `options`, `sortlist` and an unparsable line; `hostile` escape sequences, a NUL byte, invalid UTF-8, a bad zone and a gateway without the gateway flag; `minimal` neither file. The all-zero address of `ipv6_route` (`::`, the default destination) is the only address outside the documentation ranges. A loopback stub and link-local next hops are inline inputs of the tests.
+
 Oversized files and thousands of mounts or sensors are not stored here; the tests generate them in memory.

@@ -70,8 +70,12 @@ func scanPrivate(text string) []string {
 				}
 			case "machine id":
 				// /proc/net/if_inet6 prints an IPv6 address as 32 hex digits.
-				if raw, err := hex.DecodeString(m); err == nil && len(raw) == 16 && inDocumentationRange(netip.AddrFrom16([16]byte(raw))) {
-					continue
+				// /proc/net/ipv6_route prints "::" (the default destination, an
+				// empty source or next hop) as 32 zeros, which identifies nothing.
+				if raw, err := hex.DecodeString(m); err == nil && len(raw) == 16 {
+					if a := netip.AddrFrom16([16]byte(raw)); inDocumentationRange(a) || a.IsUnspecified() {
+						continue
+					}
 				}
 			}
 			found = append(found, name+": "+m)
@@ -169,7 +173,8 @@ func TestFixturesContainNoPrivateData(t *testing.T) {
 	}
 	for _, sample := range []string{
 		"192.0.2.1", "198.51.100.255", "203.0.113.9", "20010db8000000000000000000000015", "2001:db8:0:0:0:0:0:1",
-		"999.999.999.999", // not an address
+		"999.999.999.999",                  // not an address
+		"00000000000000000000000000000000", // "::" as /proc/net/ipv6_route prints it
 	} {
 		if got := scanPrivate(sample); len(got) != 0 {
 			t.Errorf("scanner rejects %q: %v", sample, got)
@@ -241,7 +246,10 @@ func TestDetectionOpensOnlyAllowListedFiles(t *testing.T) {
 // environment, process data, user databases and SSH data are not on it.
 var metricsReadAllowList = []*regexp.Regexp{
 	regexp.MustCompile(`^proc/(stat|loadavg|uptime|meminfo|self/mountinfo|sys/kernel/hostname)$`),
-	regexp.MustCompile(`^proc/net/(fib_trie|route|if_inet6)$`),
+	regexp.MustCompile(`^proc/net/(fib_trie|route|if_inet6|ipv6_route)$`),
+	// Task N0 (ADR 0008, amendment "N0 as implemented"): only the nameserver
+	// lines are used; nothing else of the file reaches the output.
+	regexp.MustCompile(`^etc/resolv\.conf$`),
 	regexp.MustCompile(`^sys/devices/system/cpu/cpu0/cpufreq/(scaling_cur_freq|cpuinfo_max_freq|scaling_max_freq|scaling_governor)$`),
 	regexp.MustCompile(`^sys/class/(thermal|hwmon|net)$`),
 	regexp.MustCompile(`^sys/class/thermal/thermal_zone[0-9]{1,4}/(type|temp)$`),
@@ -295,7 +303,7 @@ func TestMetricsOpenOnlyAllowListedFiles(t *testing.T) {
 	// Positive control: the recorder sees reads, and the main files are covered.
 	for _, want := range []string{
 		"proc/stat", "proc/loadavg", "proc/uptime", "proc/meminfo", "proc/sys/kernel/hostname", "proc/self/mountinfo",
-		"proc/net/fib_trie", "proc/net/route", "proc/net/if_inet6",
+		"proc/net/fib_trie", "proc/net/route", "proc/net/if_inet6", "proc/net/ipv6_route", "etc/resolv.conf",
 		"sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", "sys/class/thermal/thermal_zone0/temp",
 		"sys/class/hwmon/hwmon0/temp1_input", "sys/class/net/wlan0/operstate", "sys/class/net/eth0/statistics/rx_bytes",
 	} {
@@ -306,7 +314,7 @@ func TestMetricsOpenOnlyAllowListedFiles(t *testing.T) {
 	for _, private := range []string{
 		"sys/class/net/eth0/address", "sys/class/net/eth0/addr_assign_type", "sys/class/net/eth0/phys_port_id", "etc/machine-id",
 		"etc/hostname", "proc/self/environ", "proc/cpuinfo", "proc/1/cmdline", "home/x/.ssh/id_ed25519", "etc/passwd",
-		"proc/net/arp", "proc/net/dev", "sys/class/dmi/id/product_serial", "sys/class/net/../../x/operstate",
+		"proc/net/arp", "proc/net/dev", "proc/net/wireless", "etc/resolv.conf.bak", "etc/hosts", "run/systemd/resolve/resolv.conf", "sys/class/dmi/id/product_serial", "sys/class/net/../../x/operstate",
 	} {
 		if metricsAllowed(private) {
 			t.Errorf("the allow-list admits %q", private)

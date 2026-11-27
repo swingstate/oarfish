@@ -21,6 +21,7 @@ type Snapshot struct {
 	Temperatures  []Temperature      `json:"temperatures"`
 	Storage       []Storage          `json:"storage"`
 	Network       []NetworkInterface `json:"network"`
+	Routing       Routing            `json:"routing"`
 }
 
 // CPU describes load, usage and frequency.
@@ -95,6 +96,57 @@ type NetworkInterface struct {
 	TxBytes   *uint64  `json:"tx_bytes"`
 	IPv4      []string `json:"ipv4"`
 	IPv6      []string `json:"ipv6"`
+}
+
+// Routing is the default route of each address family and the DNS servers
+// (ORB-NET-001, ADR 0008 amendment "N0 as implemented"). Each part fails on
+// its own: a source that cannot be read gives that part the status
+// "unreadable" and leaves the others as they are.
+type Routing struct {
+	IPv4 DefaultRoute `json:"ipv4"`
+	IPv6 DefaultRoute `json:"ipv6"`
+	DNS  DNS          `json:"dns"`
+}
+
+// Status values of a routing part.
+const (
+	// RoutingFound means the source was read and holds a value.
+	RoutingFound = "found"
+	// RoutingNone means the source was read and holds no value (no default
+	// route of this family, no usable nameserver line).
+	RoutingNone = "none"
+	// RoutingUnreadable means the source is missing, cannot be read or is
+	// larger than its read limit.
+	RoutingUnreadable = "unreadable"
+)
+
+// DefaultRoute is the default route of one family. Interface and Gateway are
+// null unless Status is "found"; Gateway is also null for a route without a
+// gateway, and when GatewayHidden is true. A gateway built from a hardware
+// address (EUI-64) contains the MAC address of the router and is never shown.
+// An IPv6 link-local gateway carries its interface as the zone ("fe80::1%wlan0").
+type DefaultRoute struct {
+	Status        string  `json:"status"`
+	Interface     *string `json:"interface"`
+	Gateway       *string `json:"gateway"`
+	GatewayHidden bool    `json:"gateway_hidden"`
+}
+
+// DNS is the list of name servers from /etc/resolv.conf, at most
+// parse.MaxNameservers, in file order. Hidden counts the servers among them
+// whose address is built from a hardware address and is therefore not shown.
+type DNS struct {
+	Status  string      `json:"status"`
+	Servers []DNSServer `json:"servers"`
+	Hidden  int         `json:"hidden"`
+}
+
+// DNSServer is one name server. Local is true for a loopback address: a
+// resolver on the device itself (for example a stub at 127.0.0.53), which
+// hides the servers it forwards to.
+type DNSServer struct {
+	Address string `json:"address"`
+	Local   bool   `json:"local"`
 }
 
 // Limits that keep a snapshot, and the work to build it, small.
