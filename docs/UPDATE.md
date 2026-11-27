@@ -134,7 +134,7 @@ The reason code is always shown as text under "Technische Einzelheiten".
 
 ## When the installer is required
 
-A helper that has the component transaction (G6.10 step b) never answers `installer_required` for a difference of the compared files (A16, E1): a difference of the helper files selects the component transaction, a difference of `oarfish.service` alone the second confirmation. **The first release with such a helper is `v0.1.0-alpha.11`.** Every helper released before it (`v0.1.0-alpha.7` to `v0.1.0-alpha.10`) answers `installer_required` for the new bytes of the helper of step b, so **every device needs one installer run** to reach `v0.1.0-alpha.11` or a later release ([`RELEASING.md`](RELEASING.md#release-notes-for-g610)). The first release that carries the broker needs one more installer run on every device (ADR 0010 A19.1, A20; ADR 0011 B1, consequence 1): every helper released before G7.3a accepts only the components shape without the broker's files. That installer run (G7.3b) stores the seven-file set, links the broker and starts its socket, moves `active` at once and `known-good` after its health check ([`INSTALL.md`](INSTALL.md#the-update-helper-layout-g63b); class C only). If that run is interrupted between the two moves (power loss, kill), `known-good` still names the four-file set: the next boot's recovery runs the helper of that set, which leaves both links alone while `state.json` is readable, and the new helper answers `components_damaged` to a component update until the installer is run again, which completes the move (ADR 0010 A21). One case is not repaired by that run alone: when the device was not rebooted and `state.json` was also unreadable, the helper records `rollback_failed` with `known_good_damaged`, which the installer does not clear; then remove `/var/lib/oarfish-update/state.json` and run the installer again (ADR 0010 A22.4, D-C91 item 6; [`INSTALL.md`](INSTALL.md#run-it-again)). A device of `v0.1.0-alpha.12` does not offer that release for installation: its update page cannot read the manifest of the twelve-entry bundle (its `contents` list eleven files), shows the signature as "Nicht bestätigt" and the message that the release description is not valid, and shows no installer hint; the release notes on that card carry it (read from the code of that tag, not run; [`RELEASING.md`](RELEASING.md#release-notes-for-the-first-broker-release)). (Pointer, G7.6c: observed on the reference device for `v0.1.0-alpha.13`, class D, [`v0.1.0-alpha.13`, class D](#v010-alpha13-class-d).)
+A helper that has the component transaction (G6.10 step b) never answers `installer_required` for a difference of the compared files (A16, E1): a difference of the helper files selects the component transaction, a difference of `oarfish.service` alone the second confirmation. **The first release with such a helper is `v0.1.0-alpha.11`.** Every helper released before it (`v0.1.0-alpha.7` to `v0.1.0-alpha.10`) answers `installer_required` for the new bytes of the helper of step b, so **every device needs one installer run** to reach `v0.1.0-alpha.11` or a later release ([`RELEASING.md`](RELEASING.md#release-notes-for-g610)). The first release that carries the broker needs one more installer run on every device (ADR 0010 A19.1, A20; ADR 0011 B1, consequence 1): every helper released before G7.3a accepts only the components shape without the broker's files. That installer run (G7.3b) stores the seven-file set, links the broker and starts its socket, moves `active` at once and `known-good` after its health check ([`INSTALL.md`](INSTALL.md#the-update-helper-layout-g63b); class C only). If that run is interrupted between the two moves (power loss, kill), `known-good` still names the four-file set: the next boot's recovery runs the helper of that set, which leaves both links alone while `state.json` is readable, and the new helper answers `components_damaged` to a component update until the installer is run again, which completes the move (ADR 0010 A21). One case is not repaired by that run alone: when the device was not rebooted and `state.json` was also unreadable, the helper records `rollback_failed` with `known_good_damaged`, which the installer does not clear; then remove `/var/lib/oarfish-update/state.json` and run the installer again (ADR 0010 A22.4, D-C91 item 6; [`INSTALL.md`](INSTALL.md#run-it-again)). A device of `v0.1.0-alpha.12` does not offer that release for installation: its update page cannot read the manifest of the twelve-entry bundle (its `contents` list eleven files), shows the signature as "Nicht bestätigt" and the message that the release description is not valid, and shows no installer hint; the release notes on that card carry it (read from the code of that tag, not run; [`RELEASING.md`](RELEASING.md#release-notes-for-the-first-broker-release)). (Pointer, G7.6c: observed on the reference device for `v0.1.0-alpha.13`, class D, [`v0.1.0-alpha.13`, class D](#v010-alpha13-class-d).) (Pointer, G7-FIX1: the first GUI update from a device of `v0.1.0-alpha.13`, which replaced the broker without an installer run, is in [`v0.1.0-alpha.14`, class D](#v010-alpha14-class-d).)
 
 After that, the installer is needed in these cases. The page shows the installer view for each of them: "Installer nötig", the sentence that this version cannot be installed from this page, a reason sentence of its own, and the fixed instruction of A12 (download `install.sh` from the release page of the version, read it, run it with `sudo sh install.sh`; settings and account are kept). No command is built from data of the API (F1, A17).
 
@@ -411,11 +411,45 @@ The points of [Closeout evidence](#closeout-evidence) for this update (class D, 
 
 **Not observed in this run:** a GUI update from `v0.1.0-alpha.13` (none exists); an interrupted first installer run and the repair of ADR 0010 A21 and A22.4; the page of `v0.1.0-alpha.12` in another browser than the owner's.
 
+### `v0.1.0-alpha.14`, class D
+
+**The release.** The release of the step G7-FIX1 ([ADR 0011 amendment A8](adr/0011-privilege-broker.md#amendment-a8-g7-fix1-quoted-names-in-show)): the tag is on commit `49cd9fbea51f2e1627d986ed90a13834b3f51fc7` (the merge commit of PR #66), signed with the production key (key id `11f1c52777090bfc`), a prerelease, `components.protocol` 1, 12 tarball entries (11 files in `contents`). Compared with `v0.1.0-alpha.13`, only `oarfish-broker` differs (SHA-256 `7f7329e3692b1d72f27e76e86c2ade805aaf32db7ea5d6549eaad72a60a50109`, was `f18712cd…`); the helper, the five component units and `oarfish.service` are identical. Both release checks passed (set hash `69b0875101a822d80629953370a590d662578fe7bdac8d3565389ac66813c58e`).
+
+**The first GUI update that replaced the broker, from `v0.1.0-alpha.13` to `v0.1.0-alpha.14`** (class D, production key, 2026-11-27; observed on one device, not Verified):
+
+- **Before:** `/healthz` `0.1.0-alpha.13`; `components/active` and `known-good` named `0.1.0-alpha.13`; the broker at `/usr/libexec/oarfish-broker` had the SHA-256 `f18712cd…` of `v0.1.0-alpha.13`; the broker socket active, the broker service inactive (idle); 0 failed units.
+- **The page:** the owner reports that the second confirmation named the privilege broker and asked for the password again. The wording of the dialog was not copied.
+- **After:** `/healthz` `0.1.0-alpha.14` (a new process); `components/active` and `known-good` name `0.1.0-alpha.14`; `/usr/libexec/oarfish-broker` links to `components/0.1.0-alpha.14/oarfish-broker` with the SHA-256 `7f7329e3…`, equal to the published manifest, and the other six component files equal the manifest; the helper unchanged (`0c6f95d2…`); `oarfish-broker.socket` active (listening, 0 refused connections), the broker service inactive; 0 failed units; `state.json`: phase `idle`, `needs_attention` false, `last_result` `success` from `0.1.0-alpha.13` to `0.1.0-alpha.14` with `components_updated` true, `known_good_sha256` equal to the set hash of the release check. The broker was not started by the update: its journal has no line after it, which fits A20.4 (the helper replaces the broker's files on disk only, and the socket starts the new binary at the next request).
+
+The journal of the helper, all phases with `result=ok`:
+
+| Step | Observed |
+|---|---|
+| `update_started` in the audit to `staging` | 4 s |
+| `staging` to `staged` | 6 s |
+| waiting for the second confirmation | 36 s |
+| `c_switching`, `c_switched` | in the same second |
+| the hand-over | the helper unit was deactivated and systemd scheduled a restart (restart counter 1); the helper started again |
+| `c_switched` to `c_verified` | 6 s |
+| `c_verified` to `c_committed` | 4 s |
+| `switching`, `verifying`, the restart of the service | in the second of `c_committed` |
+| the restart to `committed` | 12 s |
+| then | `idle` |
+| `update_started` in the audit to `idle` | 68 s, of them 36 s waiting for the confirmation |
+
+No rolling back. The audit has `update_started` (target `update/0.1.0-alpha.14`, result `success`) and the two sign-ins before and after the restart of the service; no `update_finished` entry at the last read in this session (C3, below).
+
+**The page after the update.** The browser still showed the page of `v0.1.0-alpha.13` after the update until the owner reloaded it hard (Cmd+Shift+R); only then did the page of `v0.1.0-alpha.14` appear (its count line with "im Übergang"). A finding, not fixed ([ADR 0011 A8.8](adr/0011-privilege-broker.md#a88-device-result-g7-fix1-phase-3)).
+
+**Not observed in this run:** the wording of the second confirmation; F4 and the 60-second display; a boot after this update; a power cut; the broker started from the new binary by an action.
+
 ### Open condition C3, the finishing audit entry
 
 `update_finished` is written only on a later `GET /api/v1/update` poll. In the run it was written about 13.5 min after the commit, with the time of the write and the user field "-", not the time the helper finished. This is the behaviour designed in G6.7. A proposal exists (write the entry with the helper's `finished_at` and check once at service start). The owner has not decided it; nothing was changed.
 
 **`v0.1.0-alpha.12` (class D, 2026-11-12):** the audit has `update_started` for `0.1.0-alpha.12`, and there was no `update_finished` entry when the audit was read more than 10 minutes after the update and after the reboot. By the design of G6.7 the entry is written on a later `GET /api/v1/update` poll. This is recorded as an observation; it is not decided, and nothing was changed.
+
+**`v0.1.0-alpha.14` (class D, 2026-11-27):** the audit has `update_started` for `0.1.0-alpha.14`, and no `update_finished` entry at the last read in this session; the same observation, not decided.
 
 ### Kit false stops and observations
 
