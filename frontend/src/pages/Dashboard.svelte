@@ -27,6 +27,7 @@
     type Rate,
     type Snapshot,
   } from '../lib/metrics';
+  import { routingItems } from '../lib/routing';
   import { fetchSession, sessionLost } from '../lib/session';
   import { MetricsStream, type StreamState } from '../lib/stream';
   import { linkTone, seriesRange, tierTone, type KeyValueItem, type MeterLevel, type SummaryItem } from '../lib/ui';
@@ -389,6 +390,13 @@
               {/each}
             </ul>
           {/if}
+          {#if s.routing}
+            <!-- Task N0 (ORB-NET-001): read every 30 s like the addresses; dimmed with the card when old. -->
+            <section class="stack-sm" aria-labelledby="routing-heading" data-testid="routing">
+              <h3 id="routing-heading" class="subheading">{t.netRoutingHeading}</h3>
+              <KeyValueList items={routingItems(s.routing)} />
+            </section>
+          {/if}
         </Card>
       </div>
     </div>
@@ -453,6 +461,13 @@
   }
 
   .nic :global(.icon) {
+    color: var(--color-text-secondary);
+  }
+
+  .subheading {
+    font-size: var(--text-sm);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--color-text-secondary);
   }
 

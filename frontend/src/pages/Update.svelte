@@ -31,6 +31,7 @@
     updateErrorText,
     type UpdateErrorField,
   } from '../lib/updateErrors';
+  import { reloadIfNewVersion } from '../lib/version';
 
   // ADR 0010 U3, U9, A11.3. Polling runs only while a job runs or while the page
   // waits for the restart after "activating", every 2 s, and stops when the page
@@ -68,6 +69,9 @@
   let restart = $state<'none' | 'restarting' | 'timeout'>('none');
   let deadline = 0;
   let lastStep = $state<JobStep | null>(null);
+
+  // Task N0 (ADR 0011 A8.8): the version this page should be reloaded to, when it cannot reload itself.
+  let reloadHint = $state<string | null>(null);
 
   // Discard.
   let discarding = $state(false);
@@ -139,7 +143,22 @@
     if (alive && shouldPoll()) pollTimer = setTimeout(() => void poll(), pollMs);
   }
 
+  /**
+   * Task N0 (ADR 0011 A8.8): once /healthz reports another version than the one
+   * that served this page, the page loads itself again, so the person sees the
+   * new version without a hard reload. True when the reload has started.
+   */
+  async function checkVersion(): Promise<boolean> {
+    const r = await reloadIfNewVersion();
+    if (!alive) return true;
+    if (r.kind === 'ask') reloadHint = r.version;
+    return r.kind === 'reload';
+  }
+
   async function poll(): Promise<void> {
+    // Around the switch the new process may already answer /healthz before the
+    // State can be read (all sessions end with the old process).
+    if ((watching || restart === 'restarting') && (lastStep === 'activating' || lastStep === 'done') && (await checkVersion())) return;
     const r = await fetchUpdateState();
     if (!alive || (!r.ok && r.kind === 'session')) return; // a 401 goes to the login page
     if (r.ok) {
@@ -281,6 +300,8 @@
 
   onMount(() => {
     void load(true);
+    // After signing in again following an update, the page may still be the old one.
+    void checkVersion();
     return () => {
       alive = false;
       clearTimeout(pollTimer);
@@ -364,6 +385,12 @@
 
 <div data-testid="update">
   <PageHeader title={t.updateTitle} />
+
+  {#if reloadHint}
+    <Notice tone="information" data-testid="upd-reload-hint">
+      <p>{fmt('updReloadHint', { version: reloadHint })}</p>
+    </Notice>
+  {/if}
 
   {#if phase === 'loading'}
     <EmptyState icon="clock" title={t.updLoading} role="status" data-state="loading" />

@@ -1,7 +1,43 @@
 // Synthetic metrics for tests, shaped like GET /api/v1/metrics and the
 // event stream. Not captures of a device. Host name and addresses come from
 // the synthetic set: "oarfish-test" and the documentation ranges.
-import type { Alert, History, MetricsResponse, Snapshot } from './metrics';
+import type { Alert, History, MetricsResponse, Routing, Snapshot } from './metrics';
+
+// Task N0: the routing part. The stub address 127.0.0.53 and the link-local
+// next hop have no documentation range; they are the well-known stub address
+// and a made-up suffix.
+export const piRouting: Routing = {
+  ipv4: { status: 'found', interface: 'wlan0', gateway: '192.0.2.1', gateway_hidden: false },
+  ipv6: { status: 'found', interface: 'wlan0', gateway: 'fe80::abcd%wlan0', gateway_hidden: false },
+  dns: { status: 'found', servers: [{ address: '192.0.2.53', local: false }, { address: '2001:db8::53', local: false }], hidden: 0 },
+};
+
+/** Read, but no default route of either family. */
+export const noRouteRouting: Routing = {
+  ipv4: { status: 'none', interface: null, gateway: null, gateway_hidden: false },
+  ipv6: { status: 'none', interface: null, gateway: null, gateway_hidden: false },
+  dns: { status: 'none', servers: [], hidden: 0 },
+};
+
+/** A resolver stub on the device: resolv.conf names only 127.0.0.53. */
+export const stubRouting: Routing = {
+  ...piRouting,
+  dns: { status: 'found', servers: [{ address: '127.0.0.53', local: true }], hidden: 0 },
+};
+
+/** A router whose addresses contain its hardware address, and a tunnel without a gateway. */
+export const hiddenRouting: Routing = {
+  ipv4: { status: 'found', interface: 'wg0', gateway: null, gateway_hidden: false },
+  ipv6: { status: 'found', interface: 'wlan0', gateway: null, gateway_hidden: true },
+  dns: { status: 'found', servers: [{ address: '2001:db8::53', local: false }], hidden: 1 },
+};
+
+/** None of the three files could be read. */
+export const unreadableRouting: Routing = {
+  ipv4: { status: 'unreadable', interface: null, gateway: null, gateway_hidden: false },
+  ipv6: { status: 'unreadable', interface: null, gateway: null, gateway_hidden: false },
+  dns: { status: 'unreadable', servers: [], hidden: 0 },
+};
 
 export const piSnapshot: Snapshot = {
   schema_version: 1,
@@ -40,6 +76,7 @@ export const piSnapshot: Snapshot = {
       ipv6: ['2001:db8::15'],
     },
   ],
+  routing: piRouting,
 };
 
 export const genericModeAlert: Alert = {

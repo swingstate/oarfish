@@ -17,7 +17,7 @@ const keepEmbedDir: Plugin = {
   },
 };
 
-// The development scenario modes (src/dev/updateMock.ts, src/dev/servicesMock.ts)
+// The development scenario modes (src/dev/updateMock.ts, src/dev/servicesMock.ts, src/dev/metricsMock.ts)
 // must never reach a release: the build fails if their marker or the name of an
 // installer is in any output file.
 const devMockMarker = 'oarfish-dev-mock';
@@ -27,7 +27,7 @@ const noDevMock: Plugin = {
   generateBundle(_options, bundle) {
     for (const [file, out] of Object.entries(bundle)) {
       const text = out.type === 'chunk' ? out.code : typeof out.source === 'string' ? out.source : new TextDecoder().decode(out.source);
-      if (text.includes(devMockMarker) || text.includes('installUpdateMock') || text.includes('installServicesMock')) {
+      if (text.includes(devMockMarker) || text.includes('installUpdateMock') || text.includes('installServicesMock') || text.includes('installMetricsMock')) {
         this.error(`${file} contains the development scenario mode; it must not be in a production build`);
       }
     }

@@ -21,6 +21,7 @@ export const piZero2W: Device = {
     arch: 'arm64',
     revision_code: '902120',
     memory_total_bytes: 415404 * 1024,
+    memory_installed_bytes: 512 * 1048576,
   },
   os: {
     id: 'debian',
@@ -31,7 +32,7 @@ export const piZero2W: Device = {
     adapter_status: 'initial-target',
   },
   kernel: { release: '6.18.50+rpt-rpi-v8' },
-  profile: { id: 'raspberry-pi-zero-2-w', version: '1.0.0', matched_by: 'compatible' },
+  profile: { id: 'raspberry-pi-zero-2-w', version: '1.1.0', matched_by: 'compatible' },
   support: {
     tier: 'compatible',
     reason: 'profile_not_verified',
@@ -53,6 +54,7 @@ export const genericArm64: Device = {
     arch: 'arm64',
     revision_code: null,
     memory_total_bytes: 8161000 * 1024,
+    memory_installed_bytes: null,
   },
   os: {
     id: 'debian',

@@ -17,6 +17,8 @@ export interface Device {
     arch: string;
     revision_code: string | null;
     memory_total_bytes: number | null;
+    /** The memory on the board, from its profile (task N0); null or missing when not known. */
+    memory_installed_bytes?: number | null;
   };
   os: {
     id: string | null;

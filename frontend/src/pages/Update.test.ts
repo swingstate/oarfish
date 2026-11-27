@@ -12,6 +12,7 @@ import { sentinelCsrf, signedIn } from '../lib/session.fixtures';
 import { available, nextVersion, sampleNotes, updateScenarios, upToDate, withState } from '../lib/update.fixtures';
 import type { UpdateState } from '../lib/update';
 import { updateErrorText } from '../lib/updateErrors';
+import { forgetPageVersion, pageReload } from '../lib/version';
 
 const sentinelPassword = 'Update-Sentinel-Pw-8d2b';
 
@@ -451,7 +452,7 @@ describe('apply', () => {
   });
 
   for (const [code, status, extra, expected] of [
-    ['wrong_password', 403, {}, () => t.errorCurrentPassword],
+    ['wrong_password', 403, {}, () => t.updWrongPassword],
     ['rate_limited', 429, { retry_after_seconds: 8 }, () => fmt('errorRateLimitedSeconds', { seconds: 8 })],
     ['busy', 409, {}, () => t['updErr.busy']],
     ['version_mismatch', 409, {}, () => t['updErr.version_mismatch']],
@@ -555,6 +556,107 @@ describe('apply', () => {
     await flush();
     expect(calls.find((c) => c.key === DISCARD)!.body).toEqual({ version: nextVersion });
     expect(screen.queryByTestId('upd-components')).toBeNull();
+  });
+});
+
+// ---- the reload after an update (task N0, ADR 0011 A8.8) ------------------------------
+
+describe('reload after an update', () => {
+  const HEALTH = 'GET /healthz';
+  let reload: ReturnType<typeof vi.spyOn>;
+  let running: string | null;
+  const health = () => (running === null ? ('network' as const) : ok({ status: 'ok', version: running, pid: 4242 }));
+
+  beforeEach(() => {
+    forgetPageVersion();
+    sessionStorage.clear();
+    reload = vi.spyOn(pageReload, 'run').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    reload.mockRestore();
+    forgetPageVersion();
+    sessionStorage.clear();
+  });
+
+  it('loads the new page once /healthz reports the new version, and stops polling', async () => {
+    running = '0.1.0-alpha.14';
+    let reply: Reply = ok(scenario('apply-activating'));
+    await open(() => reply, { [HEALTH]: health });
+    await flush(2000);
+    expect(reload).not.toHaveBeenCalled(); // the old process still answers
+    // The switch: the old process is gone, then the new one answers /healthz (and 401 for the State).
+    running = null;
+    reply = 'network';
+    await flush(2000);
+    expect(reload).not.toHaveBeenCalled();
+    running = '0.1.0-alpha.15';
+    reply = err(401, 'unauthenticated');
+    const before = count(GET);
+    await flush(2000);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(count(GET)).toBe(before); // the reload comes before the State is read again
+    await flush(20_000);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(count(GET)).toBe(before);
+  });
+
+  it('does not reload while the version stays the same (a rollback to the version of the page)', async () => {
+    running = '0.1.0-alpha.14';
+    let reply: Reply = ok(scenario('apply-activating'));
+    await open(() => reply, { [HEALTH]: health });
+    reply = 'network';
+    await flush(2000);
+    reply = ok(scenario('result-success'));
+    await flush(2000);
+    await flush(20_000);
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('upd-reload-hint')).toBeNull();
+  });
+
+  it('reloads when the page opens on a service of another version (after signing in again)', async () => {
+    running = '0.1.0-alpha.14';
+    await open(upToDate(), { [HEALTH]: health });
+    expect(reload).not.toHaveBeenCalled();
+    cleanup();
+    running = '0.1.0-alpha.15'; // the page in memory is still the one of alpha.14
+    render(Update);
+    await flush();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks the person to reload in one sentence when a reload for this version did not help', async () => {
+    running = '0.1.0-alpha.14';
+    await open(upToDate(), { [HEALTH]: health });
+    sessionStorage.setItem('oarfish.reloadedFor', '0.1.0-alpha.15');
+    cleanup();
+    running = '0.1.0-alpha.15';
+    render(Update);
+    await flush();
+    expect(reload).not.toHaveBeenCalled();
+    expect(text('upd-reload-hint')).toBe('Laden Sie die Seite neu, damit sie Version 0.1.0-alpha.15 zeigt.');
+    expect(en.updReloadHint).toBe('Reload the page so that it shows version {version}.');
+  });
+
+  it('does nothing when the version cannot be read', async () => {
+    running = null;
+    let reply: Reply = ok(scenario('apply-activating'));
+    await open(() => reply, { [HEALTH]: health });
+    reply = 'network';
+    for (let i = 0; i < 5; i++) await flush(2000);
+    running = '0.1.0-alpha.15'; // the page's own version was never known
+    reply = ok(scenario('result-success'));
+    await flush(2000);
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('upd-reload-hint')).toBeNull();
+  });
+
+  it('reads /healthz only around the switch, not while downloading', async () => {
+    running = '0.1.0-alpha.14';
+    await open(scenario('apply-downloading'), { [HEALTH]: health });
+    const atOpen = count(HEALTH);
+    await flush(2000);
+    await flush(2000);
+    expect(count(HEALTH)).toBe(atOpen);
   });
 });
 

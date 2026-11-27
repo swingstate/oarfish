@@ -74,7 +74,9 @@ export type UpdateErrorField = 'password' | null;
 export function actionErrorText(code: string, retryAfter: number | null = null): { text: string; field: UpdateErrorField } {
   switch (code) {
     case 'wrong_password':
-      return { text: t.errorCurrentPassword, field: 'password' };
+      // Its own sentence (task N0): this step asks for the password, not the
+      // "current" one of the account page.
+      return { text: t.updWrongPassword, field: 'password' };
     case 'rate_limited':
       // The password limiter and GitHub's limit share the code; the sentence fits both.
       return { text: waitText(retryAfter), field: null };

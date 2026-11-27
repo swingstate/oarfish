@@ -164,7 +164,11 @@ describe('error sentences of the update routes', () => {
   });
 
   it('maps the access and body codes of the action answers', () => {
-    expect(actionErrorText('wrong_password')).toEqual({ text: t.errorCurrentPassword, field: 'password' });
+    expect(actionErrorText('wrong_password')).toEqual({ text: t.updWrongPassword, field: 'password' });
+    // Task N0: the update page's own sentence; the account page keeps "aktuelle".
+    expect(de.updWrongPassword).toBe('Das Passwort ist falsch.');
+    expect(en.updWrongPassword).toBe('The password is wrong.');
+    expect(de.errorCurrentPassword).toBe('Das aktuelle Passwort ist falsch.');
     expect(actionErrorText('rate_limited', 1).text).toBe(t.errorRateLimitedOneSecond);
     expect(actionErrorText('csrf_failed').text).toBe(t['updErr.request_rejected']);
     expect(actionErrorText('origin_rejected').text).toBe(t['updErr.request_rejected']);
