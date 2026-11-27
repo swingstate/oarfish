@@ -21,7 +21,7 @@ The status of every gate and task, and the order of the work from now (D-C101 it
 | (task) metrics test race | A racy test of the metrics sampler fixed, test file only (PR #40). |
 | (task) U1 | UI shell: navigation, language choice, tokens, colour baseline, logo mark (PR #34; [`UI.md`](UI.md)). |
 | (task) N0 | Default route and DNS on the network card, the installed memory on the Gerät page (ADR 0008 "N0 as implemented", PR #68). Released in `v0.1.0-alpha.15` and observed on the reference device (ADR 0008 N0.9). Open: the resolver-stub fallback, the SSID (with D-D10) and the reload after the next update. |
-| (task) C1 | Documentation cleanup, D-C101 and D-C102, `debian:13` and the N0 fuzz targets in CI, the signing approval in `release.yml`, board profile 1.2.0 (limitation `evidence_one_device`). Status: pull request open. |
+| (task) C1 | Documentation cleanup, D-C101 and D-C102, `debian:13` and the N0 fuzz targets in CI, the signing approval in `release.yml`, board profile 1.2.0 (limitation `evidence_one_device`). Status: pull request open (PR #70). |
 
 Nothing is Verified; the reference device (one Raspberry Pi Zero 2 W with Raspberry Pi OS Lite 64-bit) is Compatible.
 
