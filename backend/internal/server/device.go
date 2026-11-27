@@ -40,6 +40,9 @@ type deviceHardware struct {
 	Arch             string  `json:"arch"`
 	RevisionCode     *string `json:"revision_code"`
 	MemoryTotalBytes *uint64 `json:"memory_total_bytes"`
+	// MemoryInstalledBytes is the memory on the board, from the matched board
+	// profile (task N0); null for a board whose profile does not name it.
+	MemoryInstalledBytes *uint64 `json:"memory_installed_bytes"`
 }
 
 type deviceOS struct {
@@ -122,6 +125,10 @@ func buildDeviceResponse(src DeviceSource) deviceResponse {
 	if r.Hardware.MemoryTotalBytes > 0 {
 		m := r.Hardware.MemoryTotalBytes
 		resp.Hardware.MemoryTotalBytes = &m
+	}
+	if r.InstalledMemoryBytes > 0 {
+		m := r.InstalledMemoryBytes
+		resp.Hardware.MemoryInstalledBytes = &m
 	}
 	for _, c := range r.Capabilities {
 		dc := deviceCapability{ID: c.ID, Available: c.Available, Source: c.Source}

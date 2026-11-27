@@ -32,6 +32,9 @@ type Result struct {
 	// one, else what hardware detection found.
 	SoCFamily string
 	Support   Support
+	// InstalledMemoryBytes is the memory on the board from the matched board
+	// profile, 0 when no board profile matched or the profile does not say.
+	InstalledMemoryBytes uint64
 }
 
 // Detector holds the detection result and the temperature sensor.
@@ -52,6 +55,10 @@ func New(fsys fs.FS, env hardware.Env, reg *profiles.Registry) *Detector {
 	if match.SoC != nil {
 		soc = match.SoC.SoCFamily
 	}
+	var installed uint64
+	if match.IsBoard() && match.Profile.InstalledMemoryMiB > 0 {
+		installed = uint64(match.Profile.InstalledMemoryMiB) << 20
+	}
 	return &Detector{
 		result: Result{
 			Hardware:     hw,
@@ -65,6 +72,8 @@ func New(fsys fs.FS, env hardware.Env, reg *profiles.Registry) *Detector {
 			},
 			SoCFamily: soc,
 			Support:   computeSupport(hw, osInfo, caps, match),
+
+			InstalledMemoryBytes: installed,
 		},
 		sensor: caps.Temperature,
 	}

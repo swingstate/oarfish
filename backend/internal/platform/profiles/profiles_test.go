@@ -69,6 +69,10 @@ func TestShippedPiZero2WProfile(t *testing.T) {
 	if m.SoC == nil || m.SoC.SoCFamily != "BCM2837" || m.Profile.SupportTier != TierCompatible {
 		t.Fatalf("soc/tier wrong: %+v", m)
 	}
+	// Task N0: the board exists with 512 MiB only.
+	if m.Profile.InstalledMemoryMiB != 512 || m.Profile.Version != "1.1.0" {
+		t.Errorf("installed memory %d, version %s", m.Profile.InstalledMemoryMiB, m.Profile.Version)
+	}
 }
 
 // ORB-HW-008: the validator rejects what it must reject.
@@ -173,10 +177,30 @@ func TestKindSpecificRules(t *testing.T) {
 		"generic with patterns": `{"schema_version":1,"kind":"generic","profile_id":"generic-arm64","version":"1.0.0","vendor":"V","compatible_patterns":["a,b"],"support_tier":"generic","maintainers":["M"]}`,
 		"generic with wrong id": `{"schema_version":1,"kind":"generic","profile_id":"other","version":"1.0.0","vendor":"V","compatible_patterns":[],"support_tier":"generic","maintainers":["M"]}`,
 		"generic with tier":     `{"schema_version":1,"kind":"generic","profile_id":"generic-arm64","version":"1.0.0","vendor":"V","compatible_patterns":[],"support_tier":"verified","maintainers":["M"]}`,
+		// Task N0: installed_memory_mib is a fact of one board.
+		"soc with installed memory":     strings.Replace(soc, `"soc_family":"X1"`, `"soc_family":"X1","installed_memory_mib":512`, 1),
+		"generic with installed memory": `{"schema_version":1,"kind":"generic","profile_id":"generic-arm64","version":"1.0.0","vendor":"V","compatible_patterns":[],"support_tier":"generic","maintainers":["M"],"installed_memory_mib":512}`,
+		"board with negative memory":    strings.Replace(validBoardForMemory, `"installed_memory_mib":512`, `"installed_memory_mib":-1`, 1),
+		"board with absurd memory":      strings.Replace(validBoardForMemory, `"installed_memory_mib":512`, `"installed_memory_mib":1048577`, 1),
+		"board with fractional memory":  strings.Replace(validBoardForMemory, `"installed_memory_mib":512`, `"installed_memory_mib":512.5`, 1),
+		"board with memory as text":     strings.Replace(validBoardForMemory, `"installed_memory_mib":512`, `"installed_memory_mib":"512"`, 1),
 	} {
 		if _, err := Parse([]byte(js)); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+const validBoardForMemory = `{"schema_version":1,"kind":"board","profile_id":"board-x","version":"1.0.0","vendor":"V","model":"Board X","soc_family":"X1",
+  "compatible_patterns":["v,board-x"],"os_constraints":{"adapters":["raspberry_pi_os"]},"support_tier":"compatible","maintainers":["M"],"installed_memory_mib":512}`
+
+func TestBoardWithInstalledMemoryParses(t *testing.T) {
+	p, err := Parse([]byte(validBoardForMemory))
+	if err != nil || p.InstalledMemoryMiB != 512 {
+		t.Fatalf("%+v, %v", p, err)
+	}
+	if _, err := Parse([]byte(strings.Replace(validBoardForMemory, `512`, `1048576`, 1))); err != nil {
+		t.Errorf("the upper bound must be accepted: %v", err)
 	}
 }
 

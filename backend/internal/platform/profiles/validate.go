@@ -100,7 +100,23 @@ func (p *Profile) Validate() error {
 		bad("kind %q is not soc_family, board or generic", p.Kind)
 	}
 	errs = append(errs, p.validateTier()...)
+	errs = append(errs, p.validateInstalledMemory()...)
 	return errors.Join(errs...)
+}
+
+// MaxInstalledMemoryMiB bounds installed_memory_mib (1 TiB).
+const MaxInstalledMemoryMiB = 1 << 20
+
+func (p *Profile) validateInstalledMemory() []error {
+	switch {
+	case p.InstalledMemoryMiB == 0:
+		return nil
+	case p.Kind != KindBoard:
+		return []error{errors.New("only a board profile may set installed_memory_mib")}
+	case p.InstalledMemoryMiB < 0 || p.InstalledMemoryMiB > MaxInstalledMemoryMiB:
+		return []error{fmt.Errorf("installed_memory_mib %d is outside 1 to %d", p.InstalledMemoryMiB, MaxInstalledMemoryMiB)}
+	}
+	return nil
 }
 
 func (p *Profile) validateSoC() []error {
