@@ -14,8 +14,10 @@ import {
   failedList,
   hostileList,
   longList,
+  modesUnavailableList,
   noAction,
   noFailedList,
+  pendingList,
   row,
   running,
   sampleList,
@@ -198,7 +200,7 @@ describe('activity page states', () => {
         failed: rows.filter((r) => r.active_state === 'failed').length,
         inactive: rows.filter((r) => r.active_state === 'inactive').length,
       };
-      await open({ schema_version: 1, read_at: sampleList().read_at, broker_available: true, counts, services: rows });
+      await open({ schema_version: 1, read_at: sampleList().read_at, broker_available: true, start_modes: 'known', start_modes_read_at: null, counts, services: rows });
       const nums = text(byTestId('act-counts')).match(/\d+/g)!.map(Number);
       expect(nums[0], s).toBe(3);
       expect(nums.slice(1).reduce((a, b) => a + b, 0), s).toBe(3);
@@ -266,6 +268,75 @@ describe('activity page states', () => {
 });
 
 // ---- filter, "Mehr anzeigen", "Aktualisieren" ------------------------------------------
+
+// ---- the start modes (ADR 0011 A9) --------------------------------------------------
+
+describe('activity start modes', () => {
+  it('known: the time of the start modes is shown, no note, no re-read', async () => {
+    await open(sampleList());
+    expect(text(byTestId('act-modes-read-at'))).toContain('Startmodi gelesen:');
+    expect(screen.queryByTestId('act-modes-pending')).toBeNull();
+    expect(screen.queryByTestId('act-modes-unavailable')).toBeNull();
+    await flush(60_000);
+    expect(count(LIST)).toBe(1);
+  });
+
+  it('pending: a note, every start mode Unbekannt, and a re-read 3 s after the answer until they are known', async () => {
+    let reads = 0;
+    await open(() => (++reads <= 2 ? ok(pendingList()) : ok(sampleList())));
+    expect(text(byTestId('act-modes-pending'))).toBe(t.actModesPending);
+    for (const r of screen.getAllByTestId('act-mode')) expect(text(r)).toBe(`${t.actStartMode}: ${t.unknownValue}`);
+    expect(screen.getAllByTestId('act-row').some((r) => r.dataset.name === 'demo-idle.service')).toBe(false);
+    expect(text(byTestId('act-counts'))).toContain(`${pendingList().counts.total} Dienste`);
+    await flush(2_999);
+    expect(count(LIST)).toBe(1);
+    await flush(1);
+    expect(count(LIST)).toBe(2);
+    await flush(3_000);
+    expect(count(LIST)).toBe(3);
+    expect(screen.queryByTestId('act-modes-pending')).toBeNull();
+    expect(text(rowOf('demo-idle.service'))).toContain(de['actMode.disabled']);
+    await flush(60_000);
+    expect(count(LIST)).toBe(3);
+  });
+
+  it('pending: at most 10 re-reads in a row; Aktualisieren starts the count again', async () => {
+    await open(pendingList());
+    await flush(120_000);
+    expect(count(LIST)).toBe(11);
+    expect(text(byTestId('act-modes-pending'))).toBe(t.actModesPending);
+    await fireEvent.click(byTestId('act-refresh'));
+    await flush(120_000);
+    expect(count(LIST)).toBe(22);
+  });
+
+  it('pending: leaving the page stops the re-reads', async () => {
+    await open(pendingList());
+    cleanup();
+    await flush(60_000);
+    expect(count(LIST)).toBe(1);
+  });
+
+  it('unavailable: a note, Unbekannt, the list stays usable, no re-read', async () => {
+    await open(modesUnavailableList());
+    expect(text(byTestId('act-modes-unavailable'))).toBe(t.actModesUnavailable);
+    for (const r of screen.getAllByTestId('act-mode')) expect(text(r)).toBe(`${t.actStartMode}: ${t.unknownValue}`);
+    expect(within(rowOf('demo-app.service')).getByTestId('act-actions')).toBeTruthy();
+    await flush(60_000);
+    expect(count(LIST)).toBe(1);
+  });
+
+  it('a start-mode state this version does not know is shown like unavailable', async () => {
+    await open({ ...modesUnavailableList(), start_modes: 'later-word' });
+    expect(text(byTestId('act-modes-unavailable'))).toBe(t.actModesUnavailable);
+  });
+
+  it('English texts', async () => {
+    setLang('en');
+    await open(pendingList());
+    expect(text(byTestId('act-modes-pending'))).toBe(en.actModesPending);
+  });
+});
 
 describe('activity list tools', () => {
   it('filters by name and description, and by state, and says when nothing matches', async () => {
@@ -559,6 +630,9 @@ describe('activity scenario mode', () => {
       'list-with-failed',
       'list-in-transition',
       'broker-unavailable',
+      'start-modes-pending',
+      'start-modes-pending-long',
+      'start-modes-unavailable',
       'action-flow',
       'action-timeout',
       'action-rate-limited',
@@ -614,6 +688,18 @@ describe('activity scenario mode', () => {
           break;
         case 'list-in-transition':
           expect(text(byTestId('act-counts'))).toContain('1 im Übergang');
+          break;
+        case 'start-modes-pending':
+          expect(text(byTestId('act-modes-pending'))).toBe(t.actModesPending);
+          await flush(7_000);
+          expect(screen.queryByTestId('act-modes-pending')).toBeNull();
+          expect(byTestId('act-modes-read-at')).toBeTruthy();
+          break;
+        case 'start-modes-pending-long':
+          expect(text(byTestId('act-modes-pending'))).toBe(t.actModesPending);
+          break;
+        case 'start-modes-unavailable':
+          expect(text(byTestId('act-modes-unavailable'))).toBe(t.actModesUnavailable);
           break;
         default: {
           expect(screen.getAllByTestId('act-row').length).toBeGreaterThan(5);

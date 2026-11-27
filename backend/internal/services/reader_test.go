@@ -151,23 +151,17 @@ func TestReadUnavailable(t *testing.T) {
 	}
 }
 
-// A non-zero exit, output over the bound, output this version does not
-// accept, or the deadline: services_read_failed, and no half list.
+// A failed list-units (a non-zero exit, output over the bound, output this
+// version does not accept, or the deadline): services_read_failed, and no
+// half list.
 func TestReadFailed(t *testing.T) {
 	for name, setup := range map[string]func(f *fakeSystemctl){
 		"exit units": func(f *fakeSystemctl) { f.set(1, "out", fixtureUnits); f.set(1, "exit", "1") },
-		"exit files": func(f *fakeSystemctl) {
-			f.set(1, "out", fixtureUnits)
-			f.set(2, "out", fixtureFiles)
-			f.set(2, "exit", "4")
-		},
-		"1 MiB":     func(f *fakeSystemctl) { f.set(1, "out", string(make([]byte, 1<<20))) },
-		"bad state": func(f *fakeSystemctl) { f.set(1, "out", fixtureUnits); f.set(2, "out", "a.service bad enabled\n") },
+		"1 MiB":      func(f *fakeSystemctl) { f.set(1, "out", string(make([]byte, 1<<20))) },
 		"bad name": func(f *fakeSystemctl) {
 			f.set(1, "out", "../a.service loaded active running x\n")
 			f.set(2, "out", fixtureFiles)
 		},
-		"two columns": func(f *fakeSystemctl) { f.set(1, "out", fixtureUnits); f.set(2, "out", "a.service enabled\n") },
 		"bad sub state": func(f *fakeSystemctl) {
 			f.set(1, "out", "a.service loaded active zombie x\n")
 			f.set(2, "out", fixtureFiles)
@@ -180,6 +174,9 @@ func TestReadFailed(t *testing.T) {
 		if e == nil || e.Code != CodeReadFailed || list.Rows != nil {
 			t.Errorf("%s: %+v %+v", name, e, list)
 		}
+		if f.count() != 1 {
+			t.Errorf("%s: %d calls, the unit files were read after a failed list", name, f.count())
+		}
 	}
 	// The deadline, through a Go runner (the real one is tested in systemctl_test.go).
 	f := newFakeSystemctl(t)
@@ -189,6 +186,41 @@ func TestReadFailed(t *testing.T) {
 	}
 	if _, e := r.read(context.Background()); e == nil || e.Code != CodeReadFailed {
 		t.Errorf("deadline: %+v", e)
+	}
+}
+
+// A failed list-unit-files does not fail the list (A9): the list is answered
+// from list-units alone, every start mode unknown, the rows that only the
+// unit files name missing, and the status unavailable.
+func TestUnitFilesFailedListStillAnswered(t *testing.T) {
+	for name, setup := range map[string]func(f *fakeSystemctl){
+		"exit files":  func(f *fakeSystemctl) { f.set(2, "out", fixtureFiles); f.set(2, "exit", "4") },
+		"bad state":   func(f *fakeSystemctl) { f.set(2, "out", "a.service bad enabled\n") },
+		"two columns": func(f *fakeSystemctl) { f.set(2, "out", "a.service enabled\n") },
+		"1 MiB":       func(f *fakeSystemctl) { f.set(2, "out", string(make([]byte, 1<<20))) },
+	} {
+		f := newFakeSystemctl(t)
+		f.set(1, "out", fixtureUnits)
+		setup(f)
+		r, _ := testReader(t, f)
+		list, e := r.read(context.Background())
+		if e != nil {
+			t.Fatalf("%s: %+v", name, e)
+		}
+		if list.StartModes != StartModesUnavailable || !list.StartModesReadAt.IsZero() {
+			t.Errorf("%s: %q %v", name, list.StartModes, list.StartModesReadAt)
+		}
+		if len(list.Rows) != 10 || slices.Contains(names(list.Rows), "demo-idle.service") {
+			t.Errorf("%s: rows %v", name, names(list.Rows))
+		}
+		for _, row := range list.Rows {
+			if row.StartMode != "" {
+				t.Errorf("%s: %s has start mode %q", name, row.Name, row.StartMode)
+			}
+		}
+		if list.Counts.Total != len(list.Rows) {
+			t.Errorf("%s: counts %+v for %d rows", name, list.Counts, len(list.Rows))
+		}
 	}
 }
 
@@ -209,14 +241,14 @@ func TestJoinBound(t *testing.T) {
 }
 
 // The cache (B2): a second read within 5 s starts no process; after 5 s it
-// reads again. A failure is kept for 5 s as well.
+// reads list-units again, and only list-units (the unit-file states have their
+// own store, A9). A failure is kept for 5 s as well.
 func TestCache(t *testing.T) {
 	f := newFakeSystemctl(t)
 	f.set(0, "out", "")
 	f.set(1, "out", fixtureUnits)
 	f.set(2, "out", fixtureFiles)
 	f.set(3, "out", fixtureUnits)
-	f.set(4, "out", fixtureFiles)
 	r, c := testReader(t, f)
 	first, _ := r.read(context.Background())
 	c.Advance(4 * time.Second)
@@ -226,8 +258,11 @@ func TestCache(t *testing.T) {
 	}
 	c.Advance(time.Second)
 	third, e := r.read(context.Background())
-	if e != nil || f.count() != 4 || !third.ReadAt.After(first.ReadAt) {
+	if e != nil || f.count() != 3 || !third.ReadAt.After(first.ReadAt) || !slices.Equal(f.args(3), shapeListUnits) {
 		t.Fatalf("calls %d, %v", f.count(), e)
+	}
+	if third.StartModes != StartModesKnown || !third.StartModesReadAt.Equal(first.StartModesReadAt) || len(third.Rows) != 12 {
+		t.Errorf("third: %q %v %d rows", third.StartModes, third.StartModesReadAt, len(third.Rows))
 	}
 	if c.Pending() != 0 {
 		t.Errorf("%d timers: the read path has no background work", c.Pending())
@@ -245,7 +280,7 @@ func TestCache(t *testing.T) {
 		t.Errorf("failure not cached: %d calls", g.count())
 	}
 	cg.Advance(cacheFor)
-	rg.read(context.Background()) // reads again: list-units and list-unit-files
+	rg.read(context.Background()) // reads again: list-units and then list-unit-files
 	if g.count() != 3 {
 		t.Errorf("failure kept too long: %d calls", g.count())
 	}
@@ -276,21 +311,21 @@ func TestInvalidate(t *testing.T) {
 	}
 	r.invalidate()
 	r.read(context.Background())
-	if calls.Load() != 4 {
-		t.Fatalf("after invalidate: %d calls", calls.Load())
+	if calls.Load() != 3 {
+		t.Fatalf("after invalidate: %d calls (list-units only; the unit-file states stay)", calls.Load())
 	}
 	// Dropped while a read runs.
 	r.invalidate()
 	block.Store(true)
 	done := make(chan struct{})
 	go func() { r.read(context.Background()); close(done) }()
-	waitFor(t, "the read to start", func() bool { return calls.Load() == 5 })
+	waitFor(t, "the read to start", func() bool { return calls.Load() == 4 })
 	r.invalidate()
 	block.Store(false)
 	close(release)
 	<-done
 	r.read(context.Background())
-	if calls.Load() != 8 {
+	if calls.Load() != 5 {
 		t.Errorf("the stale read filled the cache: %d calls", calls.Load())
 	}
 }

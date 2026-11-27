@@ -835,6 +835,9 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `actRefresh` | Aktualisieren | Refresh |
 | `actRefreshing` | Wird gelesen … | Reading … |
 | `actReadAt` | Gelesen: {time} | Read: {time} |
+| `actModesReadAt` | Startmodi gelesen: {time} | Start modes read: {time} |
+| `actModesPending` | Die Startmodi werden noch gelesen. Die Liste ist vielleicht unvollständig: Dienste, die nicht geladen sind, fehlen noch. | The start modes are still being read. The list may be incomplete: services that are not loaded are still missing. |
+| `actModesUnavailable` | Die Startmodi konnten nicht gelesen werden. Die Liste ist vielleicht unvollständig: Dienste, die nicht geladen sind, fehlen. | The start modes could not be read. The list may be incomplete: services that are not loaded are missing. |
 | `actCounts` | {total} Dienste, davon {active} aktiv, {failed} fehlgeschlagen und {inactive} inaktiv. | {total} services: {active} active, {failed} failed and {inactive} inactive. |
 | `actCountsTransition` | {total} Dienste, davon {active} aktiv, {failed} fehlgeschlagen, {inactive} inaktiv und {transition} im Übergang. | {total} services: {active} active, {failed} failed, {inactive} inactive and {transition} in transition. |
 | `actFilterLabel` | Name oder Beschreibung enthält | Name or description contains |

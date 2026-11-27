@@ -23,12 +23,16 @@
   } from '../lib/services';
   import { criticalNote, errorText, kindText, resultText, startModeText, stateText } from '../lib/serviceErrors';
 
-  // ADR 0011 B2, B4; docs/UI.md, "Activity page". The list is read on opening,
-  // on "Aktualisieren" and once after an action ends: no automatic refresh. The
-  // last action is read every 2 s only while one runs; the component's cleanup
-  // stops it. The rows and their buttons are a convenience: the broker decides
-  // again, and every refusal has its own sentence.
+  // ADR 0011 B2, B4, A9; docs/UI.md, "Activity page". The list is read on
+  // opening, on "Aktualisieren" and once after an action ends. While the start
+  // modes are pending it is read again 3 s after each answer, at most 10 times
+  // in a row; nothing else refreshes it. The last action is read every 2 s only
+  // while one runs; the component's cleanup stops both. The rows and their
+  // buttons are a convenience: the broker decides again, and every refusal has
+  // its own sentence.
   const pollMs = 2000;
+  const pendingMs = 3000;
+  const pendingReads = 10;
   const pageSize = 100;
 
   type StateFilter = 'all' | 'active' | 'failed' | 'inactive' | 'transition';
@@ -55,11 +59,17 @@
 
   let alive = true;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+  let pendingLeft = pendingReads;
   let seq = 0;
 
   // ---- the list ------------------------------------------------------------------
 
-  async function load(): Promise<void> {
+  // auto: a re-read while the start modes are pending. Any other read starts
+  // the count of those re-reads again.
+  async function load(auto = false): Promise<void> {
+    clearTimeout(pendingTimer);
+    if (!auto) pendingLeft = pendingReads;
     if (list === null) phase = 'loading';
     refreshing = true;
     const r = await fetchServices();
@@ -69,6 +79,10 @@
       list = r.list;
       phase = 'ready';
       loadMessage = null;
+      if (r.list.start_modes === 'pending' && pendingLeft > 0) {
+        pendingLeft--;
+        pendingTimer = setTimeout(() => void load(true), pendingMs);
+      }
       return;
     }
     if (r.kind === 'systemd') {
@@ -170,6 +184,7 @@
     return () => {
       alive = false;
       clearTimeout(pollTimer);
+      clearTimeout(pendingTimer);
     };
   });
 
@@ -230,6 +245,15 @@
           <button type="button" onclick={() => void load()} disabled={refreshing} data-testid="act-refresh">{refreshing ? t.actRefreshing : t.actRefresh}</button>
           <p class="secondary" data-testid="act-read-at">{fmt('actReadAt', { time: formatDateTime(list.read_at) ?? t.unknownValue })}</p>
         </div>
+        {#if list.start_modes === 'known'}
+          {#if list.start_modes_read_at}
+            <p class="secondary" data-testid="act-modes-read-at">{fmt('actModesReadAt', { time: formatDateTime(list.start_modes_read_at) ?? t.unknownValue })}</p>
+          {/if}
+        {:else if list.start_modes === 'pending'}
+          <p data-testid="act-modes-pending">{t.actModesPending}</p>
+        {:else}
+          <p data-testid="act-modes-unavailable">{t.actModesUnavailable}</p>
+        {/if}
         <p data-testid="act-counts">{countsText}</p>
 
         <div class="filters">

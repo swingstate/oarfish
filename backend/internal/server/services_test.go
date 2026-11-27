@@ -64,7 +64,7 @@ func servicesFixture(t *testing.T, c clock.Clock, svc ServiceControl) (*accessFi
 var readAt = time.Date(2026, 11, 25, 9, 30, 0, 0, time.UTC)
 
 func sampleList() services.List {
-	return services.List{ReadAt: readAt, Counts: services.Counts{Total: 2, Active: 1, Inactive: 1}, Rows: []services.Row{
+	return services.List{ReadAt: readAt, StartModes: services.StartModesKnown, StartModesReadAt: readAt.Add(-time.Minute), Counts: services.Counts{Total: 2, Active: 1, Inactive: 1}, Rows: []services.Row{
 		{Name: "demo-app.service", Description: "Demo <b>app</b>", LoadState: "loaded", ActiveState: "active", SubState: "running", StartMode: "enabled", Actions: []string{"stop", "restart"}},
 		{Name: "ssh.service", Description: "OpenBSD Secure Shell server", LoadState: "loaded", ActiveState: "inactive", SubState: "dead", StartMode: "enabled", RestartOnly: true, Critical: "ssh", Actions: []string{"restart"}},
 	}}
@@ -88,7 +88,7 @@ func TestServicesList(t *testing.T) {
 	f, s := servicesFixture(t, clock.System(), fake)
 	rec := f.do(req{method: http.MethodGet, path: "/api/v1/services", session: &s})
 	expect(t, rec, http.StatusOK, "")
-	want := `{"schema_version":1,"read_at":"2026-11-25T09:30:00Z","broker_available":true,"counts":{"total":2,"active":1,"failed":0,"inactive":1},"services":[` +
+	want := `{"schema_version":1,"read_at":"2026-11-25T09:30:00Z","broker_available":true,"start_modes":"known","start_modes_read_at":"2026-11-25T09:29:00Z","counts":{"total":2,"active":1,"failed":0,"inactive":1},"services":[` +
 		`{"name":"demo-app.service","description":"Demo \u003cb\u003eapp\u003c/b\u003e","load_state":"loaded","active_state":"active","sub_state":"running","start_mode":"enabled","denied":false,"restart_only":false,"critical":"","actions":["stop","restart"]},` +
 		`{"name":"ssh.service","description":"OpenBSD Secure Shell server","load_state":"loaded","active_state":"inactive","sub_state":"dead","start_mode":"enabled","denied":false,"restart_only":true,"critical":"ssh","actions":["restart"]}]}` + "\n"
 	if rec.Body.String() != want {
@@ -99,9 +99,20 @@ func TestServicesList(t *testing.T) {
 		t.Error("broker_available")
 	}
 	// An empty list is an empty array, not null.
-	fake.list = services.List{ReadAt: readAt}
+	fake.list = services.List{ReadAt: readAt, StartModes: services.StartModesKnown, StartModesReadAt: readAt}
 	if m := decode(t, f.do(req{method: http.MethodGet, path: "/api/v1/services", session: &s}).Body.String()); m["services"] == nil {
 		t.Error("services is null")
+	}
+	// Pending and unavailable (ADR 0011 A9): the list is answered, the time of
+	// the start modes is null.
+	for _, st := range []string{services.StartModesPending, services.StartModesUnavailable} {
+		fake.list = services.List{ReadAt: readAt, StartModes: st}
+		rec := f.do(req{method: http.MethodGet, path: "/api/v1/services", session: &s})
+		expect(t, rec, http.StatusOK, "")
+		m := decode(t, rec.Body.String())
+		if v, ok := m["start_modes_read_at"]; m["start_modes"] != st || !ok || v != nil {
+			t.Errorf("%s: %v", st, m)
+		}
 	}
 }
 

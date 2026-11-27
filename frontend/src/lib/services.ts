@@ -59,11 +59,22 @@ export interface ServiceCounts {
   inactive: number;
 }
 
+/**
+ * Where the start modes come from (ADR 0011 A9). `known`: a unit-file read
+ * (start_modes_read_at). `pending`: none is known yet and one runs. `unavailable`:
+ * none is known and the last read failed. While not known, every start_mode is ''
+ * and the services that are not loaded are missing from the list. A word this
+ * version does not know is kept and shown like unavailable.
+ */
+export const startModeStates = ['known', 'pending', 'unavailable'] as const;
+
 /** GET /api/v1/services (schema_version 1). */
 export interface ServicesList {
   schema_version: 1;
   read_at: string;
   broker_available: boolean;
+  start_modes: string;
+  start_modes_read_at: string | null;
   counts: ServiceCounts;
   services: ServiceRow[];
 }
@@ -126,6 +137,8 @@ export function isServicesList(v: unknown): v is ServicesList {
     v.schema_version === 1 &&
     typeof v.read_at === 'string' &&
     typeof v.broker_available === 'boolean' &&
+    typeof v.start_modes === 'string' &&
+    (v.start_modes_read_at === null || typeof v.start_modes_read_at === 'string') &&
     isCounts(v.counts) &&
     Array.isArray(v.services) &&
     v.services.every(isRow)
@@ -199,7 +212,10 @@ async function getJSON(url: string, fetchFn: typeof fetch, timeoutMs: number): P
   }
 }
 
-/** GET /api/v1/services. One list read takes two systemctl calls of at most 5 s each. */
+/**
+ * GET /api/v1/services. The service waits at most 5 s for list-units and then at
+ * most 4 s for the unit-file states (ADR 0011 A9).
+ */
 export async function fetchServices(fetchFn: typeof fetch = fetch, timeoutMs = 15000): Promise<ListResult> {
   const r = await getJSON('/api/v1/services', fetchFn, timeoutMs);
   if (!r.ok) return r;
