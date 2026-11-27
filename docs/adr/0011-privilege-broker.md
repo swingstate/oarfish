@@ -10,35 +10,49 @@
 - Amendment A7 (G7.6 release and device evidence, written 2026-11-26): the first release that carries the broker (`v0.1.0-alpha.13`, the first real run of the two release checks), the installer run with the broker on the reference device and the device evidence per row of the failure matrix and per open device check of A4 to A6, each with its class (C, D or T), what was not observed, one finding (a unit name with an escape is answered `internal`), the open points and the deviations, listed in "Amendment A7 (G7.6 release and device evidence)" below. It takes no decision and edits no sentence of the body or of A1 to A6. Class D evidence is one device, one image, one moment: nothing is Verified, and the reference device stays Compatible. Whether G7 passes is the owner's decision (D-C87 item 15).
 - Amendment A8 (G7-FIX1, quoted names in `show`, written 2026-11-26): the owner's decision that G7 passes (D-C100), systemd's quoting of the property `Names` in the `show` shape with its source, the fix of finding A7.5 in the broker (an entry of `Names` is unquoted by that rule before rule 1 is applied to it), the check of the service side, the tests and the mutations, and three page fixes (the wrong-password sentence of the power dialog, a count line of the page Aktivität that adds up, the tunnel sentence of the status view when the device is back), listed in "Amendment A8 (G7-FIX1, quoted names in show)" below. It edits no sentence of the body or of A1 to A7 except one pointer sentence in A7.5 and one in A7.7. It is class C evidence until the device check of G7-FIX1; the device result (the release `v0.1.0-alpha.14`, the GUI update that replaced the broker, the page with an escaped unit, one finding) is in A8.8, class D on one device, nothing Verified.
 - Date: 2026-11-23
-- Gate: G7; steps G7.0 (design stop) and G7.1 (device spike) are done; G7.2 (broker core), G7.3 (packaging, G7.3a to G7.3c) and G7.4 (service side and Activity page) are merged; G7.5 (reboot and shutdown) is merged (PR #62, D-C94); G7.6 is split into G7.6a (decision records D-C95 to D-C99 and the release texts, text only; merged, PR #64), G7.6b (the release `v0.1.0-alpha.13`, done), G7.6c (device evidence, done; amendment A7) and G7.6d (the closing review: the evidence pull request with A7, merged, PR #65). G7 passed by D-C100 (2026-11-26); the follow-up step G7-FIX1 (amendment A8) fixes finding A7.5
+- Gate: G7, **passed** by D-C100 (2026-11-26), steps G7.0 to G7.6d and the follow-up G7-FIX1 in the amendments A1 to A8. Task C1 (2026-11-27): the section [Current state](#current-state) and a risk added to [Risks](#risks) (the reboot loop)
 - Written against: `main` at commit `4f1b5d13accc7373e5fee586c0defe45e9b7ae0c` (merge of PR #52)
 - Decision numbers: this ADR uses draft numbers `D-DRAFT-G7-nn` only. They become `D-C87` and later when the owner accepts them (`D-C82` stays reserved). `docs/DECISIONS.md` is not changed by this ADR.
 - Amends nothing. Where an accepted text (ADR 0009, ADR 0010, the specification) would need a change, this ADR lists it as a proposal in "Conflicts and gaps" and in "Amendments this ADR would need".
 
 ## Contents
 
-1. [How to read this ADR](#how-to-read-this-adr)
-2. [Context](#context)
-3. [Facts found](#facts-found)
-4. [Decisions proposed](#decisions-proposed) (B1 to B10)
-5. [Failure matrix](#failure-matrix)
-6. [Threat model](#threat-model)
-7. [Rejected alternatives (summary)](#rejected-alternatives-summary)
-8. [Requirements and what G7.0 meets](#requirements-and-what-g70-meets)
-9. [Not decided here](#not-decided-here)
-10. [Conflicts and gaps](#conflicts-and-gaps)
-11. [Amendments this ADR would need](#amendments-this-adr-would-need)
-12. [Risks](#risks)
-13. [Draft decisions for the owner](#draft-decisions-for-the-owner)
-14. [Assumptions to verify](#assumptions-to-verify)
-15. [Amendment A1 (G7.0 owner decisions)](#amendment-a1-g70-owner-decisions)
-16. [Amendment A2 (G7.1 device spike findings)](#amendment-a2-g71-device-spike-findings)
-17. [Amendment A3 (G7.1 owner decisions)](#amendment-a3-g71-owner-decisions)
-18. [Amendment A4 (G7.2 broker core as implemented)](#amendment-a4-g72-broker-core-as-implemented)
-19. [Amendment A5 (G7.4 service side and Activity page as implemented)](#amendment-a5-g74-service-side-and-activity-page-as-implemented)
-20. [Amendment A6 (G7.5 reboot and shutdown as implemented)](#amendment-a6-g75-reboot-and-shutdown-as-implemented)
-21. [Amendment A7 (G7.6 release and device evidence)](#amendment-a7-g76-release-and-device-evidence)
-22. [Amendment A8 (G7-FIX1, quoted names in show)](#amendment-a8-g7-fix1-quoted-names-in-show)
+1. [Current state](#current-state)
+2. [How to read this ADR](#how-to-read-this-adr)
+3. [Context](#context)
+4. [Facts found](#facts-found)
+5. [Decisions proposed](#decisions-proposed) (B1 to B10)
+6. [Failure matrix](#failure-matrix)
+7. [Threat model](#threat-model)
+8. [Rejected alternatives (summary)](#rejected-alternatives-summary)
+9. [Requirements and what G7.0 meets](#requirements-and-what-g70-meets)
+10. [Not decided here](#not-decided-here)
+11. [Conflicts and gaps](#conflicts-and-gaps)
+12. [Amendments this ADR would need](#amendments-this-adr-would-need)
+13. [Risks](#risks)
+14. [Draft decisions for the owner](#draft-decisions-for-the-owner)
+15. [Assumptions to verify](#assumptions-to-verify)
+16. [Amendment A1 (G7.0 owner decisions)](#amendment-a1-g70-owner-decisions)
+17. [Amendment A2 (G7.1 device spike findings)](#amendment-a2-g71-device-spike-findings)
+18. [Amendment A3 (G7.1 owner decisions)](#amendment-a3-g71-owner-decisions)
+19. [Amendment A4 (G7.2 broker core as implemented)](#amendment-a4-g72-broker-core-as-implemented)
+20. [Amendment A5 (G7.4 service side and Activity page as implemented)](#amendment-a5-g74-service-side-and-activity-page-as-implemented)
+21. [Amendment A6 (G7.5 reboot and shutdown as implemented)](#amendment-a6-g75-reboot-and-shutdown-as-implemented)
+22. [Amendment A7 (G7.6 release and device evidence)](#amendment-a7-g76-release-and-device-evidence)
+23. [Amendment A8 (G7-FIX1, quoted names in show)](#amendment-a8-g7-fix1-quoted-names-in-show)
+
+## Current state
+
+What holds today (task C1, 2026-11-27), so that a reader does not have to read every amendment. The amendments stay as the history and govern where they say more. G7 passed (D-C100); the device evidence is in A7 and A8.8. Nothing is Verified; the reference device is Compatible.
+
+- **Process.** `oarfish-broker` runs as root, socket-activated on `/run/oarfish-broker/broker.sock` (0660 `root:oarfish`, peer uid checked with `SO_PEERCRED`), keeps no persistent state and has no recover unit, an empty capability set, no writable path and no network; standard library only (B1, B8, A4). It exits 30 s after its rate window is empty.
+- **Operations.** A closed list, protocol 1: `status`, `service.start`, `service.stop`, `service.restart` (with a unit name) and `system.reboot`, `system.poweroff` (A4.3). No argument is a path, a program, a verb or a property; the only program is `/usr/bin/systemctl` with fixed shapes.
+- **Units.** The broker reads the unit itself and applies the rules of B3 as amended by A3 and A8: syntax and canonical name (a quoted entry of `Names` is unquoted first, A8), a deny list, no one-shot, transient or template-creating starts, and services that can cut the access path are restart-only.
+- **Reading.** The service lists the units itself with two read-only `systemctl` shapes (R1, A5); the page Aktivität shows and filters them.
+- **Authentication.** A session for every route, CSRF as ADR 0009; reboot and shutdown need the current password through the shared limiter (B4, A6); service actions need one confirmation click. The broker trusts the caller's uid, not the person.
+- **Limits in the broker.** One mutating operation at a time, at most 10 service operations per 60 s, one accepted power operation per boot, and no reboot or shutdown while an update transaction holds the helper's lock or phase (B4, B6).
+- **Packaging.** The broker and its two units are part of the helper's component set (L1, ADR 0010 A20 to A22), so a change of them needs the second confirmation of a component update; the first GUI update that replaced the broker ran in G7-FIX1 (A8.8).
+- **Open.** The capability check for plugins is an interface only (B7, G8). D-C101 items 1 to 3 let the design block revise the broker's role: one privileged system service (or two with a common pattern) with a catalogue of typed operations that grows without an installer run, and the authentication rule for root actions.
 
 ## How to read this ADR
 
@@ -462,7 +476,7 @@ Assets: the root-owned control over systemd units and the power state, the avail
 
 | # | Attacker or fault | Threat | Mitigation in this design | Residual risk |
 |---|---|---|---|---|
-| TB1 | Code execution in the service (web-layer bug) | Use the broker to become root or to break the device | Closed allowlist, no path, program, verb or property argument; unit rules of B3 checked by the broker from its own read; deny list; one-shot tasks refused; no template creation; rate limit; reboot refused during an update by the broker | The password and the confirmation are checked only in the service: within the allowlist the attacker can stop or restart allowed services and reboot or power off once per boot without them (B4). Power-off needs a person at the device. |
+| TB1 | Code execution in the service (web-layer bug) | Use the broker to become root or to break the device | Closed allowlist, no path, program, verb or property argument; unit rules of B3 checked by the broker from its own read; deny list; one-shot tasks refused; no template creation; rate limit; reboot refused during an update by the broker | The password and the confirmation are checked only in the service: within the allowlist the attacker can stop or restart allowed services and reboot or power off once per boot without them (B4). Power-off needs a person at the device. Once per boot, every boot, is a reboot loop ([Risks](#risks), added by task C1). |
 | TB2 | Option injection | A unit name that `systemctl` reads as an option | Syntax rule (no leading `-`), `--` before the unit, no shell | None known. |
 | TB3 | Alias or instance trick | Reach a denied unit through an alias, or create an instance with a chosen string | Canonical `Id` required; deny list checked against `Id` and all `Names`; only loaded instances | A unit installed later by an administrator with a dangerous effect and a harmless name is allowed. |
 | TB4 | Second path to a power operation | `service.start systemd-reboot.service` or similar | `systemd-*` denied; one-shot tasks refused | A third-party unit that reboots when started and is not a one-shot unit would pass; accepted, named. |
@@ -560,6 +574,7 @@ Listed as proposals; none is made by this ADR.
 - **Schedule.** G7 now includes a helper change (L1), an installer change against a full budget, and a device spike. D-C69 item 7 already names the MVP as larger than before.
 - **Root code grows.** A second root program exists; it is small, standard library only and has no writable path, but it is root (TB11).
 - **The compromised-service case** allows power-off without the password (TB1). Only the owner can accept that.
+- **Reboot loop of a compromised service** (task C1, finding F-12 of the interim assessment; next to TB1). The limit is one accepted power operation per boot, but the service starts again at every boot, so a compromised service can reboot the device again after each start, without the password. The device then stays unreachable for the person, every boot writes to the SD card, and each reboot voids the update cooldown ([ADR 0010](0010-update-helper.md) U6, corrected by task C1). Not mitigated today; the design block of D-C101 decides it (for example a root-owned record of power operations with a minimum interval across boots, or the person's proof checked at the privileged side, D-C101 item 2).
 - **systemd behaviour** behind A-01 to A-10 is not observed. If `systemctl` needs a capability for some verb, the design stops (B8).
 - **A third-party unit with a dangerous start** that is not a one-shot unit passes the rules (TB4).
 - **Two systemd versions** (257 on the reference image, an older one on Ubuntu Server LTS) may print or behave differently; the read shapes are parsed strictly and a mismatch fails closed.
