@@ -67,7 +67,8 @@ func TestDeviceEndpointPiZero2W(t *testing.T) {
 	}
 	h := r.Hardware
 	if str(h.Vendor) != "Raspberry Pi" || str(h.Model) != "Raspberry Pi Zero 2 W Rev 1.0" || str(h.SoCFamily) != "BCM2837" ||
-		h.Arch != "arm64" || str(h.RevisionCode) != "902120" || h.MemoryTotalBytes == nil || *h.MemoryTotalBytes != 415404*1024 {
+		h.Arch != "arm64" || str(h.RevisionCode) != "902120" || h.MemoryTotalBytes == nil || *h.MemoryTotalBytes != 415404*1024 ||
+		h.MemoryInstalledBytes == nil || *h.MemoryInstalledBytes != 512<<20 {
 		t.Errorf("hardware = %+v", h)
 	}
 	o := r.OS
@@ -78,7 +79,7 @@ func TestDeviceEndpointPiZero2W(t *testing.T) {
 	if str(r.Kernel.Release) != "6.18.50+rpt-rpi-v8" {
 		t.Errorf("kernel = %+v", r.Kernel)
 	}
-	if r.Profile != (deviceProfile{ID: "raspberry-pi-zero-2-w", Version: "1.0.0", MatchedBy: "compatible"}) {
+	if r.Profile != (deviceProfile{ID: "raspberry-pi-zero-2-w", Version: "1.1.0", MatchedBy: "compatible"}) {
 		t.Errorf("profile = %+v", r.Profile)
 	}
 	if r.Support.Tier != "compatible" || r.Support.Reason != "profile_not_verified" || !r.Support.BoardActionsAllowed ||
@@ -112,7 +113,9 @@ func TestDeviceEndpointGenericARM64(t *testing.T) {
 	if r.Support.Tier != "generic" || r.Support.BoardActionsAllowed || r.Support.ExplanationKey != "support.generic.no_board_profile" {
 		t.Errorf("support = %+v", r.Support)
 	}
-	if str(r.Hardware.Model) != "Synthetic Board A1" || r.Hardware.Vendor != nil || r.Hardware.RevisionCode != nil || r.Hardware.SoCFamily != nil {
+	// Task N0: no board profile, so the installed memory is not known (null), even with a total of about 8 GiB.
+	if str(r.Hardware.Model) != "Synthetic Board A1" || r.Hardware.Vendor != nil || r.Hardware.RevisionCode != nil || r.Hardware.SoCFamily != nil ||
+		r.Hardware.MemoryTotalBytes == nil || r.Hardware.MemoryInstalledBytes != nil {
 		t.Errorf("hardware = %+v", r.Hardware)
 	}
 	if r.OS.Adapter != "debian_family" || r.OS.AdapterStatus != "generic" || r.BootMedium.Type != "nvme" {

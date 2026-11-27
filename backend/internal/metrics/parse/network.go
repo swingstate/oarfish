@@ -169,3 +169,149 @@ func DerivedFromHardwareAddress(a netip.Addr) bool {
 	b := a.As16()
 	return b[11] == 0xff && b[12] == 0xfe
 }
+
+// DefaultRoute is the default route of one address family.
+type DefaultRoute struct {
+	Iface string
+	// Gateway is the next hop. It is the zero Addr for a default route
+	// without a gateway (a point-to-point link or a tunnel).
+	Gateway netip.Addr
+	Metric  uint32
+}
+
+// Route flags of the kernel (include/uapi/linux/route.h, ipv6_route.h).
+const (
+	routeFlagUp      = 0x0001
+	routeFlagGateway = 0x0002
+	routeFlagReject  = 0x0200
+)
+
+// ParseDefaultRoute4 reads /proc/net/route and returns the IPv4 default route:
+// a row with destination 0.0.0.0 and mask 0.0.0.0 that is up and not a
+// reject route. With several such rows the lowest metric wins, and on equal
+// metrics the first row of the file; that is the route the kernel uses for a
+// new connection (equal-cost multipath aside). ok is false when the file
+// has no usable default row.
+func ParseDefaultRoute4(data []byte) (DefaultRoute, bool) {
+	var best DefaultRoute
+	found := false
+	for i, line := range lines(data) {
+		if i == 0 && strings.HasPrefix(string(line), "Iface") {
+			continue
+		}
+		f := fields(line)
+		// Iface Destination Gateway Flags RefCnt Use Metric Mask ...
+		if len(f) < 8 || !ifaceName(f[0]) || f[0] == "lo" {
+			continue
+		}
+		dest, ok1 := hexIPv4(f[1])
+		gw, ok2 := hexIPv4(f[2])
+		mask, ok3 := hexIPv4(f[7])
+		flags, err1 := strconv.ParseUint(f[3], 16, 32)
+		metric, err2 := strconv.ParseUint(f[6], 10, 32)
+		if !ok1 || !ok2 || !ok3 || err1 != nil || err2 != nil || !dest.IsUnspecified() || !mask.IsUnspecified() {
+			continue
+		}
+		r, ok := defaultRoute(f[0], gw, flags, uint32(metric))
+		if ok && (!found || r.Metric < best.Metric) {
+			best, found = r, true
+		}
+	}
+	return best, found
+}
+
+// ParseDefaultRoute6 reads /proc/net/ipv6_route and returns the IPv6 default
+// route, by the same rule as ParseDefaultRoute4. A line is
+// "<dest> <dest len> <src> <src len> <next hop> <metric> <refcnt> <use> <flags> <dev>",
+// addresses as 32 hex digits and numbers in hex. A route for a source prefix
+// only (source length not 0) is not the default route. The kernel lists an
+// unreachable ::/0 on "lo" with the reject flag; it is skipped as well.
+func ParseDefaultRoute6(data []byte) (DefaultRoute, bool) {
+	var best DefaultRoute
+	found := false
+	for _, line := range lines(data) {
+		f := fields(line)
+		if len(f) != 10 || len(f[0]) != 32 || len(f[2]) != 32 || len(f[4]) != 32 || !ifaceName(f[9]) || f[9] == "lo" {
+			continue
+		}
+		if f[1] != "00" || f[3] != "00" || strings.Trim(f[0], "0") != "" {
+			continue
+		}
+		raw, err := hex.DecodeString(f[4])
+		metric, err1 := strconv.ParseUint(f[5], 16, 32)
+		flags, err2 := strconv.ParseUint(f[8], 16, 32)
+		if err != nil || err1 != nil || err2 != nil {
+			continue
+		}
+		r, ok := defaultRoute(f[9], netip.AddrFrom16([16]byte(raw)), flags, uint32(metric))
+		if ok && (!found || r.Metric < best.Metric) {
+			best, found = r, true
+		}
+	}
+	return best, found
+}
+
+// defaultRoute checks the flags and the gateway of a default row. A row with
+// the gateway flag must name a gateway; a row without it must not.
+func defaultRoute(iface string, gw netip.Addr, flags uint64, metric uint32) (DefaultRoute, bool) {
+	if flags&routeFlagUp == 0 || flags&routeFlagReject != 0 {
+		return DefaultRoute{}, false
+	}
+	r := DefaultRoute{Iface: iface, Metric: metric}
+	switch {
+	case flags&routeFlagGateway != 0:
+		if gw.IsUnspecified() || gw.IsLoopback() || gw.IsMulticast() {
+			return DefaultRoute{}, false
+		}
+		r.Gateway = gw
+	case !gw.IsUnspecified():
+		return DefaultRoute{}, false
+	}
+	return r, true
+}
+
+// MaxNameservers is how many name servers ParseResolvConf returns: the C
+// library (glibc and musl, MAXNS) uses only the first three, so a fourth
+// line would show a server that is never asked.
+const MaxNameservers = 3
+
+// ParseResolvConf reads /etc/resolv.conf and returns the addresses of its
+// "nameserver" lines, in file order, at most MaxNameservers. Every other line
+// (comments, search, domain, options, sortlist) is ignored, and only the parsed
+// address is returned, never text from the file. A line whose address does
+// not parse, is unspecified or multicast, or carries a zone that is not an
+// interface name, is skipped and does not count.
+func ParseResolvConf(data []byte) []netip.Addr {
+	var out []netip.Addr
+	for _, line := range lines(data) {
+		if len(out) >= MaxNameservers {
+			break
+		}
+		f := fields(line)
+		if len(f) < 2 || f[0] != "nameserver" {
+			continue // also "#" and ";" comments: their first field is not the keyword
+		}
+		a, err := netip.ParseAddr(f[1])
+		if err != nil || a.IsUnspecified() || a.IsMulticast() || (a.Zone() != "" && !ifaceName(a.Zone())) {
+			continue
+		}
+		out = append(out, a.Unmap())
+	}
+	return out
+}
+
+// ifaceName accepts what a kernel interface name looks like: 1 to 15
+// characters of letters, digits and _ - . : @.
+func ifaceName(s string) bool {
+	if s == "" || len(s) > 15 || s == "." || s == ".." {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-', c == '.', c == ':', c == '@':
+		default:
+			return false
+		}
+	}
+	return true
+}

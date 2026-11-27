@@ -3,6 +3,7 @@
 - Status: **Accepted** (2026-10-28, accepted by the project owner). Decision 8 is amended; see there.
 - Date: proposed 2026-10-27, accepted 2026-10-28
 - Amended after R1 (2026-11-06, `docs/DECISIONS.md` D-C72, D-C73): section "Amendment after R1" at the end (optional history, default route and DNS display).
+- Amended after S1 (2026-11-06, D-C78) and by task N0 (2026-11-27): sections "Amendment after S1" and "Amendment: N0 as implemented" at the end.
 - Gate: G5
 
 ## Context
@@ -114,4 +115,37 @@ Recorded after the device spike S1, which the owner ran on 2026-11-06 (`docs/DEC
 
 - **Device observation:** counting installed packages is cheap (9 ms), but a count of available updates cannot be derived without parsing the package lists (about 155 MB) and re-implementing the package manager's candidate logic.
 - **Owner decision (D-C78):** the display is not part of the MVP. It may come after G7 as a typed broker action, or be dropped; that is open.
+
+## Amendment: N0 as implemented
+
+Recorded with the pull request of task N0 (2026-11-27; `docs/ROADMAP.md`, row N0; ORB-NET-001, D-C72). It implements the proposal S1.3 for two of its three files and R1.2 for the default route and the DNS servers. Labels: **fact (repository)**, **implementation choice** (made by the implementation agent, for the owner's review), **open**. Evidence: class C (tests and CI). Nothing here is observed on a device yet; the device check follows the release. Decisions 1 to 11, R1 and S1 are unchanged except where this section says so. D-C31 and D-C32 stay in force: no program, no netlink, files only.
+
+**N0.1 Sources (fact).** IPv4 default route: the default row of `/proc/net/route`, from the same read that assigns the IPv4 addresses (decision 2). IPv6 default route: `/proc/net/ipv6_route`. DNS servers: `/etc/resolv.conf`. All three are read with the slow tier (every 30 seconds, decision 4), through the file source of ADR 0007. `/proc/net/wireless` (S1.3) is not read: signal strength belongs to N1.
+
+**N0.2 Rules (implementation choice).**
+
+- A default row has destination and prefix length 0 (for IPv6 also a source prefix length 0), the up flag, no reject flag, and an interface other than `lo` whose name has the characters of a kernel interface name. A row with the gateway flag must name a gateway that is not unspecified, loopback or multicast; a row without the flag must name none. This skips the unreachable default route that the kernel keeps on `lo`.
+- **Several default rows:** the lowest metric wins; on equal metrics the first row of the file. That is the route the kernel uses for a new connection; equal-cost multipath is not shown.
+- A default route without a gateway (a point-to-point link, a tunnel) is shown with its interface only. An IPv6 link-local next hop is shown with its interface as the zone, because it means nothing without it.
+- **Privacy (follows decision 9):** a next hop or a name server whose IPv6 address is built from a hardware address (EUI-64, `ff:fe` in the middle) contains the router's MAC address. Its address is never shown; a route keeps its interface and says that the address is hidden, and hidden name servers are counted. The task asks to show link-local gateways with their interface; this choice shows every link-local gateway that does not hold a MAC address, and is meant to agree with decision 9. *Assumption, not checked:* the next hop of the reference device's router may be of this kind; the device check will say which.
+- **DNS:** only `nameserver` lines count. The address is the second field; everything after it is ignored, and so are comments, `search`, `domain`, `options` and `sortlist`. Only the parsed address reaches the output, never text from the file. A line whose address does not parse, is unspecified or multicast, or has a zone that is not an interface name, is skipped and does not count. At most three servers, in file order: the C library asks only the first three (`MAXNS`), so a fourth would show a server that is never asked. An IPv4-mapped address is shown as IPv4.
+- **Local resolver stub:** a loopback server is shown as it is and marked local; the page says that it is a resolver on the device and that the servers behind it are not visible. The fallback design of S1.2 (reading the servers a stub forwards to) is **not built**.
+
+**N0.3 Bounds (fact).** `/proc/net/ipv6_route` 256 KiB (the limit of the other network tables), `/etc/resolv.conf` 64 KiB; a file above its limit gives its part the status `unreadable`, it is not cut. Every parser reads at most 8192 lines. The parsers have fuzz targets (`FuzzParseDefaultRoute4`, `FuzzParseDefaultRoute6`, `FuzzParseResolvConf`).
+
+**N0.4 Fail soft (fact).** Each of the three parts has its own status: `found`, `none` (the file was read and holds no value) or `unreadable` (missing, unreadable or too large). A failed part leaves the others and the rest of the snapshot as they are; the page shows "Nicht verfügbar", "Keine" or "Keiner eingetragen".
+
+**N0.5 Allow-list and unit (fact).** `proc/net/ipv6_route` and `etc/resolv.conf` were added to the metrics allow-list, the list that `TestMetricsOpenOnlyAllowListedFiles` enforces (`backend/internal/platform/privacy_test.go`). The service unit is **not changed**, and it does not need to be: there is no allow-list in the unit. `ProtectSystem=strict` mounts `/usr`, `/boot` and `/etc` read-only, which leaves them readable; `ProtectKernelTunables=yes` makes `/proc/sys` read-only and does not touch `/proc/net`; the unit sets no `ProtectProc`, `ProcSubset`, `InaccessiblePaths`, `TemporaryFileSystem` or `PrivateNetwork`, so `/proc/net` shows the host's network namespace and `/run` (where `/etc/resolv.conf` often points) stays visible. `/proc/net/route` is already read under this unit (decision 2). *Open until the device check:* that the service user reads both new files under the real hardening.
+
+**N0.6 API (fact).** The metrics snapshot (`GET /api/v1/metrics` and the `metrics` event) gains the field `routing`; `GET /api/v1/device` gains `hardware.memory_installed_bytes` from the matched board profile (ADR 0007, pointer of task N0). Both are added fields: the schema versions stay 1. No route was added. Shapes: [`DASHBOARD.md`](../DASHBOARD.md#api), [`DETECTION.md`](../DETECTION.md#api-get-apiv1device).
+
+**N0.7 Two fixes of G7-FIX1 in the same task (fact).** The embedded frontend is now sent with `Cache-Control: no-cache` for `index.html` and every file without a content hash, and with `public, max-age=31536000, immutable` for the hashed files of Vite; the update page loads the new page itself once `/healthz` reports another version than the one that served it (ADR 0011 A8.8, finding). The update page's password step says "Das Passwort ist falsch." Both are described in [`UI.md`](../UI.md#update-page-step-g68).
+
+**N0.8 Open.**
+
+- The resolver-stub fallback of S1.2: not designed, not built.
+- SSID (S1.5): still open; with D-D10, after N0 in the owner's working order.
+- Signal strength from `/proc/net/wireless`: task N1.
+- Reading the new files as the service user under the unit hardening, and the values compared with the device files: the device check of N0.
+- A gateway or server hidden as EUI-64 is a choice of this amendment for the owner's review (N0.2).
 

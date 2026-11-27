@@ -51,6 +51,10 @@ The 64-bit Raspberry Pi OS reports `ID=debian` in `/etc/os-release`, identical t
 - Spec 3.2 listed "other Raspberry Pi models" as Compatible; this decision gives them Generic until a board or family profile exists (rule 4). Spec 3.2 was aligned in version 0.3.2. A Raspberry Pi family profile would make them Compatible; that is a data change.
 - Not decided here: authentication of the API (it stays on loopback, D-C11), signed profile packages, optional Raspberry Pi enhancement providers, Ubuntu qualification (G12).
 
+## Pointer (task N0)
+
+Task N0 added one optional field to the board profile, `installed_memory_mib` (the memory on a board that exists with one size; 512 for the Raspberry Pi Zero 2 W, whose profile went to version 1.1.0), and the field `hardware.memory_installed_bytes` to `GET /api/v1/device`. It is data of the hardware profile only: it comes from the matched board profile, never from `MemTotal`, and it does not depend on the OS adapter. Details: [`DETECTION.md`](../DETECTION.md) and ADR 0008, [amendment "N0 as implemented"](0008-dashboard-metrics.md#amendment-n0-as-implemented), N0.6. Decisions 1 to 5 are unchanged.
+
 ## Hardware confirmation
 
 Confirmed on 2026-10-27 on one Raspberry Pi Zero 2 W Rev 1.0 (revision code 902120) with an image reported as Raspberry Pi OS Lite 64-bit (Debian GNU/Linux 13, kernel `6.18.50+rpt-rpi-v8`), release `v0.1.0-alpha.3`, commit `b793b1069659f9ed85412b01523cc1f87e61df4f`. The board profile matched by its compatible string; the Raspberry Pi OS adapter matched through `/etc/rpi-issue`; the tier was Compatible with the reason `profile_not_verified`; all seven capabilities were available under the unchanged service unit. Record and limits: [INSTALL.md](../INSTALL.md#gate-g4-detection) and [DETECTION.md](../DETECTION.md#verification-status). This is one device and one image. Ubuntu, other boards and other Raspberry Pi models are not confirmed.

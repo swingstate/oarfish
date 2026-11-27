@@ -45,7 +45,7 @@ func TestPiZero2WWithRaspberryPiOSIsCompatible(t *testing.T) {
 	if r.OS.Adapter != "raspberry_pi_os" || r.OS.PrettyName != "Debian GNU/Linux 13 (trixie)" || r.OS.Kernel != "6.18.50+rpt-rpi-v8" {
 		t.Errorf("os = %+v", r.OS)
 	}
-	if r.Profile.ID != "raspberry-pi-zero-2-w" || r.Profile.MatchedBy != profiles.MatchedByCompatible || r.Profile.Version != "1.0.0" {
+	if r.Profile.ID != "raspberry-pi-zero-2-w" || r.Profile.MatchedBy != profiles.MatchedByCompatible || r.Profile.Version != "1.1.0" {
 		t.Errorf("profile = %+v", r.Profile)
 	}
 	s := r.Support
@@ -59,6 +59,28 @@ func TestPiZero2WWithRaspberryPiOSIsCompatible(t *testing.T) {
 	}
 	if r.BootMedium.Type != "mmc" {
 		t.Errorf("boot medium = %q", r.BootMedium.Type)
+	}
+	// Task N0: the installed memory comes from the board profile, not from
+	// MemTotal (which is smaller by what the firmware and the kernel keep).
+	if r.InstalledMemoryBytes != 512<<20 || r.Hardware.MemoryTotalBytes >= r.InstalledMemoryBytes {
+		t.Errorf("installed = %d, total = %d", r.InstalledMemoryBytes, r.Hardware.MemoryTotalBytes)
+	}
+}
+
+// Task N0: without a board profile that names it, the installed memory is
+// not known, whatever MemTotal says. It is a fact of the board, so the same
+// board under an operating system the profile does not cover keeps it.
+func TestInstalledMemoryOnlyFromABoardProfile(t *testing.T) {
+	for _, fixture := range []string{"generic-arm64-debian", "generic-arm64-ubuntu", "unknown-arm64-minimal", "pi4-raspios"} {
+		r := detect(t, platformtest.Fixture(t, fixture), linuxARM64)
+		if r.InstalledMemoryBytes != 0 {
+			t.Errorf("%s: installed = %d (total %d), want unknown", fixture, r.InstalledMemoryBytes, r.Hardware.MemoryTotalBytes)
+		}
+	}
+	m := platformtest.Clone(t, "pi-zero-2w-raspios")
+	delete(m, "etc/rpi-issue") // plain Debian: Generic Mode, the board is still recognised
+	if r := detect(t, m, linuxARM64); r.InstalledMemoryBytes != 512<<20 {
+		t.Errorf("installed = %d", r.InstalledMemoryBytes)
 	}
 }
 

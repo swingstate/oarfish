@@ -47,8 +47,12 @@ type Profile struct {
 	Capabilities       []string            `json:"capabilities,omitempty"`
 	SensorBindings     []SensorBinding     `json:"sensor_bindings,omitempty"`
 	StorageHints       *StorageHints       `json:"storage_hints,omitempty"`
-	KnownLimitations   []string            `json:"known_limitations,omitempty"`
-	DocumentationLinks []string            `json:"documentation_links,omitempty"`
+	// InstalledMemoryMiB is the memory soldered on the board, for a board
+	// that exists with one size only (task N0). It is not derived from
+	// MemTotal, which is smaller by what the firmware and the kernel keep.
+	InstalledMemoryMiB int      `json:"installed_memory_mib,omitempty"`
+	KnownLimitations   []string `json:"known_limitations,omitempty"`
+	DocumentationLinks []string `json:"documentation_links,omitempty"`
 }
 
 // OSConstraints lists the OS adapters the profile applies to. On another

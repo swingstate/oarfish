@@ -139,6 +139,7 @@ A profile is a JSON file under `backend/internal/platform/profiles/data/{soc,boa
 | `capabilities` | board (optional) | capability ids the board is expected to have; a missing one adds the limitation `expected_capability_missing` |
 | `sensor_bindings` | soc_family, board (optional) | `{sensor, handler}` with a known sensor and an allow-listed handler |
 | `storage_hints.boot_media` | board (optional) | usual boot media (`mmc`, `nvme`, `usb`) |
+| `installed_memory_mib` | board (optional) | the memory on the board in MiB, 1 to 1048576, only for a board that exists with one size (task N0; the Raspberry Pi Zero 2 W: 512). It is never derived from `MemTotal` |
 | `known_limitations` | all (optional) | limitation **keys** (`memory_512mb`), not text; the GUI translates them |
 | `documentation_links` | all (optional) | a path under `docs/` or a `swingstate/oarfish` URL |
 
@@ -185,7 +186,7 @@ Read-only: only `GET`; any other method (including `HEAD`) is `405` with `Allow:
 | Field | Meaning |
 |---|---|
 | `schema_version` | `1` |
-| `hardware` | `vendor`, `model`, `soc_family`, `arch`, `revision_code`, `memory_total_bytes` |
+| `hardware` | `vendor`, `model`, `soc_family`, `arch`, `revision_code`, `memory_total_bytes` (`MemTotal`, what the kernel can use), `memory_installed_bytes` (task N0: `installed_memory_mib` of the matched board profile, also when the board runs in Generic Mode on an operating system the profile does not cover; `null` without a board profile or when the profile does not name it) |
 | `os` | `id`, `id_like[]`, `version_id`, `pretty_name`, `adapter`, `adapter_status` |
 | `kernel.release` | kernel release string |
 | `profile` | `id`, `version`, `matched_by` (`compatible`, `model`, `generic_fallback`) |
@@ -205,7 +206,8 @@ Example for the synthetic fixture `pi-zero-2w-raspios` (not a real device; the r
     "soc_family": "BCM2837",
     "arch": "arm64",
     "revision_code": "902120",
-    "memory_total_bytes": 425373696
+    "memory_total_bytes": 425373696,
+    "memory_installed_bytes": 536870912
   },
   "os": {
     "id": "debian",
@@ -216,7 +218,7 @@ Example for the synthetic fixture `pi-zero-2w-raspios` (not a real device; the r
     "adapter_status": "initial-target"
   },
   "kernel": { "release": "6.18.50+rpt-rpi-v8" },
-  "profile": { "id": "raspberry-pi-zero-2-w", "version": "1.0.0", "matched_by": "compatible" },
+  "profile": { "id": "raspberry-pi-zero-2-w", "version": "1.1.0", "matched_by": "compatible" },
   "support": {
     "tier": "compatible",
     "reason": "profile_not_verified",
@@ -242,7 +244,7 @@ And the relevant part for the unknown-ARM64 fixture `generic-arm64-debian`:
 
 ```json
 {
-  "hardware": { "vendor": null, "model": "Synthetic Board A1", "soc_family": null, "arch": "arm64", "revision_code": null, "memory_total_bytes": 8356864000 },
+  "hardware": { "vendor": null, "model": "Synthetic Board A1", "soc_family": null, "arch": "arm64", "revision_code": null, "memory_total_bytes": 8356864000, "memory_installed_bytes": null },
   "os": { "id": "debian", "id_like": [], "version_id": "12", "pretty_name": "Debian GNU/Linux 12 (bookworm)", "adapter": "debian_family", "adapter_status": "generic" },
   "profile": { "id": "generic-arm64", "version": "1.0.0", "matched_by": "generic_fallback" },
   "support": {

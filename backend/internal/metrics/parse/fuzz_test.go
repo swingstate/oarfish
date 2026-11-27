@@ -85,3 +85,43 @@ func FuzzParseRoutes(f *testing.F) {
 		}
 	})
 }
+
+func FuzzParseDefaultRoute4(f *testing.F) {
+	f.Add([]byte("Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n" +
+		"wlan0\t00000000\t010200C0\t0003\t0\t0\t600\t00000000\n"))
+	f.Add([]byte("ppp0\t00000000\t00000000\t0001\t0\t0\t0\t00000000\n"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		r, ok := ParseDefaultRoute4(data)
+		if ok && (!ifaceName(r.Iface) || r.Iface == "lo" || (r.Gateway.IsValid() && (!r.Gateway.Is4() || r.Gateway.IsUnspecified()))) {
+			t.Fatalf("unexpected route %+v", r)
+		}
+	})
+}
+
+func FuzzParseDefaultRoute6(f *testing.F) {
+	z := "00000000000000000000000000000000"
+	f.Add([]byte(z + " 00 " + z + " 00 fe80000000000000000000000000abcd 00000400 00000001 00000000 00450003 wlan0\n"))
+	f.Add([]byte(z + " 00 " + z + " 00 " + z + " ffffffff 00000001 00000000 00200200 lo\n"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		r, ok := ParseDefaultRoute6(data)
+		if ok && (!ifaceName(r.Iface) || r.Iface == "lo" || (r.Gateway.IsValid() && (!r.Gateway.Is6() || r.Gateway.IsUnspecified()))) {
+			t.Fatalf("unexpected route %+v", r)
+		}
+	})
+}
+
+func FuzzParseResolvConf(f *testing.F) {
+	f.Add([]byte("# comment\nsearch home.example\nnameserver 192.0.2.53\nnameserver fe80::1%wlan0\n"))
+	f.Add([]byte("nameserver 127.0.0.53\noptions edns0\n"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		got := ParseResolvConf(data)
+		if len(got) > MaxNameservers {
+			t.Fatalf("%d servers", len(got))
+		}
+		for _, a := range got {
+			if !a.IsValid() || a.IsUnspecified() || a.IsMulticast() || (a.Zone() != "" && !ifaceName(a.Zone())) {
+				t.Fatalf("unexpected server %v", a)
+			}
+		}
+	})
+}

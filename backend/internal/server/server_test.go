@@ -148,6 +148,45 @@ func TestServesEmbeddedFrontend(t *testing.T) {
 	}
 }
 
+// Task N0, ADR 0011 A8.8: after a GUI update the browser must not keep the
+// page of the previous version. index.html and every name without a content
+// hash are revalidated; a hashed file of Vite may be kept.
+func TestFrontendCacheHeaders(t *testing.T) {
+	assets := fstest.MapFS{
+		"index.html":                {Data: []byte("<!doctype html><title>Oarfish</title>")},
+		"assets/index-BqQ-WevC.js":  {Data: []byte("console.log('oarfish')")},
+		"assets/index-DPKvSmmZ.css": {Data: []byte("body{}")},
+		"assets/logo.svg":           {Data: []byte("<svg/>")},
+		"favicon.svg":               {Data: []byte("<svg/>")},
+		"assets/sub/x-12345678.js":  {Data: []byte("x")},
+		"assets/dir-12345678.js/a":  {Data: []byte("x")},
+		"assets/index-short.js":     {Data: []byte("x")},
+	}
+	h := NewHandler(assets)
+	for path, want := range map[string]string{
+		"/":                          "no-cache",
+		"/index.html":                "no-cache", // the file server redirects it to "/"
+		"/assets/index-BqQ-WevC.js":  "public, max-age=31536000, immutable",
+		"/assets/index-DPKvSmmZ.css": "public, max-age=31536000, immutable",
+		"/assets/logo.svg":           "no-cache", // no hash in the name
+		"/favicon.svg":               "no-cache",
+		"/assets/index-AAAAAAAA.js":  "",         // a name that does not exist: a 404 without validator, never "immutable"
+		"/assets/sub/x-12345678.js":  "no-cache", // only files directly under assets/
+		"/assets/dir-12345678.js":    "no-cache", // a directory
+		"/assets/index-short.js":     "no-cache", // "short" is not a hash of 8 characters
+		"/missing":                   "",         // http.Error drops Cache-Control on error answers
+	} {
+		rec := get(t, h, http.MethodGet, path)
+		if got := rec.Header().Get("Cache-Control"); got != want {
+			t.Errorf("GET %s (%d): Cache-Control = %q, want %q", path, rec.Code, got, want)
+		}
+	}
+	// The API keeps its own no-store.
+	if got := get(t, h, http.MethodGet, "/healthz").Header().Get("Cache-Control"); got != "no-store" && got != "" {
+		t.Errorf("/healthz Cache-Control = %q", got)
+	}
+}
+
 func TestMissingFrontendReports503(t *testing.T) {
 	rec := get(t, NewHandler(fstest.MapFS{}), http.MethodGet, "/")
 	if rec.Code != http.StatusServiceUnavailable {

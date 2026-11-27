@@ -7,7 +7,7 @@
   import Notice from '../components/Notice.svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import { fetchDevice, formatCelsius, formatMemory, type Device } from '../lib/device';
-  import { has, msg, t } from '../lib/i18n';
+  import { fmt, has, msg, t } from '../lib/i18n';
   import { tierTone, type Tone } from '../lib/ui';
 
   let phase = $state<'loading' | 'error' | 'ready'>('loading');
@@ -32,6 +32,23 @@
   /** The explanation of the support status is a notice. Only a problem tier is coloured. */
   const noticeTone = (tier: string): Tone => (tier === 'generic' ? 'information' : tier === 'unsupported' || tier === 'experimental' ? tierTone(tier) : 'neutral');
   const label = (prefix: string, value: string) => msg(has(prefix + value) ? prefix + value : prefix + 'unknown');
+
+  // Task N0: the installed memory comes from the board profile. Where it is
+  // known, the row names it and the usable memory (MemTotal) as a note, and the
+  // limitation says the size without "etwa". Where it is not known, the row
+  // shows the usable memory and the limitation keeps "etwa".
+  const installedMemory = (d: Device) => formatMemory(d.hardware.memory_installed_bytes ?? null);
+  function memoryItem(d: Device) {
+    const total = formatMemory(d.hardware.memory_total_bytes);
+    const installed = installedMemory(d);
+    if (installed === null) return { label: t.fieldMemory, value: total, placeholder: t.unknownValue, mono: true, testid: 'memory' };
+    return { label: t.fieldMemory, value: installed, note: total === null ? null : fmt('memUsableNote', { usable: total }), mono: true, testid: 'memory' };
+  }
+  function limitationText(d: Device, key: string): string {
+    const installed = installedMemory(d);
+    if (key === 'memory_512mb' && installed !== null) return fmt('limitationMemoryInstalled', { installed });
+    return msg('limitation.' + key);
+  }
 </script>
 
 <PageHeader title={t.deviceTitle} />
@@ -67,7 +84,7 @@
           <h3>{t.limitationsHeading}</h3>
           <ul>
             {#each s.limitations as key (key)}
-              <li>{msg('limitation.' + key)}</li>
+              <li>{limitationText(device, key)}</li>
             {/each}
           </ul>
         </div>
@@ -82,7 +99,7 @@
           { label: t.fieldSoc, value: device.hardware.soc_family, placeholder: t.unknownValue },
           { label: t.fieldArch, value: device.hardware.arch },
           ...(device.hardware.revision_code ? [{ label: t.fieldRevision, value: device.hardware.revision_code, mono: true }] : []),
-          { label: t.fieldMemory, value: formatMemory(device.hardware.memory_total_bytes), placeholder: t.unknownValue, mono: true },
+          memoryItem(device),
         ]}
       />
     </Card>

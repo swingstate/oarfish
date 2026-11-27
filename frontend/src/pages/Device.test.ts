@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import Device from './Device.svelte';
 import { genericArm64, piZero2W, unsupportedX86 } from '../lib/device.fixtures';
 import { msg, t } from '../lib/i18n';
+import { setLang } from '../lib/lang.svelte';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -11,6 +12,55 @@ function stubDevice(body: unknown, status = 200) {
   vi.stubGlobal('fetch', fetchFn);
   return fetchFn;
 }
+
+describe('Gerät page: installed memory (task N0)', () => {
+  const row = () => screen.getByTestId('memory').textContent?.replace(/\s+/g, ' ').trim();
+
+  it('says the installed size where the board profile knows it, in German and English', async () => {
+    stubDevice(piZero2W);
+    const { unmount } = render(Device);
+    await screen.findByText('Raspberry Pi Zero 2 W Rev 1.0');
+    expect(row()).toBe('512 MiB (davon 406 MiB nutzbar)');
+    unmount();
+    setLang('en');
+    try {
+      stubDevice(piZero2W);
+      render(Device);
+      await screen.findByText('Raspberry Pi Zero 2 W Rev 1.0');
+      expect(row()).toBe('512 MiB (406 MiB of it usable)');
+      expect(screen.getByText('Only 512 MiB of memory')).toBeTruthy();
+    } finally {
+      setLang('de');
+    }
+  });
+
+  it('shows only the usable memory for a board without the value, and never a size rounded from it', async () => {
+    stubDevice(genericArm64);
+    render(Device);
+    await screen.findByText('Synthetic Board A1');
+    expect(row()).toBe('7970 MiB');
+    expect(screen.queryByText(/8192 MiB|8 GiB/)).toBeNull();
+  });
+
+  it('keeps "etwa" in the limitation when the size is not known (a service before task N0)', async () => {
+    const old = structuredClone(piZero2W);
+    delete old.hardware.memory_installed_bytes;
+    stubDevice(old);
+    render(Device);
+    await screen.findByText('Raspberry Pi Zero 2 W Rev 1.0');
+    expect(row()).toBe('406 MiB');
+    expect(screen.getByText('Nur etwa 512 MiB Arbeitsspeicher')).toBeTruthy();
+  });
+
+  it('shows the installed size with an unknown total, without a note', async () => {
+    const d = structuredClone(piZero2W);
+    d.hardware.memory_total_bytes = null;
+    stubDevice(d);
+    render(Device);
+    await screen.findByText('Raspberry Pi Zero 2 W Rev 1.0');
+    expect(row()).toBe('512 MiB');
+  });
+});
 
 describe('Gerät page', () => {
   it('shows model, SoC, OS, kernel, sensors, boot medium and support for a Compatible Raspberry Pi', async () => {
@@ -22,7 +72,8 @@ describe('Gerät page', () => {
     expect(screen.getByText('BCM2837')).toBeTruthy();
     expect(screen.getByText('Debian GNU/Linux 13 (trixie)')).toBeTruthy();
     expect(screen.getByText('6.18.50+rpt-rpi-v8')).toBeTruthy();
-    expect(screen.getByText('406 MiB')).toBeTruthy();
+    // Task N0: the installed size from the board profile, the usable memory as a note.
+    expect(screen.getByTestId('memory').textContent?.replace(/\s+/g, ' ').trim()).toBe('512 MiB (davon 406 MiB nutzbar)');
     expect(screen.getByTestId('cpu-temperature').textContent?.trim()).toBe('43,3 °C');
     expect(screen.getByText(t['bootMedium.mmc'])).toBeTruthy();
     expect(screen.getByText(msg('adapter.raspberry_pi_os'))).toBeTruthy();
@@ -30,7 +81,9 @@ describe('Gerät page', () => {
     // Supportstatus: tier and its explanation, with the known limitations.
     expect(screen.getByTestId('tier').textContent).toBe(t['tier.compatible']);
     expect(screen.getByText(t['support.compatible.profile_not_verified'])).toBeTruthy();
-    expect(screen.getByText(t['limitation.memory_512mb'])).toBeTruthy();
+    // Task N0: with the installed size known the limitation says it without "etwa".
+    expect(screen.getByText('Nur 512 MiB Arbeitsspeicher')).toBeTruthy();
+    expect(screen.queryByText(t['limitation.memory_512mb'])).toBeNull();
     expect(t['limitation.memory_512mb']).toBe('Nur etwa 512 MiB Arbeitsspeicher'); // binary unit like the rest of the UI
     expect(screen.getByText(t['limitation.evidence_install_only'])).toBeTruthy();
     // It is never presented as verified, and it is not generic mode.

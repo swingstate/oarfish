@@ -38,6 +38,30 @@ export interface NetworkInterface {
   ipv6: string[];
 }
 
+/** Status of one routing part: read and found, read and empty, or not readable (task N0). */
+export type RoutingStatus = 'found' | 'none' | 'unreadable';
+
+/** The default route of one family. A hidden gateway contains a hardware address and is never sent. */
+export interface DefaultRoute {
+  status: string;
+  interface: string | null;
+  gateway: string | null;
+  gateway_hidden: boolean;
+}
+
+export interface DnsServer {
+  address: string;
+  /** A resolver on the device itself (a loopback address), for example a stub. */
+  local: boolean;
+}
+
+/** Default routes and name servers (ORB-NET-001). Each part has its own status. */
+export interface Routing {
+  ipv4: DefaultRoute;
+  ipv6: DefaultRoute;
+  dns: { status: string; servers: DnsServer[]; hidden: number };
+}
+
 /** One reading of the device (schema_version 1). Unknown values are null. */
 export interface Snapshot {
   schema_version: number;
@@ -61,6 +85,8 @@ export interface Snapshot {
   temperatures: Temperature[];
   storage: Storage[];
   network: NetworkInterface[];
+  /** Missing in the answer of a service before task N0; the page then shows no routing part. */
+  routing?: Routing;
 }
 
 export type AlertLevel = 'critical' | 'relevant' | 'informational';
@@ -150,6 +176,21 @@ function isInterface(v: unknown): v is NetworkInterface {
   );
 }
 
+function isRoute(v: unknown): v is DefaultRoute {
+  return isObject(v) && isStr(v.status) && isStrOrNull(v.interface) && isStrOrNull(v.gateway) && typeof v.gateway_hidden === 'boolean';
+}
+
+function isRouting(v: unknown): v is Routing {
+  if (!isObject(v) || !isRoute(v.ipv4) || !isRoute(v.ipv6) || !isObject(v.dns)) return false;
+  const d = v.dns;
+  return (
+    isStr(d.status) &&
+    isNum(d.hidden) &&
+    Array.isArray(d.servers) &&
+    d.servers.every((s) => isObject(s) && isStr(s.address) && typeof s.local === 'boolean')
+  );
+}
+
 export function isSnapshot(v: unknown): v is Snapshot {
   if (!isObject(v) || v.schema_version !== 1 || !isStr(v.collected_at) || Number.isNaN(Date.parse(v.collected_at))) return false;
   if (!isStrOrNull(v.hostname) || !isNumOrNull(v.uptime_seconds)) return false;
@@ -183,7 +224,8 @@ export function isSnapshot(v: unknown): v is Snapshot {
     Array.isArray(v.storage) &&
     v.storage.every(isStorage) &&
     Array.isArray(v.network) &&
-    v.network.every(isInterface)
+    v.network.every(isInterface) &&
+    (v.routing === undefined || isRouting(v.routing))
   );
 }
 

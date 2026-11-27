@@ -32,6 +32,8 @@ const (
 	pathFibTrie   = "proc/net/fib_trie"
 	pathRoute     = "proc/net/route"
 	pathInet6     = "proc/net/if_inet6"
+	pathRoute6    = "proc/net/ipv6_route"
+	pathResolv    = "etc/resolv.conf"
 	dirCPUFreq    = "sys/devices/system/cpu/cpu0/cpufreq"
 	dirThermal    = "sys/class/thermal"
 	dirHwmon      = "sys/class/hwmon"
@@ -44,6 +46,7 @@ const (
 	limitMeminfo   = 16 << 10
 	limitMountinfo = 1 << 20
 	limitNetTable  = 256 << 10
+	limitResolv    = 64 << 10
 	limitSmall     = 128
 	maxDirEntries  = 512
 	// maxMountCandidates is how many distinct devices are asked for their size.
@@ -89,6 +92,7 @@ type slowData struct {
 	ifaces   []ifaceStatic
 	governor *string
 	maxMHz   *float64
+	routing  Routing
 }
 
 // Collect reads the device. now decides whether the slow tier is due.
@@ -124,6 +128,7 @@ func (c *Collector) Collect(now time.Time) Snapshot {
 		snap.Temperatures = append(snap.Temperatures, t)
 	}
 	snap.Network = c.network()
+	snap.Routing = c.slow.routing.clone()
 	return snap
 }
 
@@ -217,6 +222,7 @@ func (c *Collector) refreshSlow() {
 		storage:  c.discoverStorage(),
 		ifaces:   discoverInterfaces(c.fsys),
 		governor: nil,
+		routing:  readRouting(c.fsys),
 	}
 	if data, err := source.ReadFile(c.fsys, dirCPUFreq+"/scaling_governor", limitSmall); err == nil {
 		c.slow.governor = nonEmpty(source.Clean(string(data), 32))
@@ -592,6 +598,81 @@ func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 			return netip.MustParseAddr(ifaces[i].ipv4[a]).Less(netip.MustParseAddr(ifaces[i].ipv4[b]))
 		})
 	}
+}
+
+// ---- default route and DNS ---------------------------------------------
+
+// readRouting reads the default routes and the name servers. Each source
+// fails on its own (ORB-NET-001: a missing file empties one part, not the page).
+func readRouting(fsys fs.FS) Routing {
+	r := Routing{
+		IPv4: DefaultRoute{Status: RoutingUnreadable},
+		IPv6: DefaultRoute{Status: RoutingUnreadable},
+		DNS:  DNS{Status: RoutingUnreadable, Servers: []DNSServer{}},
+	}
+	if data, err := source.ReadFile(fsys, pathRoute, limitNetTable); err == nil {
+		r.IPv4 = defaultRouteFrom(parse.ParseDefaultRoute4(data))
+	}
+	if data, err := source.ReadFile(fsys, pathRoute6, limitNetTable); err == nil {
+		r.IPv6 = defaultRouteFrom(parse.ParseDefaultRoute6(data))
+	}
+	if data, err := source.ReadFile(fsys, pathResolv, limitResolv); err == nil {
+		r.DNS = dnsFrom(parse.ParseResolvConf(data))
+	}
+	return r
+}
+
+func defaultRouteFrom(p parse.DefaultRoute, ok bool) DefaultRoute {
+	if !ok {
+		return DefaultRoute{Status: RoutingNone}
+	}
+	out := DefaultRoute{Status: RoutingFound, Interface: &p.Iface}
+	switch {
+	case !p.Gateway.IsValid():
+	case p.Gateway.Is6() && parse.DerivedFromHardwareAddress(p.Gateway):
+		out.GatewayHidden = true
+	default:
+		gw := p.Gateway
+		if gw.Is6() && gw.IsLinkLocalUnicast() {
+			gw = gw.WithZone(p.Iface) // a link-local next hop means nothing without its interface
+		}
+		s := gw.String()
+		out.Gateway = &s
+	}
+	return out
+}
+
+func dnsFrom(addrs []netip.Addr) DNS {
+	out := DNS{Status: RoutingNone, Servers: []DNSServer{}}
+	for _, a := range addrs {
+		if a.Is6() && parse.DerivedFromHardwareAddress(a) {
+			out.Hidden++
+		} else {
+			out.Servers = append(out.Servers, DNSServer{Address: a.String(), Local: a.IsLoopback()})
+		}
+	}
+	if len(addrs) > 0 {
+		out.Status = RoutingFound
+	}
+	return out
+}
+
+// clone copies the routing part so that a snapshot shares no memory with the
+// cached slow tier.
+func (r Routing) clone() Routing {
+	out := r
+	out.IPv4.Interface, out.IPv4.Gateway = clonePtr(r.IPv4.Interface), clonePtr(r.IPv4.Gateway)
+	out.IPv6.Interface, out.IPv6.Gateway = clonePtr(r.IPv6.Interface), clonePtr(r.IPv6.Gateway)
+	out.DNS.Servers = append([]DNSServer{}, r.DNS.Servers...)
+	return out
+}
+
+func clonePtr(p *string) *string {
+	if p == nil {
+		return nil
+	}
+	s := *p
+	return &s
 }
 
 func readCounter(fsys fs.FS, path string) *uint64 {

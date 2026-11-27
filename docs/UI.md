@@ -290,6 +290,8 @@ Each state is designed and has a test (`pages/Dashboard.states.test.ts`, `pages/
 | Very long host name | One line, ellipsis, full name as `title`. | "state very long host name" |
 | Link states | `up` is a green "Verbunden". "Kein Link", "Unbekannt" and any state this version does not know are neutral grey, never a warning. | "shows a link state honestly" |
 | Support tier | `verified` success, `compatible` information, `experimental` warning, `unsupported` critical, everything else neutral. | "colours the support status by tier" |
+| Default route and DNS (task N0) | Below the interfaces of the network card, also when no interface is listed: the heading "Standardroute und DNS" (`h3`) and three rows. A route reads "192.0.2.1 über wlan0", an IPv6 link-local next hop with its interface ("fe80::abcd%wlan0 über wlan0"), a route without gateway "direkt über wg0", a gateway built from a hardware address "Router über wlan0 (Adresse verborgen, sie enthält eine Hardwareadresse)". DNS: the servers in file order, a loopback server marked "(lokal)" with the note that the servers behind it are not visible here, and a count of hidden servers. Empty states: "Keine" (no default route), "Keiner eingetragen" (no nameserver line), "Nicht verfügbar" (the file could not be read, or a status this version does not know). A service that sends no routing part (before N0) shows none. Nothing is said by colour. | `Dashboard.routing.test.ts` (both languages, every empty state) |
+| Installed memory on Gerät (task N0) | Where the board profile names the installed memory: "Arbeitsspeicher 512 MiB (davon 406 MiB nutzbar)" and the limitation "Nur 512 MiB Arbeitsspeicher". Where it does not (an unknown board, or a service before N0): the usable memory only ("7970 MiB"), and a limitation `memory_512mb` keeps "Nur etwa 512 MiB Arbeitsspeicher". No size is ever rounded from the usable memory. | `Device.test.ts` "Gerät page: installed memory (task N0)" |
 
 ### Access states (Gate G5.1)
 
@@ -332,7 +334,8 @@ The alert rules themselves (including the rule "no interface has a link") are un
 - **Checks.** On opening, the page sends `POST check {}` only when the State says `check.state` is `never` or `next_check_at` has passed; otherwise it only reads. "Jetzt prüfen" sends `{"force":true}` and is then disabled for 60 seconds with a visible countdown ("Eine neue Prüfung ist in 42 Sekunden möglich."). A `rate_limited` or `cooldown` answer, and a `rate_limited` check error in the State with `retry_after_seconds`, lock it for that long; `check.throttled` is said in words. The countdown is a one-second interval that exists only while the button is locked and sends nothing. No timer runs while the page is closed.
 - **Polling.** `GET /api/v1/update` every 2 seconds, only while `job.running` is true or while the page waits for the restart after `activating`; the component's cleanup stops it when the page is left.
 - **Restart.** When reads fail during or after `activating`, the live region says "Der Dienst startet neu. Danach melden Sie sich erneut an." (before `activating` it says only "Oarfish antwortet gerade nicht. Die Seite fragt alle zwei Sekunden erneut.") and the page keeps reading every 2 seconds for at most 3 minutes; then it says "Der Dienst hat drei Minuten lang nicht geantwortet. Öffnen Sie die Seite später erneut." with "Erneut laden". A 401 takes the existing session-loss path to Anmelden; after signing in, the address `#/update` shows the page again with `last_result`. The page shows what the State says and claims nothing else about the process or its health.
-- **Confirmation.** An inline panel below the available version, not a modal dialog: from and to version, channel, size, signature status, the rollback sentence, and the password field (`autocomplete="current-password"`; its help text says that the service restarts and everybody is signed out). The focus moves into the field on opening and back to "Aktualisieren" on closing; Escape and "Abbrechen" close it. The password is only in the input and in the request, and the input is cleared after every attempt.
+- **Reload after an update (task N0, ADR 0011 A8.8).** The page remembers the version of the service that served it (the first `GET /healthz` after it loaded, `lib/version.ts`). While it waits for the switch after `activating`, each poll first reads `/healthz`; as soon as it reports another version, the page loads itself again (`location.reload()`), before the State is read and the 401 of the new process takes the session-loss path. The new page then asks for the login and, after it, shows `#/update` with `last_result`. On opening, the page compares the versions once more, so a page that is still the old one after signing in again is reloaded too, and a rollback to the page's own version causes no reload. A reload is done once per version (`sessionStorage`, key `oarfish.reloadedFor`); if the page still differs after it, or the browser keeps no session storage, the page says in one sentence "Laden Sie die Seite neu, damit sie Version … zeigt." When a version cannot be read, nothing happens. The service sends `index.html` and every file without a content hash with `Cache-Control: no-cache`, hashed files of Vite with `public, max-age=31536000, immutable` ([`DEVELOPMENT.md`](DEVELOPMENT.md)).
+- **Confirmation.** An inline panel below the available version, not a modal dialog: from and to version, channel, size, signature status, the rollback sentence, and the password field (`autocomplete="current-password"`; its help text says that the service restarts and everybody is signed out). The focus moves into the field on opening and back to "Aktualisieren" on closing; Escape and "Abbrechen" close it. The password is only in the input and in the request, and the input is cleared after every attempt. A wrong password says "Das Passwort ist falsch." (`updWrongPassword`, task N0, the same sentence as the restart and shutdown dialog; until N0 this step showed the account page's "Das aktuelle Passwort ist falsch.", which the account page keeps).
 - **Untrusted text.** Release notes, versions, component names and codes from the API are text nodes only. The notes are one text node in a box with `white-space: pre-wrap`, at most 20rem high and scrollable, labelled "Von GitHub, nicht signiert". The server's English messages and the installer instruction of the service are never shown: every code has its own sentence (`lib/updateErrors.ts`), `http_<three digits>` shares one, and an unknown code gets "Das hat nicht funktioniert. Versuchen Sie es erneut."
 - **Shape checks.** `lib/update.ts` checks every answer at run time. A wrong structure, a step outside the closed set of the service or another schema version is a load error. A helper phase or a result outcome that this version does not know is kept and shown neutrally ("Unbekannt").
 
@@ -359,6 +362,7 @@ The alert rules themselves (including the rule "no interface has a link") are un
 | Helper needs attention | A critical notice with the next step (run the installer again, as the installation guide describes). | "state helper needs attention" |
 | Staged release waiting | "Version … ist vorbereitet und wartet. …" with "Verwerfen"; no "Aktualisieren" while it waits (the helper would answer `busy`). | "state staged release waiting" |
 | Restarting, and no answer for 3 minutes | See "Restart" above. | the tests under "restart" |
+| Reload after an update (task N0) | See "Reload after an update" above: no visible state while the reload works; the one-sentence notice when it cannot be done. | the tests under "reload after an update" |
 
 **Accessibility of the second confirmation (G6.10 step c).** The component names are a native list (`ul`), each file name a `code` element; the password field has a visible label and its help text is tied with `aria-describedby`; the two buttons are native `button` elements; nothing carries meaning by colour alone (the hand-over is said in the live region, the outcome badge is a word). The F4 text is spoken by the existing polite live region; no new live region was added. Checked in jsdom; not with a screen reader.
 
@@ -535,6 +539,20 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `netTotals` | Übertragen seit dem Start | Transferred since boot |
 | `netRateWaiting` | wird ermittelt … | measuring … |
 | `netKind` | Art | Type |
+| `netRoutingHeading` | Standardroute und DNS | Default route and DNS |
+| `netRouteIPv4` | Standardroute IPv4 | Default route IPv4 |
+| `netRouteIPv6` | Standardroute IPv6 | Default route IPv6 |
+| `netRouteVia` | {gateway} über {interface} | {gateway} via {interface} |
+| `netRouteDirect` | direkt über {interface} | directly via {interface} |
+| `netRouteHidden` | Router über {interface} | router via {interface} |
+| `netRouteHiddenNote` | Adresse verborgen, sie enthält eine Hardwareadresse | address hidden, it contains a hardware address |
+| `netRouteNone` | Keine | None |
+| `netDns` | DNS-Server | DNS servers |
+| `netDnsNone` | Keiner eingetragen | None configured |
+| `netDnsLocalServer` | {address} (lokal) | {address} (local) |
+| `netDnsLocal` | lokal heißt: ein Resolver auf dem Gerät, die Server dahinter sind hier nicht sichtbar | local means a resolver on the device; the servers behind it are not visible here |
+| `netDnsHidden` | {count} weitere verborgen, mit Hardwareadresse | {count} more hidden, with a hardware address |
+| `netDnsAllHidden` | Verborgen | Hidden |
 | `linkState.up` | Verbunden | Connected |
 | `linkState.down` | Kein Link | No link |
 | `linkState.unknown` | Unbekannt | Unknown |
@@ -560,6 +578,8 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `fieldArch` | Architektur | Architecture |
 | `fieldRevision` | Revisionscode | Revision code |
 | `fieldMemory` | Arbeitsspeicher | Memory |
+| `memUsableNote` | davon {usable} nutzbar | {usable} of it usable |
+| `limitationMemoryInstalled` | Nur {installed} Arbeitsspeicher | Only {installed} of memory |
 | `osHeading` | Betriebssystem | Operating system |
 | `fieldOs` | System | System |
 | `fieldOsAdapter` | Betriebssystem-Adapter | Operating system adapter |
@@ -694,6 +714,8 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `updConfirmFromTo` | Von Version {from} auf Version {to} | From version {from} to version {to} |
 | `updConfirmRestart` | Beim Aktualisieren startet der Dienst neu und alle Personen werden abgemeldet. | The service restarts during the update and everybody is signed out. |
 | `updPasswordLabel` | Passwort zur Bestätigung | Password to confirm |
+| `updWrongPassword` | Das Passwort ist falsch. | The password is wrong. |
+| `updReloadHint` | Laden Sie die Seite neu, damit sie Version {version} zeigt. | Reload the page so that it shows version {version}. |
 | `updConfirmWorking` | Update wird gestartet … | Starting the update … |
 | `updCancel` | Abbrechen | Cancel |
 | `updComponentsHeading` | Neue Bestandteile bestätigen | Confirm new components |
