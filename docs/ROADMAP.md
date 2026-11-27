@@ -23,6 +23,7 @@ The status of every gate and task, and the order of the work from now (D-C101 it
 | (task) N0 | Default route and DNS on the network card, the installed memory on the Gerät page (ADR 0008 "N0 as implemented", PR #68). Released in `v0.1.0-alpha.15` and observed on the reference device (ADR 0008 N0.9). Open: the resolver-stub fallback, the SSID (with D-D10) and the reload after the next update. |
 | (task) C1 | Documentation cleanup, D-C101 and D-C102, `debian:13` and the N0 fuzz targets in CI, the signing approval in `release.yml`, board profile 1.2.0 (limitation `evidence_one_device`). Merged (PR #70). |
 | (task) C2 | Specification 0.4.6 after D-C101, and the owner's choices as D-C103: OS and kernel updates through the GUI in the MVP, history and G12 behind it, the rule for Verified ([`VERIFIED.md`](VERIFIED.md)). Status: pull request open. |
+| (probe) UBU0 | Ubuntu Server 24.04 LTS on the reference board with `v0.1.0-alpha.14` and `v0.1.0-alpha.15`, class D, one device and one image ([`UBUNTU_PROBE.md`](UBUNTU_PROBE.md)). Install, units, detection, dashboard, GUI update and reboot work; the services list fails because `list-unit-files` takes 17 s there and blocks PID 1 (U1). Fix proposals U1 and U4 and inputs for DB1 and N1 are in the document; status: pull request open. |
 
 Nothing is Verified; the reference device (one Raspberry Pi Zero 2 W with Raspberry Pi OS Lite 64-bit) is Compatible.
 
@@ -30,7 +31,6 @@ Nothing is Verified; the reference device (one Raspberry Pi Zero 2 W with Raspbe
 
 | Step | Scope and status |
 |---|---|
-| (probe) UBU0 | Ubuntu short probe with real systemd, no product code; it comes right after C2 and before DB1 (D-C103). Not started. |
 | (design block) DB1 | On paper, ADRs only: **D-D10** LAN access and HTTPS without an SSH tunnel, with the update health over the person's path and commit-confirmed network and certificate changes (D-C101 item 4), the twelve loopback assumptions of the interim assessment, the login limiter lockout (finding F-5 item 1) and the inputs of D-D10; **D-D12** an offline root key per maintainer and a threshold (for example 2 of 3) that signs the list of valid release keys; **the privileged system service** (D-C101 items 2 and 3, and the operations and display of OS and kernel updates (OSU1): one service or two with a common pattern, a catalogue that grows without an installer run and covers G9, G10 and the OS and kernel updates of OSU1 (operations and display), the authentication of root actions, the reboot loop of ADR 0011 "Risks"). Not started. |
 | (transition) TR1 | One transition that implements D-D10, D-D12 and the layout of the privileged service, so that no device needs the installer again after it (D-C101 items 1 and 3). Not started. |
 | (design stop) F1, (task) F2 | Files, read-only: the first fixed roots, block list, size limit and acceptance criteria with an ADR, then the implementation; root reading through typed operations after authentication (D-C101 item 5; D-C75). Not started. |
