@@ -21,7 +21,8 @@ The status of every gate and task, and the order of the work from now (D-C101 it
 | (task) metrics test race | A racy test of the metrics sampler fixed, test file only (PR #40). |
 | (task) U1 | UI shell: navigation, language choice, tokens, colour baseline, logo mark (PR #34; [`UI.md`](UI.md)). |
 | (task) N0 | Default route and DNS on the network card, the installed memory on the Gerät page (ADR 0008 "N0 as implemented", PR #68). Released in `v0.1.0-alpha.15` and observed on the reference device (ADR 0008 N0.9). Open: the resolver-stub fallback, the SSID (with D-D10) and the reload after the next update. |
-| (task) C1 | Documentation cleanup, D-C101 and D-C102, `debian:13` and the N0 fuzz targets in CI, the signing approval in `release.yml`, board profile 1.2.0 (limitation `evidence_one_device`). Status: pull request open (PR #70). |
+| (task) C1 | Documentation cleanup, D-C101 and D-C102, `debian:13` and the N0 fuzz targets in CI, the signing approval in `release.yml`, board profile 1.2.0 (limitation `evidence_one_device`). Merged (PR #70). |
+| (task) C2 | Specification 0.4.6 after D-C101, and the owner's choices as D-C103: OS and kernel updates through the GUI in the MVP, history and G12 behind it, the rule for Verified ([`VERIFIED.md`](VERIFIED.md)). Status: pull request open. |
 
 Nothing is Verified; the reference device (one Raspberry Pi Zero 2 W with Raspberry Pi OS Lite 64-bit) is Compatible.
 
@@ -29,8 +30,8 @@ Nothing is Verified; the reference device (one Raspberry Pi Zero 2 W with Raspbe
 
 | Step | Scope and status |
 |---|---|
-| (design block) DB1 | On paper, ADRs only: **D-D10** LAN access and HTTPS without an SSH tunnel, with the update health over the person's path and commit-confirmed network and certificate changes (D-C101 item 4), the twelve loopback assumptions of the interim assessment, the login limiter lockout (finding F-5 item 1) and the inputs of D-D10; **D-D12** an offline root key per maintainer and a threshold (for example 2 of 3) that signs the list of valid release keys; **the privileged system service** (D-C101 items 2 and 3: one service or two with a common pattern, a catalogue that grows without an installer run and covers G9, G10 and OS updates, the authentication of root actions, the reboot loop of ADR 0011 "Risks"). Not started. |
-| (probe) UBU0 | Ubuntu short probe with real systemd, no product code; it runs early (D-C101 item 5), and the owner places it (proposal: before the transition, because the transition changes units and links). Not started. |
+| (probe) UBU0 | Ubuntu short probe with real systemd, no product code; it comes right after C2 and before DB1 (D-C103). Not started. |
+| (design block) DB1 | On paper, ADRs only: **D-D10** LAN access and HTTPS without an SSH tunnel, with the update health over the person's path and commit-confirmed network and certificate changes (D-C101 item 4), the twelve loopback assumptions of the interim assessment, the login limiter lockout (finding F-5 item 1) and the inputs of D-D10; **D-D12** an offline root key per maintainer and a threshold (for example 2 of 3) that signs the list of valid release keys; **the privileged system service** (D-C101 items 2 and 3, and the operations and display of OS and kernel updates (OSU1): one service or two with a common pattern, a catalogue that grows without an installer run and covers G9, G10 and the OS and kernel updates of OSU1 (operations and display), the authentication of root actions, the reboot loop of ADR 0011 "Risks"). Not started. |
 | (transition) TR1 | One transition that implements D-D10, D-D12 and the layout of the privileged service, so that no device needs the installer again after it (D-C101 items 1 and 3). Not started. |
 | (design stop) F1, (task) F2 | Files, read-only: the first fixed roots, block list, size limit and acceptance criteria with an ADR, then the implementation; root reading through typed operations after authentication (D-C101 item 5; D-C75). Not started. |
 | (design stop) H1 | The settings store only, which SET1 needs (D-C101 item 6; D-C73). Input from S1: the medium is an SD card, the idle write baseline is about 392 KB per hour. Not started. |
@@ -43,14 +44,14 @@ Nothing is Verified; the reference device (one Raspberry Pi Zero 2 W with Raspbe
 | G10 | Docker and Podman plugin; the service's access to the engine is decided in a design stop before G10 (D-C75). |
 | G9 | Tailscale plugin, installed through the GUI by a typed privileged operation, with its own design stop (D-C75). |
 | G11 | Oarfish Assist, read-only MVP; it never gets root (D-C101 item 2). |
-| (task) VR1 | Visual refresh of the UI. It includes U2 (theme switch and header, the owner's proposal), so U2 has no row of its own. Not started. |
-| (task) OSU1 | Operating system and kernel updates through the GUI, proposed for the MVP by D-C101 item 5; needs the specification change listed in the C1 report (4.3, ORB-OSU-001 to ORB-OSU-003), and its operations are designed in DB1. The owner places it. |
-| (task) VER1 | Evidence for the status Verified (specification 3.6, 16 item 8); part of the G13 acceptance. Draft criteria for the owner: [`VER1_PROPOSAL.md`](VER1_PROPOSAL.md). |
+| (task) VR1 | Visual refresh of the UI, including U2 (theme switch and header); U2 has no row of its own (D-C103). Not started. |
+| (task) OSU1 | OS and kernel updates through the GUI (ORB-OSU-001 to ORB-OSU-003, D-C101, D-C103): design in DB1, build after TR1. Not started. |
+| (task) VER1 | Evidence for the status Verified (specification 3.6, 16 item 8), under the rules of [`VERIFIED.md`](VERIFIED.md) (D-C103); part of the G13 acceptance. Not started. |
 | G13 | Hardening and MVP acceptance. |
 
 ## Specification items without a step
 
-Items the specification asks for that no step covers yet. Each has a proposal; the owner decides (C1 report).
+Items the specification asks for that no step covers yet. Each keeps the proposal of the C1 report (D-C103 item 6).
 
 | Item | Specification | Proposal |
 |---|---|---|
@@ -59,15 +60,14 @@ Items the specification asks for that no step covers yet. Each has a proposal; t
 | Diagnostics bundle with preview and redaction | 13.1 | Plan with G11, which needs the same redaction; otherwise behind the MVP. |
 | Recovery flag to start without plugins | 13.3 | Plan with G8, together with the emergency path to disable a plugin. |
 | `/etc/oarfish/config.json` | 8.2 | Decide in DB1: the service cannot write `/etc` (`ProtectSystem=strict`); either the privileged service writes it, or 8.2 names the settings store of H1. |
-| `profiles.yml` workflow | 9.2 | Change the specification: the schema, fixture and match tests already run in `ci.yml`; no separate workflow. |
 | Documented backup path | 13.2 | Plan in G13, after TR1 has fixed the file layout. |
 
 ## Behind the MVP
 
 | Item | Note |
 |---|---|
-| (task) H2 | 24-hour history of CPU, memory and temperature, behind the MVP (D-C101 item 6); the specification change is proposed in the C1 report. |
-| G12 | Full Ubuntu Server LTS ARM64 qualification, behind the MVP (D-C101 item 6); the MVP keeps the preparation (specification 16 item 10). |
+| (task) H2 | 24-hour history of CPU, memory and temperature, behind the MVP (D-C101 item 6); the specification change is made (4.1, 12.3; D-C103). |
+| G12 | Full Ubuntu Server LTS ARM64 qualification, behind the MVP (D-C101 item 6, specification 14.2); the MVP keeps the preparation (specification 16 item 10). |
 | Reserve | Journal and process views (ORB-LOG-001, ORB-PRC-001; D-C69). |
 | (task) T1 | Throttling and undervoltage warnings (ORB-DASH-004). S1: undervoltage is readable from the `rpi_volt` hwmon alarm file; a frequency cap is not available as a flag. |
 | Web terminal | An optional expert plugin with its own design and decision; no administration task needs it (D-C101 item 1). |
