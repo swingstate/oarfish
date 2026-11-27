@@ -144,6 +144,10 @@ describe('network scenario mode', () => {
       'network-hidden',
       'network-unreadable',
       'device-memory-unknown',
+      'network-wifi-signal',
+      'network-ethernet-only',
+      'network-resolver-stub',
+      'network-none',
     ]);
     expect(installMetricsMock('not-a-scenario')).toBe(false);
   });
@@ -155,6 +159,10 @@ describe('network scenario mode', () => {
     'network-hidden': 'direkt über wg0',
     'network-unreadable': 'Nicht verfügbar',
     'device-memory-unknown': '192.0.2.1 über wlan0',
+    'network-wifi-signal': '192.0.2.1 über wlan0',
+    'network-ethernet-only': '192.0.2.1 über eth0',
+    'network-resolver-stub': '192.0.2.1 über wlan0',
+    'network-none': 'Keine',
   };
   for (const name of metricsScenarioNames()) {
     it(`scenario ${name} renders the network card from the stream`, async () => {
@@ -166,6 +174,7 @@ describe('network scenario mode', () => {
         await screen.findByTestId('routing', {}, { timeout: 2000 });
         expect(row('route-ipv4')).toBe(expected[name]);
         if (name === 'network-dns-stub') expect(row('dns-servers')).toContain('127.0.0.53 (lokal)');
+        if (name === 'network-resolver-stub') expect(row('dns-servers')).toContain('genutzt über den Resolver auf dem Gerät');
       } finally {
         window.EventSource = realES;
       }

@@ -11,8 +11,18 @@
 // below appears in the output (vite.config.ts). Synthetic data only.
 import { genericArm64, piZero2W } from '../lib/device.fixtures';
 import type { Device } from '../lib/device';
-import { hiddenRouting, noRouteRouting, piMetrics, piRouting, stubRouting, unreadableRouting } from '../lib/metrics.fixtures';
-import type { MetricsResponse, Routing } from '../lib/metrics';
+import {
+  behindStubRouting,
+  ethernetOnly,
+  ethernetRouting,
+  hiddenRouting,
+  noRouteRouting,
+  piMetrics,
+  piRouting,
+  stubRouting,
+  unreadableRouting,
+} from '../lib/metrics.fixtures';
+import type { MetricsResponse, Routing, Snapshot } from '../lib/metrics';
 
 /** A unique string: the production build is checked for it. */
 export const devMockMarker = 'oarfish-dev-mock';
@@ -20,6 +30,8 @@ export const devMockMarker = 'oarfish-dev-mock';
 interface Scenario {
   routing: Routing;
   device: Device;
+  /** Parts of the snapshot that differ from the Pi fixture (the pages Netzwerk and Speicher). */
+  snapshot?: Partial<Snapshot>;
 }
 
 /** The scenarios of docs/DEVELOPMENT.md, "Network card and Gerät page". */
@@ -30,6 +42,11 @@ const scenarios: Record<string, () => Scenario> = {
   'network-hidden': () => ({ routing: hiddenRouting, device: piZero2W }),
   'network-unreadable': () => ({ routing: unreadableRouting, device: piZero2W }),
   'device-memory-unknown': () => ({ routing: piRouting, device: genericArm64 }),
+  // ---- the page Netzwerk (task N1) ----
+  'network-wifi-signal': () => ({ routing: piRouting, device: piZero2W }),
+  'network-ethernet-only': () => ({ routing: ethernetRouting, device: piZero2W, snapshot: { network: ethernetOnly } }),
+  'network-resolver-stub': () => ({ routing: behindStubRouting, device: piZero2W }),
+  'network-none': () => ({ routing: noRouteRouting, device: piZero2W, snapshot: { network: [] } }),
 };
 
 /** The names, for the console hint and the documentation. */
@@ -44,6 +61,7 @@ function reading(s: Scenario): MetricsResponse {
   const m = structuredClone(piMetrics);
   m.collected_at = new Date().toISOString();
   m.routing = structuredClone(s.routing);
+  Object.assign(m, structuredClone(s.snapshot ?? {}));
   return m;
 }
 

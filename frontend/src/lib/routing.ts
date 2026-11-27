@@ -1,5 +1,5 @@
 // The texts of the default routes and the name servers on the Dashboard's
-// network card (task N0, ORB-NET-001, docs/UI.md). Addresses and interface
+// network card and the page Netzwerk (tasks N0 and N1, ORB-NET-001, docs/UI.md). Addresses and interface
 // names come from the service and are text only.
 import { fmt, t } from './i18n';
 import type { DefaultRoute, Routing } from './metrics';
@@ -20,6 +20,7 @@ function dnsItem(d: Routing['dns']): KeyValueItem {
   if (d.status === 'none') return { ...item, placeholder: t.netDnsNone };
   if (d.status !== 'found') return item;
   const notes: string[] = [];
+  if (d.via_local_resolver) notes.push(t.netDnsViaResolver);
   if (d.servers.some((s) => s.local)) notes.push(t.netDnsLocal);
   if (d.hidden > 0) notes.push(fmt('netDnsHidden', { count: d.hidden }));
   const value = d.servers.map((s) => (s.local ? fmt('netDnsLocalServer', { address: s.address }) : s.address)).join(', ');

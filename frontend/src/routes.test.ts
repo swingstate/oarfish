@@ -4,13 +4,15 @@ import { icons } from './lib/icons.fake';
 import { routeFromHash, routes, type Route } from './routes';
 
 describe('navigation list', () => {
-  it('lists Dashboard first, then Gerät, then Aktivität and Update in the group System, and the account page outside it', () => {
+  it('lists Dashboard first, then Gerät, then Netzwerk, Aktivität and Update in the group System, and the account page outside it', () => {
     const nav = routes.filter((r) => r.nav !== false);
-    expect(nav.map((r) => r.id)).toEqual(['dashboard', 'device', 'activity', 'update']);
-    expect(nav.map((r) => de[r.labelKey])).toEqual(['Dashboard', 'Gerät', 'Aktivität', 'Update']);
-    expect(nav.map((r) => en[r.labelKey])).toEqual(['Dashboard', 'Device', 'Activity', 'Update']);
-    expect(nav.map((r) => r.group)).toEqual([undefined, undefined, 'system', 'system']);
+    expect(nav.map((r) => r.id)).toEqual(['dashboard', 'device', 'network', 'activity', 'update']);
+    expect(nav.map((r) => de[r.labelKey])).toEqual(['Dashboard', 'Gerät', 'Netzwerk', 'Aktivität', 'Update']);
+    expect(nav.map((r) => en[r.labelKey])).toEqual(['Dashboard', 'Device', 'Network', 'Activity', 'Update']);
+    expect(nav.map((r) => r.group)).toEqual([undefined, undefined, 'system', 'system', 'system']);
     expect(nav.find((r) => r.id === 'activity')?.icon).toBe('activity');
+    expect(nav.find((r) => r.id === 'network')?.icon).toBe('network');
+    expect(routeFromHash('#/network').id).toBe('network');
     expect(routeFromHash('#/activity').id).toBe('activity');
     expect(routeFromHash('#/update').id).toBe('update');
     expect(routes.filter((r) => r.nav === false).map((r) => r.id)).toEqual(['account']);

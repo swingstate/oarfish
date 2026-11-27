@@ -36,6 +36,17 @@ export interface NetworkInterface {
   tx_bytes: number | null;
   ipv4: string[];
   ipv6: string[];
+  /** The same addresses with their prefix length, in the same order (task N1); missing before N1. */
+  ipv4_cidr?: string[];
+  ipv6_cidr?: string[];
+  /** The Wi-Fi signal (task N1): null when the interface is not Wi-Fi or the kernel lists no signal. */
+  signal?: WifiSignal | null;
+}
+
+/** The signal of a Wi-Fi interface from /proc/net/wireless. The link quality is on the driver's own scale. */
+export interface WifiSignal {
+  level_dbm: number | null;
+  link_quality: number | null;
 }
 
 /** Status of one routing part: read and found, read and empty, or not readable (task N0). */
@@ -59,7 +70,8 @@ export interface DnsServer {
 export interface Routing {
   ipv4: DefaultRoute;
   ipv6: DefaultRoute;
-  dns: { status: string; servers: DnsServer[]; hidden: number };
+  /** via_local_resolver: the servers are those behind a resolver stub on the device (task N1); missing before N1. */
+  dns: { status: string; servers: DnsServer[]; hidden: number; via_local_resolver?: boolean };
 }
 
 /** One reading of the device (schema_version 1). Unknown values are null. */
@@ -172,7 +184,10 @@ function isInterface(v: unknown): v is NetworkInterface {
     isNumOrNull(v.rx_bytes) &&
     isNumOrNull(v.tx_bytes) &&
     isStrList(v.ipv4) &&
-    isStrList(v.ipv6)
+    isStrList(v.ipv6) &&
+    (v.ipv4_cidr === undefined || isStrList(v.ipv4_cidr)) &&
+    (v.ipv6_cidr === undefined || isStrList(v.ipv6_cidr)) &&
+    (v.signal === undefined || v.signal === null || (isObject(v.signal) && isNumOrNull(v.signal.level_dbm) && isNumOrNull(v.signal.link_quality)))
   );
 }
 
@@ -186,6 +201,7 @@ function isRouting(v: unknown): v is Routing {
   return (
     isStr(d.status) &&
     isNum(d.hidden) &&
+    (d.via_local_resolver === undefined || typeof d.via_local_resolver === 'boolean') &&
     Array.isArray(d.servers) &&
     d.servers.every((s) => isObject(s) && isStr(s.address) && typeof s.local === 'boolean')
   );

@@ -92,7 +92,8 @@ const fixtureHostName = "oarfish-test"
 // detection fixtures hold no IP address and no host name at all. The metrics
 // fixtures, which stand for live readings, may hold exactly two kinds of
 // values: IP addresses from the documentation ranges, and the host name
-// "oarfish-test" in proc/sys/kernel/hostname.
+// "oarfish-test" in proc/sys/kernel/hostname; besides, etc/resolv.conf may
+// name the resolver stub 127.0.0.53.
 func TestFixturesContainNoPrivateData(t *testing.T) {
 	roots := []struct {
 		dir     string
@@ -117,12 +118,18 @@ func TestFixturesContainNoPrivateData(t *testing.T) {
 				return err
 			}
 			count++
+			// Path rules. rel is <fixture>/<path in the fixture tree>.
+			_, inTree, _ := strings.Cut(filepath.ToSlash(rel), "/")
 			for _, f := range scanPrivate(string(data)) {
+				// The one exception: the address of the systemd-resolved stub
+				// (task N1, the shape of the Ubuntu image), which is the same
+				// on every device and identifies nothing.
+				if root.metrics && inTree == "etc/resolv.conf" && f == "IPv4 address: 127.0.0.53" {
+					continue
+				}
 				t.Errorf("fixture %s: %s", rel, f)
 			}
 
-			// Path rules. rel is <fixture>/<path in the fixture tree>.
-			_, inTree, _ := strings.Cut(filepath.ToSlash(rel), "/")
 			for _, bad := range []string{"machine-id", "environ", "passwd", ".ssh", "cmdline", "shadow"} {
 				if strings.Contains(inTree, bad) {
 					t.Errorf("fixture path %s contains %q", rel, bad)
@@ -246,10 +253,14 @@ func TestDetectionOpensOnlyAllowListedFiles(t *testing.T) {
 // environment, process data, user databases and SSH data are not on it.
 var metricsReadAllowList = []*regexp.Regexp{
 	regexp.MustCompile(`^proc/(stat|loadavg|uptime|meminfo|self/mountinfo|sys/kernel/hostname)$`),
-	regexp.MustCompile(`^proc/net/(fib_trie|route|if_inet6|ipv6_route)$`),
+	// Task N1: /proc/net/wireless for the signal (level and link quality only).
+	regexp.MustCompile(`^proc/net/(fib_trie|route|if_inet6|ipv6_route|wireless)$`),
 	// Task N0 (ADR 0008, amendment "N0 as implemented"): only the nameserver
-	// lines are used; nothing else of the file reaches the output.
+	// lines are used; nothing else of the file reaches the output. Task N1:
+	// the same for the servers behind a resolver stub, read only when every
+	// server of /etc/resolv.conf is a loopback address.
 	regexp.MustCompile(`^etc/resolv\.conf$`),
+	regexp.MustCompile(`^run/systemd/resolve/resolv\.conf$`),
 	regexp.MustCompile(`^sys/devices/system/cpu/cpu0/cpufreq/(scaling_cur_freq|cpuinfo_max_freq|scaling_max_freq|scaling_governor)$`),
 	regexp.MustCompile(`^sys/class/(thermal|hwmon|net)$`),
 	regexp.MustCompile(`^sys/class/thermal/thermal_zone[0-9]{1,4}/(type|temp)$`),
@@ -275,7 +286,7 @@ func TestMetricsOpenOnlyAllowListedFiles(t *testing.T) {
 	})
 	opened := map[string]bool{}
 	now := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
-	for _, name := range []string{"pi-zero-2w", "generic-arm64", "minimal", "hostile"} {
+	for _, name := range []string{"pi-zero-2w", "ubuntu-stub", "generic-arm64", "minimal", "hostile"} {
 		rec := platformtest.Recording(metricstest.Fixture(t, name))
 		c := metrics.NewCollector(rec, sizes)
 		c.Collect(now)
@@ -304,6 +315,7 @@ func TestMetricsOpenOnlyAllowListedFiles(t *testing.T) {
 	for _, want := range []string{
 		"proc/stat", "proc/loadavg", "proc/uptime", "proc/meminfo", "proc/sys/kernel/hostname", "proc/self/mountinfo",
 		"proc/net/fib_trie", "proc/net/route", "proc/net/if_inet6", "proc/net/ipv6_route", "etc/resolv.conf",
+		"proc/net/wireless", "run/systemd/resolve/resolv.conf",
 		"sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq", "sys/class/thermal/thermal_zone0/temp",
 		"sys/class/hwmon/hwmon0/temp1_input", "sys/class/net/wlan0/operstate", "sys/class/net/eth0/statistics/rx_bytes",
 	} {
@@ -314,7 +326,8 @@ func TestMetricsOpenOnlyAllowListedFiles(t *testing.T) {
 	for _, private := range []string{
 		"sys/class/net/eth0/address", "sys/class/net/eth0/addr_assign_type", "sys/class/net/eth0/phys_port_id", "etc/machine-id",
 		"etc/hostname", "proc/self/environ", "proc/cpuinfo", "proc/1/cmdline", "home/x/.ssh/id_ed25519", "etc/passwd",
-		"proc/net/arp", "proc/net/dev", "proc/net/wireless", "etc/resolv.conf.bak", "etc/hosts", "run/systemd/resolve/resolv.conf", "sys/class/dmi/id/product_serial", "sys/class/net/../../x/operstate",
+		"proc/net/arp", "proc/net/dev", "proc/net/wireless.bak", "etc/resolv.conf.bak", "etc/hosts", "run/systemd/resolve/stub-resolv.conf",
+		"run/systemd/resolve/resolv.conf.bak", "run/systemd/netif/leases/2", "sys/class/dmi/id/product_serial", "sys/class/net/../../x/operstate",
 	} {
 		if metricsAllowed(private) {
 			t.Errorf("the allow-list admits %q", private)

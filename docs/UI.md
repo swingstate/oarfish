@@ -553,6 +553,22 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `netDnsLocal` | lokal heißt: ein Resolver auf dem Gerät, die Server dahinter sind hier nicht sichtbar | local means a resolver on the device; the servers behind it are not visible here |
 | `netDnsHidden` | {count} weitere verborgen, mit Hardwareadresse | {count} more hidden, with a hardware address |
 | `netDnsAllHidden` | Verborgen | Hidden |
+| `netDnsViaResolver` | genutzt über den Resolver auf dem Gerät | used through the resolver on the device |
+| `netPageLink` | Details auf der Seite Netzwerk | Details on the Network page |
+| `navNetwork` | Netzwerk | Network |
+| `networkTitle` | Netzwerk | Network |
+| `netPageInterfaces` | Schnittstellen | Interfaces |
+| `netPageLoading` | Die Netzwerkdaten werden gelesen … | Reading the network data … |
+| `netPageLoadError` | Die Netzwerkdaten konnten nicht gelesen werden. | The network data could not be read. |
+| `netPageLoadErrorHint` | Versuchen Sie es in einigen Sekunden erneut. | Try again in a few seconds. |
+| `netLinkState` | Verbindung | Link |
+| `netSignal` | Signal | Signal |
+| `netSignalValue` | {level} dBm, Linkqualität {quality} | {level} dBm, link quality {quality} |
+| `netSignalLevel` | {level} dBm | {level} dBm |
+| `netSignalQuality` | Linkqualität {quality} | link quality {quality} |
+| `netSignalWord.good` | gut | good |
+| `netSignalWord.fair` | mittel | fair |
+| `netSignalWord.weak` | schwach | weak |
 | `linkState.up` | Verbunden | Connected |
 | `linkState.down` | Kein Link | No link |
 | `linkState.unknown` | Unbekannt | Unknown |

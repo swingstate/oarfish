@@ -96,6 +96,24 @@ type NetworkInterface struct {
 	TxBytes   *uint64  `json:"tx_bytes"`
 	IPv4      []string `json:"ipv4"`
 	IPv6      []string `json:"ipv6"`
+	// IPv4CIDR and IPv6CIDR are the same addresses in the same order with
+	// their prefix length ("192.0.2.15/24"); added beside the plain lists
+	// (task N1). The IPv4 prefix is that of the connected route the address
+	// was assigned by, the IPv6 prefix that of /proc/net/if_inet6.
+	IPv4CIDR []string `json:"ipv4_cidr"`
+	IPv6CIDR []string `json:"ipv6_cidr"`
+	// Signal is the Wi-Fi signal from /proc/net/wireless, read with every
+	// sample; null for an interface that is not Wi-Fi or that the file does
+	// not list (for example not associated). Task N1.
+	Signal *WiFiSignal `json:"signal"`
+}
+
+// WiFiSignal is the signal of a Wi-Fi interface. LevelDBm is null unless the
+// driver reports the level in dBm; LinkQuality is the driver's link quality
+// on the driver's own scale (the file names no maximum), null when unreadable.
+type WiFiSignal struct {
+	LevelDBm    *int `json:"level_dbm"`
+	LinkQuality *int `json:"link_quality"`
 }
 
 // Routing is the default route of each address family and the DNS servers
@@ -135,10 +153,15 @@ type DefaultRoute struct {
 // DNS is the list of name servers from /etc/resolv.conf, at most
 // parse.MaxNameservers, in file order. Hidden counts the servers among them
 // whose address is built from a hardware address and is therefore not shown.
+// ViaLocalResolver is true when every server of /etc/resolv.conf is a
+// loopback address (a resolver stub on the device) and the servers come from
+// /run/systemd/resolve/resolv.conf instead: the servers that stub forwards to,
+// used through it (task N1, docs/UBUNTU_PROBE.md U3).
 type DNS struct {
-	Status  string      `json:"status"`
-	Servers []DNSServer `json:"servers"`
-	Hidden  int         `json:"hidden"`
+	Status           string      `json:"status"`
+	Servers          []DNSServer `json:"servers"`
+	Hidden           int         `json:"hidden"`
+	ViaLocalResolver bool        `json:"via_local_resolver"`
 }
 
 // DNSServer is one name server. Local is true for a loopback address: a

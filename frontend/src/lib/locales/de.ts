@@ -151,6 +151,24 @@ export const deUi = {
   'netKind.wifi': 'WLAN',
   'netKind.other': 'Sonstige',
 
+  // ---- Network page (task N1) ----
+  netDnsViaResolver: 'genutzt über den Resolver auf dem Gerät',
+  netPageLink: 'Details auf der Seite Netzwerk',
+  navNetwork: 'Netzwerk',
+  networkTitle: 'Netzwerk',
+  netPageInterfaces: 'Schnittstellen',
+  netPageLoading: 'Die Netzwerkdaten werden gelesen …',
+  netPageLoadError: 'Die Netzwerkdaten konnten nicht gelesen werden.',
+  netPageLoadErrorHint: 'Versuchen Sie es in einigen Sekunden erneut.',
+  netLinkState: 'Verbindung',
+  netSignal: 'Signal',
+  netSignalValue: '{level} dBm, Linkqualität {quality}',
+  netSignalLevel: '{level} dBm',
+  netSignalQuality: 'Linkqualität {quality}',
+  'netSignalWord.good': 'gut',
+  'netSignalWord.fair': 'mittel',
+  'netSignalWord.weak': 'schwach',
+
   // ---- Sparklines (text alternatives) ----
   sparkCpu: 'CPU-Auslastung der letzten Minuten, zuletzt {value}',
   sparkMemory: 'Belegter Arbeitsspeicher der letzten Minuten, zuletzt {value}',

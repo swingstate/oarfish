@@ -34,10 +34,15 @@ const (
 	pathInet6     = "proc/net/if_inet6"
 	pathRoute6    = "proc/net/ipv6_route"
 	pathResolv    = "etc/resolv.conf"
-	dirCPUFreq    = "sys/devices/system/cpu/cpu0/cpufreq"
-	dirThermal    = "sys/class/thermal"
-	dirHwmon      = "sys/class/hwmon"
-	dirNet        = "sys/class/net"
+	// pathResolvUpstream is read only when every server of /etc/resolv.conf
+	// is a loopback address (task N1): the servers a systemd-resolved stub
+	// forwards to. Only its nameserver lines are used.
+	pathResolvUpstream = "run/systemd/resolve/resolv.conf"
+	pathWireless       = "proc/net/wireless"
+	dirCPUFreq         = "sys/devices/system/cpu/cpu0/cpufreq"
+	dirThermal         = "sys/class/thermal"
+	dirHwmon           = "sys/class/hwmon"
+	dirNet             = "sys/class/net"
 )
 
 // Read limits in bytes. A file above its limit counts as unreadable.
@@ -47,6 +52,7 @@ const (
 	limitMountinfo = 1 << 20
 	limitNetTable  = 256 << 10
 	limitResolv    = 64 << 10
+	limitWireless  = 16 << 10
 	limitSmall     = 128
 	maxDirEntries  = 512
 	// maxMountCandidates is how many distinct devices are asked for their size.
@@ -84,6 +90,8 @@ type ifaceStatic struct {
 	speedMbps *int
 	ipv4      []string
 	ipv6      []string
+	ipv4CIDR  []string
+	ipv6CIDR  []string
 }
 
 type slowData struct {
@@ -195,22 +203,50 @@ func (c *Collector) memory() Memory {
 	return out
 }
 
-// network combines the cached static part with a fresh read of state and counters.
+// network combines the cached static part with a fresh read of state,
+// counters and the Wi-Fi signal. The signal is in this fast tier because it
+// changes from second to second and costs one small file read per sample,
+// only while somebody watches and only when a Wi-Fi interface exists.
 func (c *Collector) network() []NetworkInterface {
 	out := make([]NetworkInterface, 0, len(c.slow.ifaces))
+	signals := c.wifiSignals()
 	for _, s := range c.slow.ifaces {
 		base := dirNet + "/" + s.name + "/"
 		ni := NetworkInterface{
 			Name: s.name, Kind: s.kind, SpeedMbps: s.speedMbps,
-			State: "unknown", IPv4: s.ipv4, IPv6: s.ipv6,
+			State: "unknown", IPv4: s.ipv4, IPv6: s.ipv6, IPv4CIDR: s.ipv4CIDR, IPv6CIDR: s.ipv6CIDR,
 			RxBytes: readCounter(c.fsys, base+"statistics/rx_bytes"),
 			TxBytes: readCounter(c.fsys, base+"statistics/tx_bytes"),
+		}
+		if s.kind == KindWiFi {
+			ni.Signal = signals[s.name]
 		}
 		if data, err := source.ReadFile(c.fsys, base+"operstate", limitSmall); err == nil {
 			ni.State = operState(string(data))
 		}
 		ni.LinkUp = ni.State == "up"
 		out = append(out, ni)
+	}
+	return out
+}
+
+// wifiSignals reads /proc/net/wireless once, when a Wi-Fi interface exists.
+// A missing, unreadable or oversize file gives no signal (fail soft).
+func (c *Collector) wifiSignals() map[string]*WiFiSignal {
+	wifi := false
+	for _, s := range c.slow.ifaces {
+		wifi = wifi || s.kind == KindWiFi
+	}
+	if !wifi {
+		return nil
+	}
+	data, err := source.ReadFile(c.fsys, pathWireless, limitWireless)
+	if err != nil {
+		return nil
+	}
+	out := map[string]*WiFiSignal{}
+	for _, w := range parse.ParseWireless(data) {
+		out[w.Iface] = &WiFiSignal{LevelDBm: w.LevelDBm, LinkQuality: w.Quality}
 	}
 	return out
 }
@@ -485,7 +521,7 @@ func discoverInterfaces(fsys fs.FS) []ifaceStatic {
 		if typ < 0 || typ == arphrdLoopback {
 			continue // not an interface (for example the file bonding_masters), or loopback
 		}
-		s := ifaceStatic{name: name, kind: KindOther, ipv4: []string{}, ipv6: []string{}}
+		s := ifaceStatic{name: name, kind: KindOther, ipv4: []string{}, ipv6: []string{}, ipv4CIDR: []string{}, ipv6CIDR: []string{}}
 		switch {
 		case source.Exists(fsys, base+"wireless") || source.Exists(fsys, base+"phy80211"):
 			s.kind = KindWiFi
@@ -573,6 +609,7 @@ func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 				continue
 			}
 			ifaces[i].ipv6 = append(ifaces[i].ipv6, e.Addr.String())
+			ifaces[i].ipv6CIDR = append(ifaces[i].ipv6CIDR, netip.PrefixFrom(e.Addr, e.Prefix).String())
 		}
 	}
 
@@ -582,6 +619,7 @@ func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 		return
 	}
 	connected := parse.ParseRoutes(routes)
+	v4 := map[int][]netip.Prefix{}
 	for _, addr := range parse.ParseFibTrieLocal(trie) {
 		best, bestBits := "", -1
 		for _, r := range connected {
@@ -589,14 +627,16 @@ func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 				best, bestBits = r.Iface, r.Prefix.Bits()
 			}
 		}
-		if i, ok := index[best]; ok && len(ifaces[i].ipv4) < MaxAddresses {
-			ifaces[i].ipv4 = append(ifaces[i].ipv4, addr.String())
+		if i, ok := index[best]; ok && len(v4[i]) < MaxAddresses {
+			v4[i] = append(v4[i], netip.PrefixFrom(addr, bestBits))
 		}
 	}
-	for i := range ifaces {
-		sort.Slice(ifaces[i].ipv4, func(a, b int) bool {
-			return netip.MustParseAddr(ifaces[i].ipv4[a]).Less(netip.MustParseAddr(ifaces[i].ipv4[b]))
-		})
+	for i, list := range v4 {
+		sort.Slice(list, func(a, b int) bool { return list[a].Addr().Less(list[b].Addr()) })
+		for _, p := range list {
+			ifaces[i].ipv4 = append(ifaces[i].ipv4, p.Addr().String())
+			ifaces[i].ipv4CIDR = append(ifaces[i].ipv4CIDR, p.String())
+		}
 	}
 }
 
@@ -617,9 +657,43 @@ func readRouting(fsys fs.FS) Routing {
 		r.IPv6 = defaultRouteFrom(parse.ParseDefaultRoute6(data))
 	}
 	if data, err := source.ReadFile(fsys, pathResolv, limitResolv); err == nil {
-		r.DNS = dnsFrom(parse.ParseResolvConf(data))
+		addrs := parse.ParseResolvConf(data)
+		r.DNS = dnsFrom(addrs)
+		if up, ok := upstreamServers(fsys, addrs); ok {
+			r.DNS = dnsFrom(up)
+			r.DNS.ViaLocalResolver = true
+		}
 	}
 	return r
+}
+
+// upstreamServers is the fallback of a local resolver stub (task N1,
+// docs/UBUNTU_PROBE.md U3): when /etc/resolv.conf names at least one server
+// and every one is a loopback address, the servers that systemd-resolved
+// forwards to are read from /run/systemd/resolve/resolv.conf with the same
+// parser and the same rules (at most three, nameserver lines only). It is
+// used only when that file is readable and names at least one server that is
+// not a loopback address; otherwise the stub is shown as before.
+func upstreamServers(fsys fs.FS, local []netip.Addr) ([]netip.Addr, bool) {
+	if len(local) == 0 {
+		return nil, false
+	}
+	for _, a := range local {
+		if !a.IsLoopback() {
+			return nil, false
+		}
+	}
+	data, err := source.ReadFile(fsys, pathResolvUpstream, limitResolv)
+	if err != nil {
+		return nil, false
+	}
+	up := parse.ParseResolvConf(data)
+	for _, a := range up {
+		if a.IsLoopback() {
+			return nil, false
+		}
+	}
+	return up, len(up) > 0
 }
 
 func defaultRouteFrom(p parse.DefaultRoute, ok bool) DefaultRoute {

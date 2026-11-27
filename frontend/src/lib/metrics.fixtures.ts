@@ -1,7 +1,7 @@
 // Synthetic metrics for tests, shaped like GET /api/v1/metrics and the
 // event stream. Not captures of a device. Host name and addresses come from
 // the synthetic set: "oarfish-test" and the documentation ranges.
-import type { Alert, History, MetricsResponse, Routing, Snapshot } from './metrics';
+import type { Alert, History, MetricsResponse, NetworkInterface, Routing, Snapshot } from './metrics';
 
 // Task N0: the routing part. The stub address 127.0.0.53 and the link-local
 // next hop have no documentation range; they are the well-known stub address
@@ -23,6 +23,12 @@ export const noRouteRouting: Routing = {
 export const stubRouting: Routing = {
   ...piRouting,
   dns: { status: 'found', servers: [{ address: '127.0.0.53', local: true }], hidden: 0 },
+};
+
+/** Task N1: the stub, and the two servers behind it read from /run/systemd/resolve/resolv.conf (the Ubuntu shape). */
+export const behindStubRouting: Routing = {
+  ...piRouting,
+  dns: { status: 'found', servers: [{ address: '198.51.100.53', local: false }, { address: '2001:db8:2::53', local: false }], hidden: 0, via_local_resolver: true },
 };
 
 /** A router whose addresses contain its hardware address, and a tunnel without a gateway. */
@@ -74,10 +80,40 @@ export const piSnapshot: Snapshot = {
       tx_bytes: 23456789,
       ipv4: ['192.0.2.15'],
       ipv6: ['2001:db8::15'],
+      ipv4_cidr: ['192.0.2.15/24'],
+      ipv6_cidr: ['2001:db8::15/64'],
+      signal: { level_dbm: -52, link_quality: 58 },
     },
   ],
   routing: piRouting,
 };
+
+/** Task N1: one wired interface with a link speed and two families, no Wi-Fi. */
+export const ethernetOnly: NetworkInterface[] = [
+  {
+    name: 'eth0',
+    kind: 'ethernet',
+    state: 'up',
+    link_up: true,
+    speed_mbps: 1000,
+    rx_bytes: 9000000000,
+    tx_bytes: 4000000000,
+    ipv4: ['198.51.100.40'],
+    ipv6: ['2001:db8:0:1::40'],
+    ipv4_cidr: ['198.51.100.40/24'],
+    ipv6_cidr: ['2001:db8:0:1::40/64'],
+    signal: null,
+  },
+];
+
+/** Task N1: the default route of the wired fixture. */
+export const ethernetRouting: Routing = { ...piRouting, ipv4: { ...piRouting.ipv4, interface: 'eth0' } };
+
+/** Task N1: a Wi-Fi interface whose driver reports no signal line, and one that is down. */
+export const wifiNoSignal: NetworkInterface[] = [
+  { ...piSnapshot.network[0]!, signal: null },
+  { ...piSnapshot.network[0]!, name: 'wlan1', state: 'down', link_up: false, ipv4: [], ipv6: [], ipv4_cidr: [], ipv6_cidr: [], signal: null, rx_bytes: 0, tx_bytes: 0 },
+];
 
 export const genericModeAlert: Alert = {
   id: 'support_generic',

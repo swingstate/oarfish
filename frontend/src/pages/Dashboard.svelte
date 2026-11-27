@@ -397,6 +397,7 @@
               <KeyValueList items={routingItems(s.routing)} />
             </section>
           {/if}
+          <p><a href="#/network" data-testid="net-page-link">{t.netPageLink}</a></p>
         </Card>
       </div>
     </div>

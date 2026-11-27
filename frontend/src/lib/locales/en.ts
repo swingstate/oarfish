@@ -139,6 +139,24 @@ export const enUi: { [K in keyof typeof deUi]: string } = {
   'netKind.wifi': 'Wi-Fi',
   'netKind.other': 'Other',
 
+  // ---- Network page (task N1) ----
+  netDnsViaResolver: 'used through the resolver on the device',
+  netPageLink: 'Details on the Network page',
+  navNetwork: 'Network',
+  networkTitle: 'Network',
+  netPageInterfaces: 'Interfaces',
+  netPageLoading: 'Reading the network data …',
+  netPageLoadError: 'The network data could not be read.',
+  netPageLoadErrorHint: 'Try again in a few seconds.',
+  netLinkState: 'Link',
+  netSignal: 'Signal',
+  netSignalValue: '{level} dBm, link quality {quality}',
+  netSignalLevel: '{level} dBm',
+  netSignalQuality: 'link quality {quality}',
+  'netSignalWord.good': 'good',
+  'netSignalWord.fair': 'fair',
+  'netSignalWord.weak': 'weak',
+
   // ---- Sparklines (text alternatives) ----
   sparkCpu: 'CPU usage over the last minutes, now {value}',
   sparkMemory: 'Memory in use over the last minutes, now {value}',

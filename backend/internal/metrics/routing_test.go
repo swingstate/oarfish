@@ -28,7 +28,7 @@ func TestRoutingPiZero2W(t *testing.T) {
 	if r.IPv6.Status != RoutingFound || str(r.IPv6.Interface) != "wlan0" || str(r.IPv6.Gateway) != "2001:db8::1" {
 		t.Errorf("ipv6 = %s", mustJSON(t, r.IPv6))
 	}
-	if got := mustJSON(t, r.DNS); got != `{"status":"found","servers":[{"address":"192.0.2.53","local":false},{"address":"2001:db8::53","local":false}],"hidden":0}` {
+	if got := mustJSON(t, r.DNS); got != `{"status":"found","servers":[{"address":"192.0.2.53","local":false},{"address":"2001:db8::53","local":false}],"hidden":0,"via_local_resolver":false}` {
 		t.Errorf("dns = %s", got)
 	}
 }
@@ -45,7 +45,7 @@ func TestRoutingGenericARM64(t *testing.T) {
 	}
 	// Comments, domain, search, options, sortlist and an unparsable line give nothing.
 	got := mustJSON(t, r.DNS)
-	if got != `{"status":"found","servers":[{"address":"198.51.100.53","local":false},{"address":"2001:db8:1::53","local":false}],"hidden":0}` {
+	if got != `{"status":"found","servers":[{"address":"198.51.100.53","local":false},{"address":"2001:db8:1::53","local":false}],"hidden":0,"via_local_resolver":false}` {
 		t.Errorf("dns = %s", got)
 	}
 	for _, leak := range []string{"home.example", "lab.example", "edns0", "router", "managed", "198.51.100.99"} {
@@ -93,7 +93,7 @@ func TestRoutingHostileFixture(t *testing.T) {
 	if r.IPv4.Status != RoutingNone || r.IPv6.Status != RoutingNone {
 		t.Errorf("routes = %s / %s", mustJSON(t, r.IPv4), mustJSON(t, r.IPv6))
 	}
-	if got := mustJSON(t, r.DNS); got != `{"status":"found","servers":[{"address":"203.0.113.5","local":false}],"hidden":0}` {
+	if got := mustJSON(t, r.DNS); got != `{"status":"found","servers":[{"address":"203.0.113.5","local":false}],"hidden":0,"via_local_resolver":false}` {
 		t.Errorf("dns = %s", got)
 	}
 	assertClean(t, r)
@@ -118,20 +118,22 @@ func TestRoutingOversizedFiles(t *testing.T) {
 	}
 }
 
-// A local resolver stub is shown as it is and marked local; the servers it
-// forwards to are not known (the fallback of the S1 amendment is not built).
+// A local resolver stub is shown as it is and marked local when the servers
+// it forwards to cannot be read (this fixture has no
+// /run/systemd/resolve/resolv.conf; the fallback of task N1 is tested in
+// network_test.go).
 func TestRoutingLocalStub(t *testing.T) {
 	fsys := cloneFixture(t, "pi-zero-2w")
 	fsys["etc/resolv.conf"] = &fstest.MapFile{Data: []byte("# stub\nnameserver 127.0.0.53\noptions edns0 trust-ad\nsearch .\n")}
-	if got := mustJSON(t, routingOf(t, fsys).DNS); got != `{"status":"found","servers":[{"address":"127.0.0.53","local":true}],"hidden":0}` {
+	if got := mustJSON(t, routingOf(t, fsys).DNS); got != `{"status":"found","servers":[{"address":"127.0.0.53","local":true}],"hidden":0,"via_local_resolver":false}` {
 		t.Errorf("dns = %s", got)
 	}
 	fsys["etc/resolv.conf"] = &fstest.MapFile{Data: []byte("nameserver ::1\nnameserver 192.0.2.53\n")}
-	if got := mustJSON(t, routingOf(t, fsys).DNS); got != `{"status":"found","servers":[{"address":"::1","local":true},{"address":"192.0.2.53","local":false}],"hidden":0}` {
+	if got := mustJSON(t, routingOf(t, fsys).DNS); got != `{"status":"found","servers":[{"address":"::1","local":true},{"address":"192.0.2.53","local":false}],"hidden":0,"via_local_resolver":false}` {
 		t.Errorf("dns = %s", got)
 	}
 	fsys["etc/resolv.conf"] = &fstest.MapFile{Data: []byte("# nothing configured\nsearch home.example\n")}
-	if got := mustJSON(t, routingOf(t, fsys).DNS); got != `{"status":"none","servers":[],"hidden":0}` {
+	if got := mustJSON(t, routingOf(t, fsys).DNS); got != `{"status":"none","servers":[],"hidden":0,"via_local_resolver":false}` {
 		t.Errorf("dns = %s", got)
 	}
 }
@@ -154,7 +156,7 @@ func TestRoutingLinkLocalAndDerivedAddresses(t *testing.T) {
 	if r.IPv6.Status != RoutingFound || r.IPv6.Gateway != nil || !r.IPv6.GatewayHidden || str(r.IPv6.Interface) != "wlan0" {
 		t.Errorf("ipv6 = %s", mustJSON(t, r.IPv6))
 	}
-	if got := mustJSON(t, r.DNS); got != `{"status":"found","servers":[{"address":"fe80::53%wlan0","local":false}],"hidden":2}` {
+	if got := mustJSON(t, r.DNS); got != `{"status":"found","servers":[{"address":"fe80::53%wlan0","local":false}],"hidden":2,"via_local_resolver":false}` {
 		t.Errorf("dns = %s", got)
 	}
 	if out := mustJSON(t, r); strings.Contains(out, "fe33") || strings.Contains(out, "4455") {
