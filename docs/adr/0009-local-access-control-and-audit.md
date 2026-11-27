@@ -3,7 +3,7 @@
 - Status: **Accepted** (2026-10-28, accepted by the project owner)
 - Date: 2026-10-28
 - Amended: 2026-10-31 by amendments A1 to A4 (D-C49 to D-C52); amendment A5 adds the confirmation of the hash parameters on the reference device; amendment A6 (2026-11-02, D-C61, accepted together with [ADR 0010](0010-update-helper.md)) adds the update actions to the audit sets; amendment A7 (2026-11-23, D-C87, accepted together with [ADR 0011](0011-privilege-broker.md)) adds the service and power actions of the Privilege Broker and an `fsync` before a power operation
-- Gate: G5.1 (design stop; G5.1 itself is not started)
+- Gate: G5.1 (passed 2026-11-02); amended through G7. LAN access and HTTPS (D-D10) are not designed yet; D-C101 item 2 adds the authentication of root actions to the design block
 
 ## Context
 

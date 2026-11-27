@@ -16,7 +16,7 @@
 # release is an upgrade of an alpha-style installation (the migration).
 #
 # Usage: scripts/test-installer-container.sh IMAGE RELEASE_DIR TEST_INSTALL_SH
-#   IMAGE            e.g. debian:12 or ubuntu:24.04
+#   IMAGE            e.g. debian:12, debian:13 or ubuntu:24.04
 #   RELEASE_DIR      release files signed with a throwaway key
 #   TEST_INSTALL_SH  scripts/make-test-installer.sh output for that key and version
 set -euo pipefail

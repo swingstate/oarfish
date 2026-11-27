@@ -79,7 +79,7 @@ func TestDeviceEndpointPiZero2W(t *testing.T) {
 	if str(r.Kernel.Release) != "6.18.50+rpt-rpi-v8" {
 		t.Errorf("kernel = %+v", r.Kernel)
 	}
-	if r.Profile != (deviceProfile{ID: "raspberry-pi-zero-2-w", Version: "1.1.0", MatchedBy: "compatible"}) {
+	if r.Profile != (deviceProfile{ID: "raspberry-pi-zero-2-w", Version: "1.2.0", MatchedBy: "compatible"}) {
 		t.Errorf("profile = %+v", r.Profile)
 	}
 	if r.Support.Tier != "compatible" || r.Support.Reason != "profile_not_verified" || !r.Support.BoardActionsAllowed ||

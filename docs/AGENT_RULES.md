@@ -128,6 +128,7 @@ Read it in full at the start of every session. Every rule is a full sentence; wh
 3. Every gate and every task updates the status line of its gate in `docs/ROADMAP.md`. This is part of the definition of done, not an optional extra, and the report says that it was done.
 4. A change of the baseline is never made by editing the specification alone. It comes with a decision entry in `DECISIONS.md` (or an ADR amendment) and a line in the change log of the specification.
 5. Documents state what is verified and what is not, and where. The verification status of the UI belongs in `UI.md`, that of the installer and the update path in the documents that describe them.
+6. Documents are always current and complete, but lean (D-C102). A document states what holds now and points to the record of how it got there (an ADR amendment, `UPDATE.md`, a decision) instead of repeating it, and a roadmap row has at most three sentences.
 
 ## 10. Git, pull requests and releases
 

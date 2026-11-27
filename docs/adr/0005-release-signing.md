@@ -26,9 +26,9 @@ Decision D-04 and the specification (9.8, ORB-REL-003, AT-013) require releases 
 ## Consequences
 
 - The public key is embedded later, not in this gate: the installer (G3) carries the one-line key text; the Oarfish updater (G6) embeds the same file with `go:embed`. `release/oarfish-release.pub` is the single source. Installer and updater must verify `checksums.txt.sig`, then the hashes, and must not rely on HTTPS alone.
-- **Open point for G3 and G6, not decided here:** key rotation and revocation are not designed. Losing the private key means devices that embed only this public key cannot accept new releases without a new installer.
+- **Open point for G3 and G6, not decided here:** key rotation and revocation are not designed. Losing the private key means devices that embed only this public key cannot accept new releases without a new installer. (Pointer, task C1: still open as D-D12; D-C101 item 5 puts it into the design block, with an offline root key per maintainer and a threshold that signs the list of valid release keys.)
 - Releases cannot be published without the secret and the committed public key; the workflow fails explicitly if either is missing.
-- GitHub Actions secrets are readable by any workflow run on a tag that a maintainer with write access can create. Tag protection or a deployment environment with required reviewers would narrow this. That is recommended in `docs/RELEASING.md` and not configured by this gate.
+- GitHub Actions secrets are readable by any workflow run on a tag that a maintainer with write access can create. Tag protection or a deployment environment with required reviewers would narrow this. That is recommended in `docs/RELEASING.md` and not configured by this gate. (Pointer, task C1: D-C101 item 7 puts the job `sign` into the environment `release-signing` with the owner as required reviewer; the owner's one-time setting is in [`RELEASING.md`](../RELEASING.md#one-time-setup-signing-approval-owner-repository-settings).)
 
 ## Amendment: legacy mode instead of prehashed mode (2026-10-23, before the first release)
 

@@ -218,12 +218,12 @@ Example for the synthetic fixture `pi-zero-2w-raspios` (not a real device; the r
     "adapter_status": "initial-target"
   },
   "kernel": { "release": "6.18.50+rpt-rpi-v8" },
-  "profile": { "id": "raspberry-pi-zero-2-w", "version": "1.1.0", "matched_by": "compatible" },
+  "profile": { "id": "raspberry-pi-zero-2-w", "version": "1.2.0", "matched_by": "compatible" },
   "support": {
     "tier": "compatible",
     "reason": "profile_not_verified",
     "explanation_key": "support.compatible.profile_not_verified",
-    "limitations": ["memory_512mb", "evidence_install_only"],
+    "limitations": ["memory_512mb", "evidence_one_device"],
     "board_actions_allowed": true
   },
   "capabilities": [

@@ -70,7 +70,7 @@ func TestShippedPiZero2WProfile(t *testing.T) {
 		t.Fatalf("soc/tier wrong: %+v", m)
 	}
 	// Task N0: the board exists with 512 MiB only.
-	if m.Profile.InstalledMemoryMiB != 512 || m.Profile.Version != "1.1.0" {
+	if m.Profile.InstalledMemoryMiB != 512 || m.Profile.Version != "1.2.0" {
 		t.Errorf("installed memory %d, version %s", m.Profile.InstalledMemoryMiB, m.Profile.Version)
 	}
 }

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "board",
   "profile_id": "raspberry-pi-zero-2-w",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "vendor": "Raspberry Pi",
   "model": "Raspberry Pi Zero 2 W",
   "soc_family": "BCM2837",
@@ -25,6 +25,6 @@
   ],
   "storage_hints": { "boot_media": ["mmc"] },
   "installed_memory_mib": 512,
-  "known_limitations": ["memory_512mb", "evidence_install_only"],
+  "known_limitations": ["memory_512mb", "evidence_one_device"],
   "documentation_links": ["docs/DETECTION.md", "docs/INSTALL.md#hardware-test-results"]
 }
