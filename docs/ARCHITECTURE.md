@@ -1,6 +1,6 @@
 # Architecture (Gate G5.1 state)
 
-This document describes what exists after Gate G5.1 and the boundaries later gates build on. The normative target architecture is section 8 of [`PFLICHTENHEFT.md`](PFLICHTENHEFT.md); where this document and the specification differ, the specification wins.
+This document describes what exists today (G7 passed: the service, the update helper and the privilege broker) and the boundaries later gates build on; D-C101 lets the design block revise the privileged side. The normative target architecture is section 8 of [`PFLICHTENHEFT.md`](PFLICHTENHEFT.md); where this document and the specification differ, the specification wins.
 
 ## Repository layout
 
