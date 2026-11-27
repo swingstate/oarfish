@@ -139,10 +139,12 @@ func TestTraceabilityTableIsComplete(t *testing.T) {
 	checkTraceability(t, "DETECTION.md", inScope)
 }
 
-// dashboardInScope are the MUST requirements of Gate G5 and decision D-C29.
+// dashboardInScope are the MUST requirements of Gate G5 and decision D-C29,
+// and ORB-NET-001 of task N0.
 var dashboardInScope = []string{
 	"ORB-DASH-001", "ORB-DASH-002", "ORB-DASH-005", "ORB-DASH-006",
 	"ORB-NFR-009", "ORB-NFR-014", "ORB-NFR-010", "ORB-NFR-015", "ORB-GEN-003", "ORB-GEN-006", "ORB-ONB-003", "D-C29",
+	"ORB-NET-001", // task N0: default route and DNS servers
 }
 
 // Pflichtenheft 12.4 for Gate G5: the table in docs/DASHBOARD.md.
