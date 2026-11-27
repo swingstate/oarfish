@@ -2,9 +2,9 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.4.4
-- Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G6 abgenommen, G7 läuft)
-- Stand: 23. November 2026
+- Dokumentversion: 0.4.5
+- Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G7 abgenommen; Reihenfolge der weiteren Arbeit nach D-C101 in `docs/ROADMAP.md`)
+- Stand: 27. November 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit
@@ -1257,3 +1257,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.4.2 | 7. November 2026 | Abschnitt 14.1 und 14.3 sowie 18.2: Die dauerhaften Regeln für den Implementierungsagenten stehen als `docs/AGENT_RULES.md` im Repository (D-C79, ändert D-C65 Teil 1); Gate-Prompts verweisen darauf und wiederholen die Regeln nicht; Statuszeile in `docs/ROADMAP.md` gehört zur Definition of Done. Kopfzeile: Dokumentversion und Stand. Sonst unverändert. |
 | 0.4.3 | 23. November 2026 | Entscheidungen zum Entwurfsstopp G7.0 (D-C87, ADR 0011 Ergänzung A1, ADR 0010 A19, ADR 0009 A7): Abschnitt 6.3, ORB-PWR-002: verbundene Benutzer sind andere Oarfish-Sitzungen und offene Live-Ansichten, keine Anmeldesitzungen am Gerät (D-C87, Punkt 11); Abschnitt 6.4, ORB-SVC-003: Dienste, die den Zugang trennen können (SSH, Netzwerkpfad, `tailscaled`), nur neu starten, nicht stoppen (D-C87, Punkt 6); Abschnitt 6.4, ORB-LOG-002: Namen und Beschreibungen von Units sind kein Log- oder Systemdateiinhalt (D-C87, Punkt 17); Abschnitt 8.6: Binärdatei und Units des Privilege Broker im Komponentensatz des Update Helpers (D-C87, Punkt 2); Abschnitt 14.2, G7: Exit-Kriterium um Reboot und Shutdown auf dem Referenzgerät erweitert (D-C87, Punkt 15); Kopfzeile: Dokumentversion und Stand. Abschnitt 8.2 folgt in G7.3. Nichts davon ist umgesetzt oder auf einem Gerät verifiziert. |
 | 0.4.4 | 23. November 2026 | Entscheidungen zu den Befunden des Geräte-Spikes G7.1 (D-C88, ADR 0011 Ergänzung A3): Abschnitt 6.4, ORB-SVC-002: Abnahmespalte nennt einmalige Aufgaben, vorübergehend angelegte Dienste und nicht laufende Vorlagen-Instanzen, die Oarfish nicht anbietet (D-C88, Punkte 7 und 8); Abschnitt 6.4, ORB-SVC-003: die Beispiele für Dienste, die den Zugang trennen können, um den Namen im lokalen Netz ergänzt, die Liste steht in ADR 0011, Entscheidungsverweis D-C87 und D-C88 (D-C88, Punkt 11); Kopfzeile: Dokumentversion, Statuszeile (Gates G0 bis G6 abgenommen, G7 läuft) und Stand. Sonst unverändert. Der Installer-Rahmen (D-C87, Punkt 16) bleibt offen. Nichts davon ist umgesetzt oder auf einem Gerät verifiziert. |
+| 0.4.5 | 27. November 2026 | Kopfzeile: Dokumentversion, Status (G7 abgenommen, D-C100; Reihenfolge nach D-C101) und Stand. Sonst unverändert; die Änderungen, die D-C101 am Inhalt nahelegt, sind dem Eigentümer vorgeschlagen und nicht eingetragen. |
