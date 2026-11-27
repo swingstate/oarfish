@@ -188,9 +188,10 @@ func TestUnitFilesOneReadFor30Minutes(t *testing.T) {
 	if e != nil || old.StartModes != StartModesKnown || !old.StartModesReadAt.Equal(first.StartModesReadAt) || rowNamed(t, old.Rows, "demo-app.service").StartMode != "enabled" {
 		t.Fatalf("during the renewal: %v %q %v", e, old.StartModes, old.StartModesReadAt)
 	}
-	if _, fl := fr.counts(); fl != 2 || !r.filesRunning() {
-		t.Fatalf("no renewal: %d", fl)
+	if !r.filesRunning() {
+		t.Fatal("no renewal")
 	}
+	waitFor(t, "the renewal's process", func() bool { _, fl := fr.counts(); return fl == 2 })
 	if c.Pending() != 0 {
 		t.Error("a request waited for a renewal although states were known")
 	}
@@ -226,6 +227,7 @@ func TestUnitFilesSingleFlight(t *testing.T) {
 		}()
 	}
 	waitFor(t, "eight grace timers", func() bool { return c.Pending() == 8 })
+	waitFor(t, "the unit-file process", func() bool { _, fl := fr.counts(); return fl >= 1 })
 	c.Advance(filesGrace)
 	wg.Wait()
 	if _, fl := fr.counts(); fl != 1 || pending.Load() != 8 {

@@ -529,6 +529,37 @@ All texts the interface says about itself are in one group, `deUi` in [`frontend
 | `storageUsedOf` | {used} von {total} belegt | {used} of {total} used |
 | `storageFree` | Frei | Free |
 | `storageFsType` | Dateisystem | File system |
+| `storageHeading` | Speicherplatz | Storage |
+| `storageNone` | Kein Speicherplatz gefunden. | No storage found. |
+| `storageUsedOf` | {used} von {total} belegt | {used} of {total} used |
+| `storageFree` | Frei | Free |
+| `storageFsType` | Dateisystem | File system |
+| `navStorage` | Speicher | Storage |
+| `storagePageTitle` | Speicher | Storage |
+| `stoPageLoading` | Die Speicherdaten werden gelesen … | Reading the storage data … |
+| `stoPageLoadError` | Die Speicherdaten konnten nicht gelesen werden. | The storage data could not be read. |
+| `stoPageLoadErrorHint` | Versuchen Sie es in einigen Sekunden erneut. | Try again in a few seconds. |
+| `stoBootHeading` | Boot- und Rootmedium | Boot and root medium |
+| `stoBootKind` | Art | Kind |
+| `stoRootDevice` | Gerät des Root-Dateisystems | Device of the root file system |
+| `stoFsHeading` | Dateisysteme | File systems |
+| `stoOtherHeading` | Weitere Einhängepunkte | Other mounts |
+| `stoOtherIntro` | Diese Einhängepunkte liegen im Arbeitsspeicher, über anderen Dateisystemen oder im Netzwerk. | These mounts lie in memory, over other file systems or in the network. |
+| `stoNone` | Keine Dateisysteme gefunden. | No file systems found. |
+| `stoDevice` | Gerät | Device |
+| `stoTotal` | Größe | Size |
+| `stoUsed` | Belegt | Used |
+| `stoUsedValue` | {used} ({percent}) | {used} ({percent}) |
+| `stoMarkBoot` | Boot- und Rootmedium. Entfernen Sie es nicht, solange das Gerät läuft. | Boot and root medium. Do not remove it while the device is running. |
+| `stoMarkRemovable` | Wechselmedium. Entfernen Sie es nur, wenn das Gerät ausgeschaltet ist. | Removable medium. Remove it only when the device is switched off. |
+| `stoKind.memory` | Im Arbeitsspeicher | In memory |
+| `stoKind.overlay` | Überlagerung | Overlay |
+| `stoKind.network` | Netzwerkfreigabe | Network share |
+| `stoKind.other` | Sonstige | Other |
+| `stoKindNote.memory` | Nicht dauerhaft: Der Inhalt geht beim Neustart verloren. | Not persistent: the content is lost at a restart. |
+| `stoKindNote.overlay` | Ob Änderungen einen Neustart überstehen, hängt von der Einrichtung ab. | Whether changes survive a restart depends on how it is set up. |
+| `stoKindNote.network` | Die Daten liegen auf einem anderen Gerät im Netzwerk. | The data lies on another device in the network. |
+| `stoKindNote.other` | Die Art dieses Einhängepunkts ist unbekannt. | The kind of this mount is unknown. |
 | `netHeading` | Netzwerk | Network |
 | `netNone` | Keine Netzwerkschnittstellen gefunden. | No network interfaces found. |
 | `netAddresses` | Adressen | Addresses |

@@ -24,6 +24,24 @@ export interface Storage {
   used_bytes: number;
   available_bytes: number;
   used_percent: number;
+  /** Task ST1, missing before it: the kernel names of the block device and its disk, '' when unknown. */
+  device?: string;
+  disk?: string;
+  /** The kernel's removable flag of the disk; null when unknown. */
+  removable?: boolean | null;
+  /** The disk hangs off a USB bus. */
+  usb?: boolean;
+}
+
+/** A mount that is not real storage (task ST1): memory, overlay or network. Sizes are null for a network share. */
+export interface OtherMount {
+  mount_point: string;
+  fs_type: string;
+  kind: string;
+  total_bytes: number | null;
+  used_bytes: number | null;
+  available_bytes: number | null;
+  used_percent: number | null;
 }
 
 export interface NetworkInterface {
@@ -99,6 +117,8 @@ export interface Snapshot {
   network: NetworkInterface[];
   /** Missing in the answer of a service before task N0; the page then shows no routing part. */
   routing?: Routing;
+  /** Task ST1, missing before it: the other mounts of the page Speicher. */
+  mounts?: OtherMount[];
 }
 
 export type AlertLevel = 'critical' | 'relevant' | 'informational';
@@ -169,7 +189,24 @@ function isStorage(v: unknown): v is Storage {
     isNum(v.total_bytes) &&
     isNum(v.used_bytes) &&
     isNum(v.available_bytes) &&
-    isNum(v.used_percent)
+    isNum(v.used_percent) &&
+    (v.device === undefined || isStr(v.device)) &&
+    (v.disk === undefined || isStr(v.disk)) &&
+    (v.removable === undefined || v.removable === null || typeof v.removable === 'boolean') &&
+    (v.usb === undefined || typeof v.usb === 'boolean')
+  );
+}
+
+function isOtherMount(v: unknown): v is OtherMount {
+  return (
+    isObject(v) &&
+    isStr(v.mount_point) &&
+    isStr(v.fs_type) &&
+    isStr(v.kind) &&
+    isNumOrNull(v.total_bytes) &&
+    isNumOrNull(v.used_bytes) &&
+    isNumOrNull(v.available_bytes) &&
+    isNumOrNull(v.used_percent)
   );
 }
 
@@ -241,7 +278,8 @@ export function isSnapshot(v: unknown): v is Snapshot {
     v.storage.every(isStorage) &&
     Array.isArray(v.network) &&
     v.network.every(isInterface) &&
-    (v.routing === undefined || isRouting(v.routing))
+    (v.routing === undefined || isRouting(v.routing)) &&
+    (v.mounts === undefined || (Array.isArray(v.mounts) && v.mounts.every(isOtherMount)))
   );
 }
 

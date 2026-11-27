@@ -16,11 +16,15 @@ import {
   ethernetOnly,
   ethernetRouting,
   hiddenRouting,
+  nearlyFullStorage,
+  otherMounts,
   noRouteRouting,
   piMetrics,
   piRouting,
+  piSnapshot,
   stubRouting,
   unreadableRouting,
+  usbStick,
 } from '../lib/metrics.fixtures';
 import type { MetricsResponse, Routing, Snapshot } from '../lib/metrics';
 
@@ -47,6 +51,10 @@ const scenarios: Record<string, () => Scenario> = {
   'network-ethernet-only': () => ({ routing: ethernetRouting, device: piZero2W, snapshot: { network: ethernetOnly } }),
   'network-resolver-stub': () => ({ routing: behindStubRouting, device: piZero2W }),
   'network-none': () => ({ routing: noRouteRouting, device: piZero2W, snapshot: { network: [] } }),
+  // ---- the page Speicher (task ST1) ----
+  'storage-reference': () => ({ routing: piRouting, device: piZero2W }),
+  'storage-removable': () => ({ routing: piRouting, device: piZero2W, snapshot: { storage: [...piSnapshot.storage, usbStick], mounts: otherMounts } }),
+  'storage-nearly-full': () => ({ routing: piRouting, device: piZero2W, snapshot: { storage: nearlyFullStorage() } }),
 };
 
 /** The names, for the console hint and the documentation. */

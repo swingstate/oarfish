@@ -266,6 +266,12 @@ var metricsReadAllowList = []*regexp.Regexp{
 	regexp.MustCompile(`^sys/class/thermal/thermal_zone[0-9]{1,4}/(type|temp)$`),
 	regexp.MustCompile(`^sys/class/hwmon/hwmon[0-9]{1,4}/(name|temp[1-8]_input|temp[1-8]_label)$`),
 	regexp.MustCompile(`^sys/class/net/[A-Za-z0-9_.:@-]{1,15}/(operstate|type|speed|wireless|phy80211|statistics/rx_bytes|statistics/tx_bytes)$`),
+	// Task ST1: the sysfs link of a mounted block device (read as a link, for
+	// the kernel names of the device and the disk) and the disk's removable
+	// flag. Never the identity files of a medium (serial, cid, csd) and never
+	// uevent (it can carry a partition label).
+	regexp.MustCompile(`^sys/dev/block/[0-9]{1,6}:[0-9]{1,8}$`),
+	regexp.MustCompile(`^sys/block/[A-Za-z0-9_-]{1,32}/removable$`),
 }
 
 func metricsAllowed(name string) bool {
@@ -311,8 +317,39 @@ func TestMetricsOpenOnlyAllowListedFiles(t *testing.T) {
 		}
 	}
 
+	// Task ST1: the reference layout with its sysfs links (on-disk fixtures
+	// hold no links, so that every copy of them stays a plain file tree).
+	withLinks := fstest.MapFS{}
+	piFix := metricstest.Fixture(t, "pi-zero-2w")
+	if err := fs.WalkDir(piFix, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(piFix, p)
+		withLinks[p] = &fstest.MapFile{Data: data}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	const mmc = "../../devices/platform/soc/3f202000.mmc/mmc_host/mmc0/mmc0:0001/block/mmcblk0/"
+	withLinks["sys/dev/block/179:2"] = &fstest.MapFile{Data: []byte(mmc + "mmcblk0p2"), Mode: fs.ModeSymlink}
+	withLinks["sys/dev/block/179:1"] = &fstest.MapFile{Data: []byte(mmc + "mmcblk0p1"), Mode: fs.ModeSymlink}
+	withLinks["sys/block/mmcblk0/removable"] = &fstest.MapFile{Data: []byte("0\n")}
+	for _, n := range []string{"device/serial", "device/cid", "device/csd"} {
+		withLinks["sys/block/mmcblk0/"+n] = &fstest.MapFile{Data: []byte("0\n")}
+	}
+	rec := platformtest.Recording(withLinks)
+	metrics.NewCollector(rec, sizes).Collect(now)
+	for _, n := range rec.Names() {
+		opened[n] = true
+		if !metricsAllowed(n) {
+			t.Errorf("with links: the collector opened %q", n)
+		}
+	}
+
 	// Positive control: the recorder sees reads, and the main files are covered.
 	for _, want := range []string{
+		"sys/dev/block/179:2", "sys/block/mmcblk0/removable",
 		"proc/stat", "proc/loadavg", "proc/uptime", "proc/meminfo", "proc/sys/kernel/hostname", "proc/self/mountinfo",
 		"proc/net/fib_trie", "proc/net/route", "proc/net/if_inet6", "proc/net/ipv6_route", "etc/resolv.conf",
 		"proc/net/wireless", "run/systemd/resolve/resolv.conf",
@@ -328,6 +365,8 @@ func TestMetricsOpenOnlyAllowListedFiles(t *testing.T) {
 		"etc/hostname", "proc/self/environ", "proc/cpuinfo", "proc/1/cmdline", "home/x/.ssh/id_ed25519", "etc/passwd",
 		"proc/net/arp", "proc/net/dev", "proc/net/wireless.bak", "etc/resolv.conf.bak", "etc/hosts", "run/systemd/resolve/stub-resolv.conf",
 		"run/systemd/resolve/resolv.conf.bak", "run/systemd/netif/leases/2", "sys/class/dmi/id/product_serial", "sys/class/net/../../x/operstate",
+		"sys/dev/block/179:2/uevent", "sys/block/mmcblk0/device/serial", "sys/block/mmcblk0/device/cid", "sys/block/mmcblk0/device/csd",
+		"sys/block/mmcblk0/device/name", "sys/block/mmcblk0/serial", "sys/block/../removable", "sys/block/sda/device/vpd_pg80",
 	} {
 		if metricsAllowed(private) {
 			t.Errorf("the allow-list admits %q", private)

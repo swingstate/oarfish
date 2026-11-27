@@ -22,6 +22,10 @@ type Snapshot struct {
 	Storage       []Storage          `json:"storage"`
 	Network       []NetworkInterface `json:"network"`
 	Routing       Routing            `json:"routing"`
+	// Mounts are the mounts that are not real storage but that a person may
+	// store files on or rely on: memory, overlay and network file systems
+	// (task ST1, the page Speicher). The Dashboard does not show them.
+	Mounts []OtherMount `json:"mounts"`
 }
 
 // CPU describes load, usage and frequency.
@@ -75,6 +79,35 @@ type Storage struct {
 	UsedBytes      uint64  `json:"used_bytes"`
 	AvailableBytes uint64  `json:"available_bytes"`
 	UsedPercent    float64 `json:"used_percent"`
+	// Task ST1. Device is the kernel name of the block device ("mmcblk0p2")
+	// and Disk that of the whole disk ("mmcblk0"), both from the sysfs link
+	// of the mount's major:minor, "" when it cannot be told; never the mount
+	// source's text, a UUID or a label. Removable is the kernel's removable
+	// flag of the disk, null when unknown. USB is true for a disk on a USB bus.
+	Device    string `json:"device"`
+	Disk      string `json:"disk"`
+	Removable *bool  `json:"removable"`
+	USB       bool   `json:"usb"`
+}
+
+// Kinds of an OtherMount.
+const (
+	MountMemory  = "memory"  // tmpfs, ramfs: the content is gone after a restart
+	MountOverlay = "overlay" // overlay: whether a change persists depends on its layers
+	MountNetwork = "network" // a network share: shown by its kind, never by its source
+)
+
+// OtherMount is a mount of kind memory, overlay or network. Sizes are null
+// for a network share (statfs on a share that cannot be reached can block)
+// and when statfs fails.
+type OtherMount struct {
+	MountPoint     string   `json:"mount_point"`
+	FSType         string   `json:"fs_type"`
+	Kind           string   `json:"kind"`
+	TotalBytes     *uint64  `json:"total_bytes"`
+	UsedBytes      *uint64  `json:"used_bytes"`
+	AvailableBytes *uint64  `json:"available_bytes"`
+	UsedPercent    *float64 `json:"used_percent"`
 }
 
 // Network interface kinds.
@@ -176,6 +209,7 @@ type DNSServer struct {
 const (
 	MaxSensors    = 16
 	MaxMounts     = 8
+	MaxOther      = 8 // other mounts (task ST1)
 	MaxInterfaces = 8
 	MaxAddresses  = 4 // per interface and family
 )

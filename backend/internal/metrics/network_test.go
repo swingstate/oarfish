@@ -26,6 +26,21 @@ func (r *recorder) Open(name string) (fs.File, error) {
 	return r.FS.Open(name)
 }
 
+// ReadLink and Lstat implement fs.ReadLinkFS, so that a link is recorded too.
+func (r *recorder) ReadLink(name string) (string, error) {
+	r.mu.Lock()
+	r.names = append(r.names, name)
+	r.mu.Unlock()
+	return fs.ReadLink(r.FS, name)
+}
+
+func (r *recorder) Lstat(name string) (fs.FileInfo, error) {
+	r.mu.Lock()
+	r.names = append(r.names, name)
+	r.mu.Unlock()
+	return fs.Lstat(r.FS, name)
+}
+
 func (r *recorder) opened(name string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()

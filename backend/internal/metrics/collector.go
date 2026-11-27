@@ -97,6 +97,7 @@ type ifaceStatic struct {
 type slowData struct {
 	sensors  []sensorRef
 	storage  []Storage
+	mounts   []OtherMount
 	ifaces   []ifaceStatic
 	governor *string
 	maxMHz   *float64
@@ -118,8 +119,9 @@ func (c *Collector) Collect(now time.Time) Snapshot {
 		SchemaVersion: SchemaVersion,
 		CollectedAt:   now.UTC().Truncate(time.Millisecond),
 		Temperatures:  []Temperature{},
-		Storage:       append([]Storage{}, c.slow.storage...),
+		Storage:       cloneStorage(c.slow.storage),
 		Network:       []NetworkInterface{},
+		Mounts:        cloneMounts(c.slow.mounts),
 	}
 	snap.Hostname = c.hostname()
 	if data, err := source.ReadFile(c.fsys, pathUptime, limitSmall); err == nil {
@@ -253,9 +255,11 @@ func (c *Collector) wifiSignals() map[string]*WiFiSignal {
 
 // refreshSlow reads everything that changes rarely.
 func (c *Collector) refreshSlow() {
+	storage, mounts := c.discoverStorage()
 	c.slow = slowData{
 		sensors:  discoverSensors(c.fsys),
-		storage:  c.discoverStorage(),
+		storage:  storage,
+		mounts:   mounts,
 		ifaces:   discoverInterfaces(c.fsys),
 		governor: nil,
 		routing:  readRouting(c.fsys),
@@ -402,17 +406,41 @@ var realFS = map[string]bool{
 	"f2fs": true, "xfs": true, "btrfs": true, "ntfs3": true,
 }
 
-func (c *Collector) discoverStorage() []Storage {
+// otherFS are the file system types of the other mounts (task ST1).
+var otherFS = map[string]string{
+	"tmpfs": MountMemory, "ramfs": MountMemory,
+	"overlay": MountOverlay,
+	"nfs":     MountNetwork, "nfs4": MountNetwork, "cifs": MountNetwork, "smb3": MountNetwork, "smbfs": MountNetwork,
+	"9p": MountNetwork,
+}
+
+// systemAreas hold the system's own mounts (pseudo file systems, run-time
+// state, container stores); an other mount there is not listed. A mount at
+// "/" itself (an overlay root) is listed.
+var systemAreas = []string{"/proc", "/sys", "/dev", "/run", "/var/lib", "/snap"}
+
+func inSystemArea(p string) bool {
+	for _, a := range systemAreas {
+		if p == a || strings.HasPrefix(p, a+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Collector) discoverStorage() ([]Storage, []OtherMount) {
 	data, err := source.ReadFile(c.fsys, pathMountinfo, limitMountinfo)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
+	mounts := parse.ParseMountinfo(data, 1024)
+	others := c.otherMounts(mounts)
 	// One entry per device: bind mounts and btrfs subvolumes show the same
 	// storage more than once. Prefer the mount whose root is "/", then the
 	// shortest mount point, then the first.
 	byDevice := map[string]parse.Mount{}
 	var order []string
-	for _, m := range parse.ParseMountinfo(data, 1024) {
+	for _, m := range mounts {
 		if !realFS[m.FSType] {
 			continue
 		}
@@ -441,6 +469,7 @@ func (c *Collector) discoverStorage() []Storage {
 			continue // a mount that cannot be read is skipped
 		}
 		if s, ok := storageFrom(m, st); ok {
+			c.blockDevice(&s, m)
 			out = append(out, s)
 		}
 	}
@@ -453,7 +482,154 @@ func (c *Collector) discoverStorage() []Storage {
 	if len(out) > MaxMounts {
 		out = out[:MaxMounts]
 	}
+	return out, others
+}
+
+// otherMounts lists the mounts of kind memory, overlay or network outside the
+// system areas, one per mount point, sorted by mount point, at most MaxOther.
+// A network share is never asked for its size.
+func (c *Collector) otherMounts(mounts []parse.Mount) []OtherMount {
+	seen := map[string]bool{}
+	var cand []OtherMount
+	for _, m := range mounts {
+		kind, ok := otherFS[m.FSType]
+		if !ok || (m.MountPoint != "/" && inSystemArea(m.MountPoint)) || seen[m.MountPoint] {
+			continue
+		}
+		seen[m.MountPoint] = true
+		cand = append(cand, OtherMount{MountPoint: m.MountPoint, FSType: m.FSType, Kind: kind})
+		if len(cand) >= maxMountCandidates {
+			break
+		}
+	}
+	sort.SliceStable(cand, func(i, j int) bool { return cand[i].MountPoint < cand[j].MountPoint })
+	if len(cand) > MaxOther {
+		cand = cand[:MaxOther]
+	}
+	out := make([]OtherMount, 0, len(cand))
+	for _, o := range cand {
+		if o.Kind != MountNetwork {
+			if st, err := c.statfs(o.MountPoint); err == nil {
+				if s, ok := storageFrom(parse.Mount{MountPoint: o.MountPoint}, st); ok {
+					o.TotalBytes, o.UsedBytes, o.AvailableBytes, o.UsedPercent = &s.TotalBytes, &s.UsedBytes, &s.AvailableBytes, &s.UsedPercent
+				}
+			}
+		}
+		o.MountPoint = displayMountPoint(o.MountPoint)
+		out = append(out, o)
+	}
 	return out
+}
+
+// blockDevice fills the device, the disk, the removable flag and the bus of
+// a real file system from the sysfs link /sys/dev/block/<major>:<minor>
+// (for example ../../devices/platform/.../block/mmcblk0/mmcblk0p2). The path
+// is built from the two integers only. The link's last element is the
+// kernel name of the device; for a partition the element before it is the
+// disk. Then /sys/block/<disk>/removable. No identity file of the medium is
+// read (serial, CID, CSD), and nothing of the mount source reaches the output.
+func (c *Collector) blockDevice(s *Storage, m parse.Mount) {
+	if m.Major <= 0 {
+		return
+	}
+	link, err := fs.ReadLink(c.fsys, "sys/dev/block/"+strconv.Itoa(m.Major)+":"+strconv.Itoa(m.Minor))
+	if err != nil {
+		return
+	}
+	dev, disk, usb, ok := parseBlockLink(link)
+	if !ok {
+		return
+	}
+	s.Device, s.Disk, s.USB = dev, disk, usb
+	if data, err := source.ReadFile(c.fsys, "sys/block/"+disk+"/removable", limitSmall); err == nil {
+		switch strings.TrimSpace(string(data)) {
+		case "0":
+			s.Removable = ptrBool(false)
+		case "1":
+			s.Removable = ptrBool(true)
+		}
+	}
+}
+
+// parseBlockLink reads the device and the disk out of a sysfs block link.
+func parseBlockLink(link string) (dev, disk string, usb, ok bool) {
+	if len(link) > 4096 {
+		return "", "", false, false
+	}
+	parts := strings.Split(link, "/")
+	at := -1
+	for i, p := range parts {
+		if p == "block" {
+			at = i
+		}
+	}
+	if at < 0 {
+		return "", "", false, false
+	}
+	rest := parts[at+1:]
+	if len(rest) < 1 || len(rest) > 2 {
+		return "", "", false, false
+	}
+	for _, n := range rest {
+		if !blockName(n) {
+			return "", "", false, false
+		}
+	}
+	for _, p := range parts[:at] {
+		if digits, found := strings.CutPrefix(p, "usb"); found && digits != "" && strings.Trim(digits, "0123456789") == "" {
+			usb = true
+		}
+	}
+	return rest[len(rest)-1], rest[0], usb, true
+}
+
+// blockName accepts a kernel block device name: 1 to 32 letters, digits, _ and -.
+func blockName(s string) bool {
+	if s == "" || len(s) > 32 {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func ptrBool(b bool) *bool { return &b }
+
+// cloneStorage and cloneMounts copy the cached slow tier, so that a snapshot
+// shares no memory with it.
+func cloneStorage(in []Storage) []Storage {
+	out := append([]Storage{}, in...)
+	for i := range out {
+		if out[i].Removable != nil {
+			out[i].Removable = ptrBool(*out[i].Removable)
+		}
+	}
+	return out
+}
+
+func cloneMounts(in []OtherMount) []OtherMount {
+	out := append([]OtherMount{}, in...)
+	for i := range out {
+		out[i].TotalBytes, out[i].UsedBytes, out[i].AvailableBytes = cloneU(out[i].TotalBytes), cloneU(out[i].UsedBytes), cloneU(out[i].AvailableBytes)
+		if p := out[i].UsedPercent; p != nil {
+			v := *p
+			out[i].UsedPercent = &v
+		}
+	}
+	return out
+}
+
+func cloneU(p *uint64) *uint64 {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 func better(a, b parse.Mount) bool {

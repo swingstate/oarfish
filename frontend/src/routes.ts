@@ -10,6 +10,7 @@ import Activity from './pages/Activity.svelte';
 import Device from './pages/Device.svelte';
 import Dashboard from './pages/Dashboard.svelte';
 import Network from './pages/Network.svelte';
+import Storage from './pages/Storage.svelte';
 import Update from './pages/Update.svelte';
 
 export interface Route {
@@ -30,6 +31,7 @@ export interface Route {
 export const routes: readonly Route[] = [
   { id: 'dashboard', path: '#/', labelKey: 'navDashboard', icon: 'home', component: Dashboard },
   { id: 'device', path: '#/device', labelKey: 'navDevice', icon: 'device', component: Device },
+  { id: 'storage', path: '#/storage', labelKey: 'navStorage', icon: 'drive', group: 'workload', component: Storage },
   { id: 'network', path: '#/network', labelKey: 'navNetwork', icon: 'network', group: 'system', component: Network },
   { id: 'activity', path: '#/activity', labelKey: 'navActivity', icon: 'activity', group: 'system', component: Activity },
   { id: 'update', path: '#/update', labelKey: 'navUpdate', icon: 'update', group: 'system', component: Update },

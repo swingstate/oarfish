@@ -148,6 +148,9 @@ describe('network scenario mode', () => {
       'network-ethernet-only',
       'network-resolver-stub',
       'network-none',
+      'storage-reference',
+      'storage-removable',
+      'storage-nearly-full',
     ]);
     expect(installMetricsMock('not-a-scenario')).toBe(false);
   });
@@ -163,6 +166,9 @@ describe('network scenario mode', () => {
     'network-ethernet-only': '192.0.2.1 über eth0',
     'network-resolver-stub': '192.0.2.1 über wlan0',
     'network-none': 'Keine',
+    'storage-reference': '192.0.2.1 über wlan0',
+    'storage-removable': '192.0.2.1 über wlan0',
+    'storage-nearly-full': '192.0.2.1 über wlan0',
   };
   for (const name of metricsScenarioNames()) {
     it(`scenario ${name} renders the network card from the stream`, async () => {
