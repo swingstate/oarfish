@@ -443,6 +443,19 @@ No rolling back. The audit has `update_started` (target `update/0.1.0-alpha.14`,
 
 **Not observed in this run:** the wording of the second confirmation; F4 and the 60-second display; a boot after this update; a power cut; the broker started from the new binary by an action.
 
+### `v0.1.0-alpha.16`, class D
+
+**The release.** The release of the step UF1 with N1 and ST1 (D-C104; [ADR 0011 A9](adr/0011-privilege-broker.md#amendment-a9-uf1-the-read-path-and-the-ubuntu-wi-fi-unit)): the tag is on commit `4b165eab7567e8b6c7b25c079f4591a701f6f78e` (the merge commit of PR #73), signed with the production key, a prerelease. **The first real run of the signing approval** (D-C101 item 7): the job `sign` of run 46144045547 waited in the environment `release-signing` until the owner approved it in GitHub; then `sign` and `publish` passed. Compared with `v0.1.0-alpha.15`, only `oarfish-broker` differs (SHA-256 `07e80f81…`); both release checks passed (`component-set: PASS`, `unit-forms: PASS`), and the release verified anonymously.
+
+**The GUI update from `v0.1.0-alpha.15` to `v0.1.0-alpha.16`** (class D, production key, 2026-11-28; one device, the Raspberry Pi OS card, not Verified):
+
+- **Before:** `/healthz` `0.1.0-alpha.15`; `components/active` and `known-good` named `0.1.0-alpha.14` (alpha.15 changed no component); the broker had the SHA-256 `7f7329e3…`; 0 failed units.
+- **The second confirmation** (the owner's screenshot): "Neue Bestandteile bestätigen", "Diese Version ersetzt auch privilegierte Bestandteile von Oarfish: Privilege Broker (`oarfish-broker`)", and "Passwort zur Bestätigung … Für diesen Schritt fragt Oarfish Ihr Passwort noch einmal ab."
+- **After:** `/healthz` `0.1.0-alpha.16` (a new process); `components/active` and `known-good` name `0.1.0-alpha.16`; the broker's SHA-256 equals the manifest (`07e80f81…`); the helper unchanged (`0c6f95d2…`); the service, the helper socket and the broker socket active; 0 failed units; no warning in the journal of the service.
+- **The journal of the helper**, all phases `result=ok`: `update_started` to `staging` 3 s, `staged` 6 s later, about 69 s waiting for the second confirmation, `c_switching` and `c_switched` in one second, the hand-over (the helper unit restarted, counter 1), `c_verified` 5 s later, `c_committed` 4 s later, `switching` and `verifying` in that second, `committed` 12 s later, then `idle`; 99 s in all. No rolling back.
+- **Audit:** `update_started` and, at the next sign-in about seven minutes later, `update_finished success update/0.1.0-alpha.16` (as for `v0.1.0-alpha.15`; the sign-in right after the restart came four seconds before `committed`).
+- **Not observed:** the update page loading the new version by itself after the update (N0.7; the owner did not report it); a boot after the update; F4.
+
 ### Open condition C3, the finishing audit entry
 
 `update_finished` is written only on a later `GET /api/v1/update` poll. In the run it was written about 13.5 min after the commit, with the time of the write and the user field "-", not the time the helper finished. This is the behaviour designed in G6.7. A proposal exists (write the entry with the helper's `finished_at` and check once at service start). The owner has not decided it; nothing was changed.
