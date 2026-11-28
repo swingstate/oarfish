@@ -1454,4 +1454,6 @@ So `netplan-wpa-wlan0.service` gets the network warning, restart is allowed and 
 ### A9.5 What is not verified, and what stays open
 
 - **Not rechecked on Ubuntu** (D-C104 item 3): the time of the page on Ubuntu, the warning and the restart-only rule for `netplan-wpa-wlan0.service`, and U2 (the late `update_finished`); class C until a later Ubuntu run.
+- **Open, not fixed:** two requests at the same moment can still meet: when one request starts the unit-file read while another request's `list-units` call is running, PID 1 can hold that `list-units` call, and on the probed Ubuntu image that one page load would fail at 5 s; this is rare.
+- **Open:** after a service action, while a unit-file read runs, the page shows the last unit list until the read ends (about 2.7 s on Raspberry Pi OS, up to 17 s on the probed Ubuntu image).
 - **Open:** one unit-file read still occupies PID 1 (A9.2 item 11); the implementation choices of A9.2 (the 30 minutes, the 60 s floor, the 4 s grace, the 45 s deadline, the re-read of the page) are for the owner's review.
