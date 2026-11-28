@@ -9,8 +9,8 @@ import { FakeEventSource } from '../lib/eventsource.fake';
 import { installFakes, metricsWith, snapshotAt, stubMetrics, textOf } from '../lib/harness.fake';
 import { de, en, t } from '../lib/i18n';
 import { setLang } from '../lib/lang.svelte';
-import { behindStubRouting, ethernetOnly, piMetrics, wifiNoSignal } from '../lib/metrics.fixtures';
-import { signalWord } from '../lib/network';
+import { behindStubRouting, ethernetOnly, hiddenAddresses, piMetrics, wifiNoSignal } from '../lib/metrics.fixtures';
+import { hiddenNote, signalWord } from '../lib/network';
 import type { MetricsResponse } from '../lib/metrics';
 
 beforeEach(installFakes);
@@ -79,6 +79,22 @@ describe('network page', () => {
     expect(textOf('signal-wlan0')).toContain(t.unavailableValue);
   });
 
+  it('hidden addresses: the count under the addresses, singular and plural, both languages; none: no note', async () => {
+    await open(metricsWith((m) => (m.network = structuredClone(hiddenAddresses))));
+    expect(textOf('hidden-wlan0')).toBe('2 IPv6-Adressen sind verborgen. Sie enthalten eine Hardwareadresse.');
+    expect(items('addresses-wlan0')).toBe('192.0.2.15/24 2001:db8::15/64');
+    expect(textOf('hidden-eth0')).toBe('Eine IPv6-Adresse ist verborgen. Sie enthält eine Hardwareadresse.');
+    expect(items('addresses-eth0')).toBe(t.netNoAddress);
+    setLang('en');
+    await Promise.resolve();
+    expect(textOf('hidden-wlan0')).toBe('2 IPv6 addresses are hidden. They contain a hardware address.');
+    expect(textOf('hidden-eth0')).toBe('One IPv6 address is hidden. It contains a hardware address.');
+    cleanup();
+    setLang('de');
+    await open();
+    expect(screen.queryByTestId('hidden-wlan0')).toBeNull();
+  });
+
   it('the servers behind a local resolver carry the sentence that they are used through it', async () => {
     await open(metricsWith((m) => (m.routing = structuredClone(behindStubRouting))));
     expect(textOf('dns-servers')).toBe('198.51.100.53, 2001:db8:2::53 (genutzt über den Resolver auf dem Gerät)');
@@ -112,6 +128,16 @@ describe('network page', () => {
     const page = screen.getByTestId('network-page').textContent ?? '';
     expect(page).not.toMatch(/[0-9a-f]{2}(:[0-9a-f]{2}){5}/i);
     expect(page).not.toMatch(/SSID/i);
+  });
+});
+
+describe('hidden-address note (task SF1)', () => {
+  const nic = (ipv6_hidden?: number) => ({ ...piMetrics.network[0]!, ipv6_hidden });
+  it('says nothing for zero or a service before SF1, the number otherwise', () => {
+    expect(hiddenNote(nic(0))).toBeNull();
+    expect(hiddenNote(nic(undefined))).toBeNull();
+    expect(hiddenNote(nic(1))).toBe(de['netHidden.one']);
+    expect(hiddenNote(nic(3))).toBe('3 IPv6-Adressen sind verborgen. Sie enthalten eine Hardwareadresse.');
   });
 });
 

@@ -50,8 +50,16 @@ describe('parseSnapshot', () => {
     ['storage with a missing number', json({ ...piSnapshot, storage: [{ mount_point: '/', fs_type: 'ext4' }] })],
     ['a network entry with addresses that are no list', json({ ...piSnapshot, network: [{ ...piSnapshot.network[0], ipv4: 'x' }] })],
     ['a counter that is not a number', json({ ...piSnapshot, network: [{ ...piSnapshot.network[0], rx_bytes: 'many' }] })],
+    ['a hidden-address count that is negative', json({ ...piSnapshot, network: [{ ...piSnapshot.network[0], ipv6_hidden: -1 }] })],
+    ['a hidden-address count that is a fraction', json({ ...piSnapshot, network: [{ ...piSnapshot.network[0], ipv6_hidden: 1.5 }] })],
+    ['a hidden-address count that is a list', json({ ...piSnapshot, network: [{ ...piSnapshot.network[0], ipv6_hidden: ['2001:db8::1'] }] })],
   ])('rejects %s', (_name, text) => {
     expect(parseSnapshot(text)).toBeNull();
+  });
+
+  it('accepts a hidden-address count (task SF1)', () => {
+    const s = { ...piSnapshot, network: [{ ...piSnapshot.network[0]!, ipv6_hidden: 2 }] };
+    expect(parseSnapshot(json(s))).toEqual(s);
   });
 
   it('rejects numbers that are not finite', () => {

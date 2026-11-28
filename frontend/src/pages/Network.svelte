@@ -13,14 +13,15 @@
   import { fmt, t } from '../lib/i18n';
   import { LiveSnapshot } from '../lib/live.svelte';
   import type { NetworkInterface } from '../lib/metrics';
-  import { addressesOf, kindLabel, linkLabel, signalText } from '../lib/network';
+  import { addressesOf, hiddenNote, kindLabel, linkLabel, signalText } from '../lib/network';
   import { routingItems } from '../lib/routing';
   import { linkTone, type KeyValueItem } from '../lib/ui';
 
   // Task N1 (ORB-NET-001, ORB-NET-002 in part; docs/UI.md, "Network page"). The
   // live data path of the Dashboard: sampled by the service only while a page
   // watches. No SSID (it needs netlink, ADR 0008 S1.5), and no hardware address
-  // anywhere (decision 9). Nothing on this page changes the device.
+  // anywhere (decision 9); hidden addresses are only counted (task SF1).
+  // Nothing on this page changes the device.
   const live = new LiveSnapshot();
   onMount(() => live.start());
 
@@ -82,6 +83,7 @@
           {:else}
             <ul class="rows">
               {#each s.network as nic (nic.name)}
+                {@const hidden = hiddenNote(nic)}
                 <li class="stack-sm" data-testid="iface-{nic.name}">
                   <div class="line">
                     <h3 class="nic">
@@ -99,6 +101,7 @@
                         <li class="secondary">{t.netNoAddress}</li>
                       {/each}
                     </ul>
+                    {#if hidden}<p class="secondary caption" data-testid="hidden-{nic.name}">{hidden}</p>{/if}
                   </section>
                   <KeyValueList items={facts(nic)} />
                 </li>

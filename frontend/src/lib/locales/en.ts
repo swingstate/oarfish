@@ -136,6 +136,8 @@ export const enUi: { [K in keyof typeof deUi]: string } = {
   netNone: 'No network interfaces found.',
   netAddresses: 'Addresses',
   netNoAddress: 'No address',
+  'netHidden.one': 'One IPv6 address is hidden. It contains a hardware address.',
+  'netHidden.many': '{count} IPv6 addresses are hidden. They contain a hardware address.',
   netRx: 'Receive',
   netTx: 'Send',
   netSpeed: 'Speed',

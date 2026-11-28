@@ -33,5 +33,12 @@ export function addressesOf(nic: NetworkInterface): string[] {
   return [...v4, ...v6];
 }
 
+/** The note under the addresses when some are hidden because they contain a hardware address (task SF1); null when none are. */
+export function hiddenNote(nic: NetworkInterface): string | null {
+  const n = nic.ipv6_hidden ?? 0;
+  if (n <= 0) return null;
+  return n === 1 ? t['netHidden.one'] : fmt('netHidden.many', { count: n });
+}
+
 export const linkLabel = (state: string) => msg(has('linkState.' + state) ? 'linkState.' + state : 'linkState.unknown');
 export const kindLabel = (kind: string) => msg(has('netKind.' + kind) ? 'netKind.' + kind : 'netKind.other');

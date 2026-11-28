@@ -148,6 +148,8 @@ export const deUi = {
   netNone: 'Keine Netzwerkschnittstellen gefunden.',
   netAddresses: 'Adressen',
   netNoAddress: 'Keine Adresse',
+  'netHidden.one': 'Eine IPv6-Adresse ist verborgen. Sie enthält eine Hardwareadresse.',
+  'netHidden.many': '{count} IPv6-Adressen sind verborgen. Sie enthalten eine Hardwareadresse.',
   netRx: 'Empfang',
   netTx: 'Senden',
   netSpeed: 'Geschwindigkeit',
