@@ -34,10 +34,15 @@ const (
 	pathInet6     = "proc/net/if_inet6"
 	pathRoute6    = "proc/net/ipv6_route"
 	pathResolv    = "etc/resolv.conf"
-	dirCPUFreq    = "sys/devices/system/cpu/cpu0/cpufreq"
-	dirThermal    = "sys/class/thermal"
-	dirHwmon      = "sys/class/hwmon"
-	dirNet        = "sys/class/net"
+	// pathResolvUpstream is read only when every server of /etc/resolv.conf
+	// is a loopback address (task N1): the servers a systemd-resolved stub
+	// forwards to. Only its nameserver lines are used.
+	pathResolvUpstream = "run/systemd/resolve/resolv.conf"
+	pathWireless       = "proc/net/wireless"
+	dirCPUFreq         = "sys/devices/system/cpu/cpu0/cpufreq"
+	dirThermal         = "sys/class/thermal"
+	dirHwmon           = "sys/class/hwmon"
+	dirNet             = "sys/class/net"
 )
 
 // Read limits in bytes. A file above its limit counts as unreadable.
@@ -47,6 +52,7 @@ const (
 	limitMountinfo = 1 << 20
 	limitNetTable  = 256 << 10
 	limitResolv    = 64 << 10
+	limitWireless  = 16 << 10
 	limitSmall     = 128
 	maxDirEntries  = 512
 	// maxMountCandidates is how many distinct devices are asked for their size.
@@ -84,11 +90,14 @@ type ifaceStatic struct {
 	speedMbps *int
 	ipv4      []string
 	ipv6      []string
+	ipv4CIDR  []string
+	ipv6CIDR  []string
 }
 
 type slowData struct {
 	sensors  []sensorRef
 	storage  []Storage
+	mounts   []OtherMount
 	ifaces   []ifaceStatic
 	governor *string
 	maxMHz   *float64
@@ -110,8 +119,9 @@ func (c *Collector) Collect(now time.Time) Snapshot {
 		SchemaVersion: SchemaVersion,
 		CollectedAt:   now.UTC().Truncate(time.Millisecond),
 		Temperatures:  []Temperature{},
-		Storage:       append([]Storage{}, c.slow.storage...),
+		Storage:       cloneStorage(c.slow.storage),
 		Network:       []NetworkInterface{},
+		Mounts:        cloneMounts(c.slow.mounts),
 	}
 	snap.Hostname = c.hostname()
 	if data, err := source.ReadFile(c.fsys, pathUptime, limitSmall); err == nil {
@@ -195,16 +205,23 @@ func (c *Collector) memory() Memory {
 	return out
 }
 
-// network combines the cached static part with a fresh read of state and counters.
+// network combines the cached static part with a fresh read of state,
+// counters and the Wi-Fi signal. The signal is in this fast tier because it
+// changes from second to second and costs one small file read per sample,
+// only while somebody watches and only when a Wi-Fi interface exists.
 func (c *Collector) network() []NetworkInterface {
 	out := make([]NetworkInterface, 0, len(c.slow.ifaces))
+	signals := c.wifiSignals()
 	for _, s := range c.slow.ifaces {
 		base := dirNet + "/" + s.name + "/"
 		ni := NetworkInterface{
 			Name: s.name, Kind: s.kind, SpeedMbps: s.speedMbps,
-			State: "unknown", IPv4: s.ipv4, IPv6: s.ipv6,
+			State: "unknown", IPv4: s.ipv4, IPv6: s.ipv6, IPv4CIDR: s.ipv4CIDR, IPv6CIDR: s.ipv6CIDR,
 			RxBytes: readCounter(c.fsys, base+"statistics/rx_bytes"),
 			TxBytes: readCounter(c.fsys, base+"statistics/tx_bytes"),
+		}
+		if s.kind == KindWiFi {
+			ni.Signal = signals[s.name]
 		}
 		if data, err := source.ReadFile(c.fsys, base+"operstate", limitSmall); err == nil {
 			ni.State = operState(string(data))
@@ -215,11 +232,34 @@ func (c *Collector) network() []NetworkInterface {
 	return out
 }
 
+// wifiSignals reads /proc/net/wireless once, when a Wi-Fi interface exists.
+// A missing, unreadable or oversize file gives no signal (fail soft).
+func (c *Collector) wifiSignals() map[string]*WiFiSignal {
+	wifi := false
+	for _, s := range c.slow.ifaces {
+		wifi = wifi || s.kind == KindWiFi
+	}
+	if !wifi {
+		return nil
+	}
+	data, err := source.ReadFile(c.fsys, pathWireless, limitWireless)
+	if err != nil {
+		return nil
+	}
+	out := map[string]*WiFiSignal{}
+	for _, w := range parse.ParseWireless(data) {
+		out[w.Iface] = &WiFiSignal{LevelDBm: w.LevelDBm, LinkQuality: w.Quality}
+	}
+	return out
+}
+
 // refreshSlow reads everything that changes rarely.
 func (c *Collector) refreshSlow() {
+	storage, mounts := c.discoverStorage()
 	c.slow = slowData{
 		sensors:  discoverSensors(c.fsys),
-		storage:  c.discoverStorage(),
+		storage:  storage,
+		mounts:   mounts,
 		ifaces:   discoverInterfaces(c.fsys),
 		governor: nil,
 		routing:  readRouting(c.fsys),
@@ -366,17 +406,41 @@ var realFS = map[string]bool{
 	"f2fs": true, "xfs": true, "btrfs": true, "ntfs3": true,
 }
 
-func (c *Collector) discoverStorage() []Storage {
+// otherFS are the file system types of the other mounts (task ST1).
+var otherFS = map[string]string{
+	"tmpfs": MountMemory, "ramfs": MountMemory,
+	"overlay": MountOverlay,
+	"nfs":     MountNetwork, "nfs4": MountNetwork, "cifs": MountNetwork, "smb3": MountNetwork, "smbfs": MountNetwork,
+	"9p": MountNetwork,
+}
+
+// systemAreas hold the system's own mounts (pseudo file systems, run-time
+// state, container stores); an other mount there is not listed. A mount at
+// "/" itself (an overlay root) is listed.
+var systemAreas = []string{"/proc", "/sys", "/dev", "/run", "/var/lib", "/snap"}
+
+func inSystemArea(p string) bool {
+	for _, a := range systemAreas {
+		if p == a || strings.HasPrefix(p, a+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Collector) discoverStorage() ([]Storage, []OtherMount) {
 	data, err := source.ReadFile(c.fsys, pathMountinfo, limitMountinfo)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
+	mounts := parse.ParseMountinfo(data, 1024)
+	others := c.otherMounts(mounts)
 	// One entry per device: bind mounts and btrfs subvolumes show the same
 	// storage more than once. Prefer the mount whose root is "/", then the
 	// shortest mount point, then the first.
 	byDevice := map[string]parse.Mount{}
 	var order []string
-	for _, m := range parse.ParseMountinfo(data, 1024) {
+	for _, m := range mounts {
 		if !realFS[m.FSType] {
 			continue
 		}
@@ -405,6 +469,7 @@ func (c *Collector) discoverStorage() []Storage {
 			continue // a mount that cannot be read is skipped
 		}
 		if s, ok := storageFrom(m, st); ok {
+			c.blockDevice(&s, m)
 			out = append(out, s)
 		}
 	}
@@ -417,7 +482,154 @@ func (c *Collector) discoverStorage() []Storage {
 	if len(out) > MaxMounts {
 		out = out[:MaxMounts]
 	}
+	return out, others
+}
+
+// otherMounts lists the mounts of kind memory, overlay or network outside the
+// system areas, one per mount point, sorted by mount point, at most MaxOther.
+// A network share is never asked for its size.
+func (c *Collector) otherMounts(mounts []parse.Mount) []OtherMount {
+	seen := map[string]bool{}
+	var cand []OtherMount
+	for _, m := range mounts {
+		kind, ok := otherFS[m.FSType]
+		if !ok || (m.MountPoint != "/" && inSystemArea(m.MountPoint)) || seen[m.MountPoint] {
+			continue
+		}
+		seen[m.MountPoint] = true
+		cand = append(cand, OtherMount{MountPoint: m.MountPoint, FSType: m.FSType, Kind: kind})
+		if len(cand) >= maxMountCandidates {
+			break
+		}
+	}
+	sort.SliceStable(cand, func(i, j int) bool { return cand[i].MountPoint < cand[j].MountPoint })
+	if len(cand) > MaxOther {
+		cand = cand[:MaxOther]
+	}
+	out := make([]OtherMount, 0, len(cand))
+	for _, o := range cand {
+		if o.Kind != MountNetwork {
+			if st, err := c.statfs(o.MountPoint); err == nil {
+				if s, ok := storageFrom(parse.Mount{MountPoint: o.MountPoint}, st); ok {
+					o.TotalBytes, o.UsedBytes, o.AvailableBytes, o.UsedPercent = &s.TotalBytes, &s.UsedBytes, &s.AvailableBytes, &s.UsedPercent
+				}
+			}
+		}
+		o.MountPoint = displayMountPoint(o.MountPoint)
+		out = append(out, o)
+	}
 	return out
+}
+
+// blockDevice fills the device, the disk, the removable flag and the bus of
+// a real file system from the sysfs link /sys/dev/block/<major>:<minor>
+// (for example ../../devices/platform/.../block/mmcblk0/mmcblk0p2). The path
+// is built from the two integers only. The link's last element is the
+// kernel name of the device; for a partition the element before it is the
+// disk. Then /sys/block/<disk>/removable. No identity file of the medium is
+// read (serial, CID, CSD), and nothing of the mount source reaches the output.
+func (c *Collector) blockDevice(s *Storage, m parse.Mount) {
+	if m.Major <= 0 {
+		return
+	}
+	link, err := fs.ReadLink(c.fsys, "sys/dev/block/"+strconv.Itoa(m.Major)+":"+strconv.Itoa(m.Minor))
+	if err != nil {
+		return
+	}
+	dev, disk, usb, ok := parseBlockLink(link)
+	if !ok {
+		return
+	}
+	s.Device, s.Disk, s.USB = dev, disk, usb
+	if data, err := source.ReadFile(c.fsys, "sys/block/"+disk+"/removable", limitSmall); err == nil {
+		switch strings.TrimSpace(string(data)) {
+		case "0":
+			s.Removable = ptrBool(false)
+		case "1":
+			s.Removable = ptrBool(true)
+		}
+	}
+}
+
+// parseBlockLink reads the device and the disk out of a sysfs block link.
+func parseBlockLink(link string) (dev, disk string, usb, ok bool) {
+	if len(link) > 4096 {
+		return "", "", false, false
+	}
+	parts := strings.Split(link, "/")
+	at := -1
+	for i, p := range parts {
+		if p == "block" {
+			at = i
+		}
+	}
+	if at < 0 {
+		return "", "", false, false
+	}
+	rest := parts[at+1:]
+	if len(rest) < 1 || len(rest) > 2 {
+		return "", "", false, false
+	}
+	for _, n := range rest {
+		if !blockName(n) {
+			return "", "", false, false
+		}
+	}
+	for _, p := range parts[:at] {
+		if digits, found := strings.CutPrefix(p, "usb"); found && digits != "" && strings.Trim(digits, "0123456789") == "" {
+			usb = true
+		}
+	}
+	return rest[len(rest)-1], rest[0], usb, true
+}
+
+// blockName accepts a kernel block device name: 1 to 32 letters, digits, _ and -.
+func blockName(s string) bool {
+	if s == "" || len(s) > 32 {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func ptrBool(b bool) *bool { return &b }
+
+// cloneStorage and cloneMounts copy the cached slow tier, so that a snapshot
+// shares no memory with it.
+func cloneStorage(in []Storage) []Storage {
+	out := append([]Storage{}, in...)
+	for i := range out {
+		if out[i].Removable != nil {
+			out[i].Removable = ptrBool(*out[i].Removable)
+		}
+	}
+	return out
+}
+
+func cloneMounts(in []OtherMount) []OtherMount {
+	out := append([]OtherMount{}, in...)
+	for i := range out {
+		out[i].TotalBytes, out[i].UsedBytes, out[i].AvailableBytes = cloneU(out[i].TotalBytes), cloneU(out[i].UsedBytes), cloneU(out[i].AvailableBytes)
+		if p := out[i].UsedPercent; p != nil {
+			v := *p
+			out[i].UsedPercent = &v
+		}
+	}
+	return out
+}
+
+func cloneU(p *uint64) *uint64 {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 func better(a, b parse.Mount) bool {
@@ -485,7 +697,7 @@ func discoverInterfaces(fsys fs.FS) []ifaceStatic {
 		if typ < 0 || typ == arphrdLoopback {
 			continue // not an interface (for example the file bonding_masters), or loopback
 		}
-		s := ifaceStatic{name: name, kind: KindOther, ipv4: []string{}, ipv6: []string{}}
+		s := ifaceStatic{name: name, kind: KindOther, ipv4: []string{}, ipv6: []string{}, ipv4CIDR: []string{}, ipv6CIDR: []string{}}
 		switch {
 		case source.Exists(fsys, base+"wireless") || source.Exists(fsys, base+"phy80211"):
 			s.kind = KindWiFi
@@ -573,6 +785,7 @@ func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 				continue
 			}
 			ifaces[i].ipv6 = append(ifaces[i].ipv6, e.Addr.String())
+			ifaces[i].ipv6CIDR = append(ifaces[i].ipv6CIDR, netip.PrefixFrom(e.Addr, e.Prefix).String())
 		}
 	}
 
@@ -582,6 +795,7 @@ func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 		return
 	}
 	connected := parse.ParseRoutes(routes)
+	v4 := map[int][]netip.Prefix{}
 	for _, addr := range parse.ParseFibTrieLocal(trie) {
 		best, bestBits := "", -1
 		for _, r := range connected {
@@ -589,14 +803,16 @@ func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 				best, bestBits = r.Iface, r.Prefix.Bits()
 			}
 		}
-		if i, ok := index[best]; ok && len(ifaces[i].ipv4) < MaxAddresses {
-			ifaces[i].ipv4 = append(ifaces[i].ipv4, addr.String())
+		if i, ok := index[best]; ok && len(v4[i]) < MaxAddresses {
+			v4[i] = append(v4[i], netip.PrefixFrom(addr, bestBits))
 		}
 	}
-	for i := range ifaces {
-		sort.Slice(ifaces[i].ipv4, func(a, b int) bool {
-			return netip.MustParseAddr(ifaces[i].ipv4[a]).Less(netip.MustParseAddr(ifaces[i].ipv4[b]))
-		})
+	for i, list := range v4 {
+		sort.Slice(list, func(a, b int) bool { return list[a].Addr().Less(list[b].Addr()) })
+		for _, p := range list {
+			ifaces[i].ipv4 = append(ifaces[i].ipv4, p.Addr().String())
+			ifaces[i].ipv4CIDR = append(ifaces[i].ipv4CIDR, p.String())
+		}
 	}
 }
 
@@ -617,9 +833,43 @@ func readRouting(fsys fs.FS) Routing {
 		r.IPv6 = defaultRouteFrom(parse.ParseDefaultRoute6(data))
 	}
 	if data, err := source.ReadFile(fsys, pathResolv, limitResolv); err == nil {
-		r.DNS = dnsFrom(parse.ParseResolvConf(data))
+		addrs := parse.ParseResolvConf(data)
+		r.DNS = dnsFrom(addrs)
+		if up, ok := upstreamServers(fsys, addrs); ok {
+			r.DNS = dnsFrom(up)
+			r.DNS.ViaLocalResolver = true
+		}
 	}
 	return r
+}
+
+// upstreamServers is the fallback of a local resolver stub (task N1,
+// docs/UBUNTU_PROBE.md U3): when /etc/resolv.conf names at least one server
+// and every one is a loopback address, the servers that systemd-resolved
+// forwards to are read from /run/systemd/resolve/resolv.conf with the same
+// parser and the same rules (at most three, nameserver lines only). It is
+// used only when that file is readable and names at least one server that is
+// not a loopback address; otherwise the stub is shown as before.
+func upstreamServers(fsys fs.FS, local []netip.Addr) ([]netip.Addr, bool) {
+	if len(local) == 0 {
+		return nil, false
+	}
+	for _, a := range local {
+		if !a.IsLoopback() {
+			return nil, false
+		}
+	}
+	data, err := source.ReadFile(fsys, pathResolvUpstream, limitResolv)
+	if err != nil {
+		return nil, false
+	}
+	up := parse.ParseResolvConf(data)
+	for _, a := range up {
+		if a.IsLoopback() {
+			return nil, false
+		}
+	}
+	return up, len(up) > 0
 }
 
 func defaultRouteFrom(p parse.DefaultRoute, ok bool) DefaultRoute {

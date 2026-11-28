@@ -70,11 +70,17 @@ type serviceCounts struct {
 }
 
 type servicesResponse struct {
-	SchemaVersion   int           `json:"schema_version"`
-	ReadAt          string        `json:"read_at"`
-	BrokerAvailable bool          `json:"broker_available"`
-	Counts          serviceCounts `json:"counts"`
-	Services        []serviceRow  `json:"services"`
+	SchemaVersion   int    `json:"schema_version"`
+	ReadAt          string `json:"read_at"`
+	BrokerAvailable bool   `json:"broker_available"`
+	// StartModes is known, pending or unavailable (ADR 0011 A9); while it is
+	// not known, every start_mode is "" and the units that only the unit files
+	// name are missing. StartModesReadAt is the time of the unit-file read the
+	// start modes come from, null unless known. Both are added fields.
+	StartModes       string        `json:"start_modes"`
+	StartModesReadAt *string       `json:"start_modes_read_at"`
+	Counts           serviceCounts `json:"counts"`
+	Services         []serviceRow  `json:"services"`
 }
 
 // list answers GET /api/v1/services: the cached or a fresh read, and whether
@@ -103,11 +109,17 @@ func (a *servicesAPI) list(w http.ResponseWriter, r *http.Request, _ *auth.Sessi
 			SubState: s.SubState, StartMode: s.StartMode, Denied: s.Denied, RestartOnly: s.RestartOnly,
 			Critical: s.Critical, Actions: s.Actions}
 	}
+	var modesAt *string
+	if l.StartModes == services.StartModesKnown && !l.StartModesReadAt.IsZero() {
+		s := l.StartModesReadAt.UTC().Format(time.RFC3339)
+		modesAt = &s
+	}
 	writeJSON(w, http.StatusOK, servicesResponse{
 		SchemaVersion: ServicesSchemaVersion, ReadAt: l.ReadAt.UTC().Format(time.RFC3339),
 		BrokerAvailable: a.svc.BrokerAvailable(),
-		Counts:          serviceCounts{Total: l.Counts.Total, Active: l.Counts.Active, Failed: l.Counts.Failed, Inactive: l.Counts.Inactive},
-		Services:        rows,
+		StartModes:      l.StartModes, StartModesReadAt: modesAt,
+		Counts:   serviceCounts{Total: l.Counts.Total, Active: l.Counts.Active, Failed: l.Counts.Failed, Inactive: l.Counts.Inactive},
+		Services: rows,
 	})
 }
 

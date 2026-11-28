@@ -125,3 +125,25 @@ func FuzzParseResolvConf(f *testing.F) {
 		}
 	})
 }
+
+func FuzzParseWireless(f *testing.F) {
+	f.Add([]byte("Inter-| sta-|   Quality        |   Discarded packets               | Missed | WE\n face | tus | link level noise |  nwid  crypt   frag  retry   misc | beacon | 22\n wlan0: 0000   58.  -52.  -256        0      0      0      0      0        0\n"))
+	f.Add([]byte(" wlan0: 0000   70   204   0 0 0 0 0 0 0\n"))
+	f.Add([]byte("wlan0: zzzz 1 2 3\n"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		got := ParseWireless(data)
+		if len(got) > maxWireless {
+			t.Fatalf("%d interfaces", len(got))
+		}
+		seen := map[string]bool{}
+		for _, w := range got {
+			if !ifaceName(w.Iface) || seen[w.Iface] {
+				t.Fatalf("name %q", w.Iface)
+			}
+			seen[w.Iface] = true
+			if (w.Quality != nil && (*w.Quality < 0 || *w.Quality > 255)) || (w.LevelDBm != nil && (*w.LevelDBm < -127 || *w.LevelDBm > -1)) {
+				t.Fatalf("out of bounds: %+v", w)
+			}
+		}
+	})
+}

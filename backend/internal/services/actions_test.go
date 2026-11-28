@@ -187,7 +187,6 @@ func TestManagerDropsCacheAfterAction(t *testing.T) {
 	f.set(1, "out", fixtureUnits)
 	f.set(2, "out", fixtureFiles)
 	f.set(3, "out", fixtureUnits)
-	f.set(4, "out", fixtureFiles)
 	b := &fakeBroker{available: true, answer: brokerclient.Answer{Code: brokerclient.CodeSuccess, State: "active"}}
 	c := clocktest.New()
 	m := New(Config{Broker: b, Clock: c})
@@ -208,8 +207,9 @@ func TestManagerDropsCacheAfterAction(t *testing.T) {
 		t.Fatal("submit")
 	}
 	waitFor(t, "the job", func() bool { v := m.Last(); return v != nil && v.Step == StepDone })
-	if _, e := m.List(t.Context()); e != nil || f.count() != 4 {
-		t.Errorf("after the action: %d calls, %v", f.count(), e)
+	// list-units again; the unit-file states stay (an action does not change them, A9).
+	if l, e := m.List(t.Context()); e != nil || f.count() != 3 || l.StartModes != StartModesKnown || len(l.Rows) != 12 {
+		t.Errorf("after the action: %d calls, %v, %q, %d rows", f.count(), e, l.StartModes, len(l.Rows))
 	}
 	if (&Manager{}).BrokerAvailable() {
 		t.Error("nil broker counted as available")

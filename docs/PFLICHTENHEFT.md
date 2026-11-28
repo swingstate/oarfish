@@ -2,7 +2,7 @@
 
 **GUI-first Management Platform for ARM SBCs and Embedded Linux**
 
-- Dokumentversion: 0.4.6
+- Dokumentversion: 0.4.7
 - Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G7 abgenommen; Reihenfolge der weiteren Arbeit nach D-C101 in `docs/ROADMAP.md`)
 - Stand: 27. November 2026
 - Zielrelease: Oarfish MVP 0.1
@@ -1121,7 +1121,7 @@ Der Implementierungsagent muss vor jeder Arbeit:
 
 G6 beginnt erst, wenn G5.1 PASS ist. G7 beginnt erst, wenn G6 einschließlich G6.10 abgenommen ist.
 
-Die Reihenfolge der weiteren Arbeit nach D-C101 Punkt 5 und D-C103 ist: C2, kurze Ubuntu-Probe UBU0, Entwurfsblock DB1 (D-D10, D-D12, privilegierter Systemdienst, Operationen für OS-Updates), eine Transition TR1, F1 und F2 (Files, lesend), H1 (Einstellungsspeicher), SET1, N1, ST1, ONB1, Container-Probe ENG0 und Entwurf G8.0, G8, G10, G9, G11, OS- und Kernel-Updates über die GUI (OSU1, Entwurf in DB1, Umsetzung nach TR1), visuelle Überarbeitung VR1, G13; die Gate-Kennungen bleiben unverändert. Neben den Gates gibt es Entwurfsstopps ohne Gate-Kennung: D-D10 (LAN-Zugriff und HTTPS; die Richtung ist entschieden, der Entwurf steht aus), H1 (Einstellungsspeicher; der Verlauf folgt nach dem MVP) und F1 (Files, lesend). Ihre Ergebnisse stehen in `docs/ROADMAP.md` und `docs/DECISIONS.md`.
+Die Reihenfolge der weiteren Arbeit nach D-C101 Punkt 5, D-C103 und D-C104 ist: C2, kurze Ubuntu-Probe UBU0, der Schritt UF1 mit N1 und ST1 (D-C104), Entwurfsblock DB1 (D-D10, D-D12, privilegierter Systemdienst, Operationen für OS-Updates), eine Transition TR1, F1 und F2 (Files, lesend), H1 (Einstellungsspeicher), SET1, ONB1, Container-Probe ENG0 und Entwurf G8.0, G8, G10, G9, G11, OS- und Kernel-Updates über die GUI (OSU1, Entwurf in DB1, Umsetzung nach TR1), visuelle Überarbeitung VR1, G13; die Gate-Kennungen bleiben unverändert. Neben den Gates gibt es Entwurfsstopps ohne Gate-Kennung: D-D10 (LAN-Zugriff und HTTPS; die Richtung ist entschieden, der Entwurf steht aus), H1 (Einstellungsspeicher; der Verlauf folgt nach dem MVP) und F1 (Files, lesend). Ihre Ergebnisse stehen in `docs/ROADMAP.md` und `docs/DECISIONS.md`.
 
 ### 14.3 Prompt-Struktur für den Implementierungsagenten
 
@@ -1263,3 +1263,4 @@ Das erste physische Rockchip-Testgerät ist keine offene MVP-Entscheidung. Es wi
 | 0.4.4 | 23. November 2026 | Entscheidungen zu den Befunden des Geräte-Spikes G7.1 (D-C88, ADR 0011 Ergänzung A3): Abschnitt 6.4, ORB-SVC-002: Abnahmespalte nennt einmalige Aufgaben, vorübergehend angelegte Dienste und nicht laufende Vorlagen-Instanzen, die Oarfish nicht anbietet (D-C88, Punkte 7 und 8); Abschnitt 6.4, ORB-SVC-003: die Beispiele für Dienste, die den Zugang trennen können, um den Namen im lokalen Netz ergänzt, die Liste steht in ADR 0011, Entscheidungsverweis D-C87 und D-C88 (D-C88, Punkt 11); Kopfzeile: Dokumentversion, Statuszeile (Gates G0 bis G6 abgenommen, G7 läuft) und Stand. Sonst unverändert. Der Installer-Rahmen (D-C87, Punkt 16) bleibt offen. Nichts davon ist umgesetzt oder auf einem Gerät verifiziert. |
 | 0.4.5 | 27. November 2026 | Kopfzeile: Dokumentversion, Status (G7 abgenommen, D-C100; Reihenfolge nach D-C101) und Stand. Sonst unverändert; die Änderungen, die D-C101 am Inhalt nahelegt, sind dem Eigentümer vorgeschlagen und nicht eingetragen. |
 | 0.4.6 | 27. November 2026 | Änderungen nach D-C101 und D-C103 (Entscheidung des Eigentümers vom 27. November 2026): Abschnitt 4.1 (Betriebssystem- und Kernel-Updates über die GUI, Einstellungsspeicher statt Verlauf), 4.3 (OS-Updates aus der Liste entfernt), 6.4 (ORB-OSU-001 ohne "nach G7", ORB-OSU-002 MUSS), 6.11 (ORB-SEC-002, ORB-SEC-010, ORB-SEC-011, neu ORB-SEC-012), 8.6 und 10.1 Punkt 6 (privilegierter Systemdienst), 9.2 (kein Workflow `profiles.yml`), 9.5 und 13.1 (Gesundheitsprüfung über den Weg der Person), 12.3 (AT-030 nach dem MVP), 14.2 (G12 nach dem MVP, neue Reihenfolge) und 16 (Punkt 17 ergänzt, neu Punkt 24); ORB-DASH-008, 7.2: Verlauf nach dem MVP. Nichts davon ist umgesetzt oder auf einem Gerät verifiziert. |
+| 0.4.7 | 28. November 2026 | Abschnitt 14.2: N1 und ST1 kommen vor DB1, zusammen mit dem Korrekturschritt UF1, in einem Schritt (D-C104, Entscheidung des Eigentümers vom 27. November 2026). Keine Anforderung ändert sich. |

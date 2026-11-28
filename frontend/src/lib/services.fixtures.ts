@@ -40,12 +40,16 @@ export function row(name: string, active: string, mode: string, o: RowOptions = 
   };
 }
 
-function list(rows: ServiceRow[], brokerAvailable = true): ServicesList {
+export const fixtureModesReadAt = '2026-11-25T09:12:00Z';
+
+function list(rows: ServiceRow[], brokerAvailable = true, startModes = 'known'): ServicesList {
   const sorted = [...rows].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   return {
     schema_version: 1,
     read_at: fixtureReadAt,
     broker_available: brokerAvailable,
+    start_modes: startModes,
+    start_modes_read_at: startModes === 'known' ? fixtureModesReadAt : null,
     counts: {
       total: sorted.length,
       active: sorted.filter((r) => r.active_state === 'active').length,
@@ -149,3 +153,22 @@ export function done(unit: string, action: string, code: string, extra: Partial<
 }
 
 export const noAction: ActionState = { schema_version: 1, action: null };
+
+/**
+ * The list while the unit-file states are not known (ADR 0011 A9): the rows of
+ * list-units only (no row that is not loaded), every start mode ''.
+ */
+function withoutStartModes(status: string): ServicesList {
+  const rows = [...ordinaryRows(), ...specialRows()].filter((r) => r.load_state !== 'not-loaded').map((r) => ({ ...r, start_mode: '' }));
+  return list(rows, true, status);
+}
+
+/** The start modes are still being read. */
+export function pendingList(): ServicesList {
+  return withoutStartModes('pending');
+}
+
+/** The last unit-file read failed. */
+export function modesUnavailableList(): ServicesList {
+  return withoutStartModes('unavailable');
+}

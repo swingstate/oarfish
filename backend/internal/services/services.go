@@ -47,8 +47,15 @@ func New(cfg Config) *Manager {
 	return &Manager{broker: cfg.Broker, reader: r, actions: newActions(cfg.Broker, cfg.Audit, c.Now, r.invalidate)}
 }
 
-// List returns the service list (cached for 5 s, one read at a time).
+// List returns the service list: the unit list cached for 5 s and read once at
+// a time, with the unit-file states of their own store (ADR 0011 A9).
 func (m *Manager) List(ctx context.Context) (List, *Error) { return m.reader.read(ctx) }
+
+// InvalidateUnitFiles marks the unit-file states as out of date, so that the
+// next list request after the floor of A9 reads them again. It is the entry
+// point for a later step that changes unit files (for example a package
+// installation); start, stop and restart do not change them and do not call it.
+func (m *Manager) InvalidateUnitFiles() { m.reader.invalidateFiles() }
 
 // BrokerAvailable tells whether the broker's socket exists (a stat only).
 func (m *Manager) BrokerAvailable() bool { return m.broker != nil && m.broker.Available() }

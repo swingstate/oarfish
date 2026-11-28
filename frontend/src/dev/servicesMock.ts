@@ -16,8 +16,10 @@ import {
   done,
   failedList,
   longList,
+  modesUnavailableList,
   noAction,
   noFailedList,
+  pendingList,
   running,
   sampleList,
   transitionList,
@@ -44,6 +46,8 @@ interface PowerScenario {
 
 interface Scenario {
   list: ListReply;
+  /** Lists answered before list, one per read (the start modes pending, ADR 0011 A9). */
+  first?: ServicesList[];
   /** What the action reads answer after the owner clicks an action, in order; the last one stays. */
   after: (unit: string, action: string) => ActionState[];
   power?: Partial<PowerScenario>;
@@ -73,6 +77,9 @@ const scenarios: Record<string, () => Scenario> = {
   'list-with-failed': () => ({ list: failedList(), after: success }),
   'list-in-transition': () => ({ list: transitionList(), after: success }),
   'broker-unavailable': () => ({ list: brokerMissingList(), after: success }),
+  'start-modes-pending': () => ({ list: sampleList(), first: [pendingList(), pendingList()], after: success }),
+  'start-modes-pending-long': () => ({ list: pendingList(), after: success }),
+  'start-modes-unavailable': () => ({ list: modesUnavailableList(), after: success }),
   'action-flow': () => ({ list: sampleList(), after: success }),
   'action-timeout': () => ({ list: sampleList(), after: flow('timeout', { state: 'activating' }) }),
   'action-rate-limited': () => ({ list: sampleList(), after: flow('rate_limited', { retry_after_s: 37 }) }),
@@ -148,7 +155,8 @@ async function answer(m: Mock, method: string, path: string, body: Record<string
       m.signedOut = true;
       return later(apiError(401, 'unauthenticated'), signal);
     }
-    return later(json({ ...l, read_at: new Date().toISOString() }), signal);
+    const next = m.s.first?.shift() ?? l;
+    return later(json({ ...next, read_at: new Date().toISOString() }), signal);
   }
   if (path === '/api/v1/services/action' && method === 'GET') {
     const next = m.actions.length > 1 ? m.actions.shift()! : (m.actions[0] ?? noAction);

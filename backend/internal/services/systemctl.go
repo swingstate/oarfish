@@ -13,7 +13,8 @@ import (
 // path, directly and without a shell, with exactly one of the two read shapes
 // below, the environment systemctlEnv and nothing else of the service's, no
 // standard input, standard error discarded, the working directory /, a
-// deadline of 5 s and at most 256 KiB of standard output kept. This file is
+// deadline of 5 s (45 s for list-unit-files, ADR 0011 A9) and at most 256 KiB
+// of standard output kept. This file is
 // the only one of the service that imports os/exec, and runProgram is the only
 // place that starts a process (TestOnlySystemctlExecutes and the architecture
 // test of internal/platform).
@@ -24,10 +25,13 @@ const SystemctlPath = "/usr/bin/systemctl"
 // services_unavailable and no process is started.
 const systemdDir = "/run/systemd/system"
 
-// The bounds of one call (B2, A3.2).
+// The bounds of one call (B2, A3.2). list-unit-files has its own deadline
+// (A3.2 P-B2-4 allows a raised bound for it only; A9): PID 1 computes it,
+// 17.0 s on the probed Ubuntu image.
 const (
-	maxOutput    = 256 << 10
-	callDeadline = 5 * time.Second
+	maxOutput         = 256 << 10
+	callDeadline      = 5 * time.Second
+	filesCallDeadline = 45 * time.Second
 )
 
 // systemctlEnv is the whole environment of a call: a fixed PATH and the C

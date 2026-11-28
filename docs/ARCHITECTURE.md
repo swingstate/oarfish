@@ -24,7 +24,7 @@ backend/                     Go module github.com/swingstate/oarfish/backend
   internal/relverify/       release verification (ADR 0010 U4, U5, G6.4): signature, checksums, manifest, versions, tar inspection. Standard library plus trustkey; not imported by any binary yet (below)
   internal/version/          Version and Commit, injected with -ldflags
 frontend/                    Svelte 5 + TypeScript + Vite
-  src/                       App.svelte (session gate and navigation), pages/ (Dashboard, Gerät, Aktivität, Update, Einrichten, Anmelden, Konto), lib/ (metrics, stream, device and session clients, locales/de.ts + en.ts)
+  src/                       App.svelte (session gate and navigation), pages/ (Dashboard, Gerät, Speicher, Netzwerk, Aktivität, Update, Einrichten, Anmelden, Konto), lib/ (metrics, stream, device and session clients, locales/de.ts + en.ts)
 docs/                        specification, ADRs, roadmap, this file
 install/                     install.sh (POSIX sh installer), oarfish.service (unit, shipped in the bundle) and the three update-helper units (shipped in the default release bundle since G6.3b)
 scripts/                     release packaging, signing, verification, installer tests, budget and smoke tests

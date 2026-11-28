@@ -69,7 +69,7 @@ jobs:
         run: |
           go test -run '^$' -fuzz '^FuzzParseOSRelease$' -fuzztime 5s ./internal/platform/operating_system
           go test -run '^$' -fuzz '^FuzzParseCompatible$' -fuzztime 5s ./internal/platform/hardware
-          for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes FuzzParseDefaultRoute4 FuzzParseDefaultRoute6 FuzzParseResolvConf; do
+          for f in FuzzParseStat FuzzParseMeminfo FuzzParseFibTrie FuzzParseInet6 FuzzParseMountinfo FuzzParseRoutes FuzzParseDefaultRoute4 FuzzParseDefaultRoute6 FuzzParseResolvConf FuzzParseWireless; do
             go test -run '^$' -fuzz "^${f}\$" -fuzztime 5s ./internal/metrics/parse
           done
           go test -run '^$' -fuzz '^FuzzParsePHC$' -fuzztime 5s ./internal/auth

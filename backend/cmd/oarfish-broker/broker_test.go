@@ -371,6 +371,7 @@ func TestRule11RestartOnly(t *testing.T) {
 		"wpa_supplicant@wlan0.service", "wpa_supplicant-nl80211@wlan0.service", "wpa_supplicant-wired@eth0.service",
 		"avahi-daemon.service", "rpi-usb-gadget-ics.service", "ppp@dsl.service",
 		"ssh.service", "sshd.service", "tailscaled.service",
+		"netplan-wpa-wlan0.service", // Ubuntu's Wi-Fi link (A9)
 	} {
 		tb := newTestBroker(t, (&fakeSys{}).show(showOut(n)))
 		if a := tb.ask(t, svc(opServiceStop, n)); a.Code != codeOperationNotOffered {
@@ -385,7 +386,8 @@ func TestRule11RestartOnly(t *testing.T) {
 	tb := newTestBroker(t, (&fakeSys{}).show(showOut("ssh.service", "Names", "ssh.service sshd.service")))
 	wantCode(t, tb.ask(t, svc(opServiceStop, "ssh.service")), codeOperationNotOffered, "")
 	// Stop stays offered for the rest of the table of rule 11.
-	for _, n := range []string{"ModemManager.service", "docker.service", "containerd.service", "podman.service", "chrony.service", "ntp.service", "ntpsec.service"} {
+	for _, n := range []string{"ModemManager.service", "docker.service", "containerd.service", "podman.service", "chrony.service", "ntp.service", "ntpsec.service",
+		"netplan-ovs-cleanup.service"} {
 		tb := newTestBroker(t, (&fakeSys{}).show(showOut(n), showOut(n, "ActiveState", "inactive")))
 		if a := tb.ask(t, svc(opServiceStop, n)); a.Code != codeSuccess {
 			t.Errorf("stop %s: %s", n, a.Code)

@@ -126,10 +126,25 @@ func TestMetricsEndpointPiZero2W(t *testing.T) {
 		t.Fatal(err)
 	}
 	routing, _ := json.Marshal(wire["routing"])
-	if want := `{"dns":{"hidden":0,"servers":[{"address":"192.0.2.53","local":false},{"address":"2001:db8::53","local":false}],"status":"found"},` +
+	if want := `{"dns":{"hidden":0,"servers":[{"address":"192.0.2.53","local":false},{"address":"2001:db8::53","local":false}],"status":"found","via_local_resolver":false},` +
 		`"ipv4":{"gateway":"192.0.2.1","gateway_hidden":false,"interface":"wlan0","status":"found"},` +
 		`"ipv6":{"gateway":"2001:db8::1","gateway_hidden":false,"interface":"wlan0","status":"found"}}`; string(routing) != want {
 		t.Errorf("routing = %s\nwant      %s", routing, want)
+	}
+	// Task ST1: the storage entries gain device, disk, removable and usb
+	// (this fixture has no sysfs links: no device known); the other mounts.
+	st, _ := json.Marshal(wire["storage"])
+	mo, _ := json.Marshal(wire["mounts"])
+	if !strings.Contains(string(st), `"device":"","disk":""`) || !strings.Contains(string(st), `"removable":null,"total_bytes":4096000000,"usb":false`) ||
+		string(mo) != `[{"available_bytes":null,"fs_type":"tmpfs","kind":"memory","mount_point":"/tmp","total_bytes":null,"used_bytes":null,"used_percent":null}]` {
+		t.Errorf("storage = %s\nmounts = %s", st, mo)
+	}
+	// Task N1: prefixes and the Wi-Fi signal beside the plain lists.
+	nw, _ := json.Marshal(wire["network"])
+	for _, part := range []string{`"ipv4":["192.0.2.15"]`, `"ipv4_cidr":["192.0.2.15/24"]`, `"ipv6_cidr":["2001:db8::15/64"]`, `"signal":{"level_dbm":-52,"link_quality":58}`} {
+		if !strings.Contains(string(nw), part) {
+			t.Errorf("network = %s, missing %s", nw, part)
+		}
 	}
 
 	d := resp.Device
@@ -183,7 +198,7 @@ func TestMetricsSchemaUsesNullsAndEmptyLists(t *testing.T) {
 	// Task N0: without the files every routing part says "unreadable", with
 	// null values and an empty server list.
 	routing, _ := json.Marshal(m["routing"])
-	if want := `{"dns":{"hidden":0,"servers":[],"status":"unreadable"},` +
+	if want := `{"dns":{"hidden":0,"servers":[],"status":"unreadable","via_local_resolver":false},` +
 		`"ipv4":{"gateway":null,"gateway_hidden":false,"interface":null,"status":"unreadable"},` +
 		`"ipv6":{"gateway":null,"gateway_hidden":false,"interface":null,"status":"unreadable"}}`; string(routing) != want {
 		t.Errorf("routing = %s\nwant      %s", routing, want)
