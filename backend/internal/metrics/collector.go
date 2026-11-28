@@ -92,6 +92,9 @@ type ifaceStatic struct {
 	ipv6      []string
 	ipv4CIDR  []string
 	ipv6CIDR  []string
+	// ipv6Hidden counts the global IPv6 addresses left out because they hold
+	// the hardware address (EUI-64); only the number leaves the collector.
+	ipv6Hidden int
 }
 
 type slowData struct {
@@ -217,8 +220,9 @@ func (c *Collector) network() []NetworkInterface {
 		ni := NetworkInterface{
 			Name: s.name, Kind: s.kind, SpeedMbps: s.speedMbps,
 			State: "unknown", IPv4: s.ipv4, IPv6: s.ipv6, IPv4CIDR: s.ipv4CIDR, IPv6CIDR: s.ipv6CIDR,
-			RxBytes: readCounter(c.fsys, base+"statistics/rx_bytes"),
-			TxBytes: readCounter(c.fsys, base+"statistics/tx_bytes"),
+			IPv6Hidden: s.ipv6Hidden,
+			RxBytes:    readCounter(c.fsys, base+"statistics/rx_bytes"),
+			TxBytes:    readCounter(c.fsys, base+"statistics/tx_bytes"),
 		}
 		if s.kind == KindWiFi {
 			ni.Signal = signals[s.name]
@@ -435,13 +439,16 @@ func (c *Collector) discoverStorage() ([]Storage, []OtherMount) {
 	}
 	mounts := parse.ParseMountinfo(data, 1024)
 	others := c.otherMounts(mounts)
-	// One entry per device: bind mounts and btrfs subvolumes show the same
-	// storage more than once. Prefer the mount whose root is "/", then the
-	// shortest mount point, then the first.
+	// One entry per device: btrfs subvolumes show the same storage more than
+	// once. Prefer the mount whose root is "/", then the shortest mount point,
+	// then the first. A bind mount is never a candidate (task SF1): the
+	// service's own sandbox binds directories of the host (StateDirectory,
+	// CacheDirectory) into its mount namespace, and those are not storage of
+	// the device.
 	byDevice := map[string]parse.Mount{}
 	var order []string
 	for _, m := range mounts {
-		if !realFS[m.FSType] {
+		if !realFS[m.FSType] || bindMount(m) {
 			continue
 		}
 		key := m.Source
@@ -485,15 +492,28 @@ func (c *Collector) discoverStorage() ([]Storage, []OtherMount) {
 	return out, others
 }
 
+// bindMount reports whether a mount shows a directory inside its file system
+// rather than the file system itself (mountinfo field 4 is not "/"). The root
+// of a btrfs subvolume mount is the subvolume path; that is not a bind mount.
+func bindMount(m parse.Mount) bool {
+	if m.Root == "/" {
+		return false
+	}
+	return m.FSType != "btrfs" || m.Subvol == "" || m.Root != m.Subvol
+}
+
 // otherMounts lists the mounts of kind memory, overlay or network outside the
 // system areas, one per mount point, sorted by mount point, at most MaxOther.
-// A network share is never asked for its size.
+// Only a mount whose root is "/" is listed (task SF1): the service reads its
+// own mount namespace, where ProtectHome, ProtectKernelModules and PrivateTmp
+// add bind mounts (/home, /root, /usr/lib/modules, the private /tmp) that the
+// device does not have. A network share is never asked for its size.
 func (c *Collector) otherMounts(mounts []parse.Mount) []OtherMount {
 	seen := map[string]bool{}
 	var cand []OtherMount
 	for _, m := range mounts {
 		kind, ok := otherFS[m.FSType]
-		if !ok || (m.MountPoint != "/" && inSystemArea(m.MountPoint)) || seen[m.MountPoint] {
+		if !ok || m.Root != "/" || (m.MountPoint != "/" && inSystemArea(m.MountPoint)) || seen[m.MountPoint] {
 			continue
 		}
 		seen[m.MountPoint] = true
@@ -771,6 +791,8 @@ func operState(s string) string {
 //
 // Link-local IPv6 addresses and addresses derived from the hardware address
 // (EUI-64) are left out: both contain the MAC address, which Oarfish never shows.
+// The global EUI-64 addresses are counted (task SF1), so the page can say
+// that addresses are hidden.
 func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 	index := map[string]int{}
 	for i, s := range ifaces {
@@ -780,8 +802,14 @@ func assignAddresses(fsys fs.FS, ifaces []ifaceStatic) {
 	if data, err := source.ReadFile(fsys, pathInet6, limitNetTable); err == nil {
 		for _, e := range parse.ParseInet6(data) {
 			i, ok := index[e.Iface]
-			if !ok || e.Scope != parse.Inet6ScopeGlobal || e.Flags&(parse.Inet6FlagDADFail|parse.Inet6FlagTentative) != 0 ||
-				parse.DerivedFromHardwareAddress(e.Addr) || len(ifaces[i].ipv6) >= MaxAddresses {
+			if !ok || e.Scope != parse.Inet6ScopeGlobal || e.Flags&(parse.Inet6FlagDADFail|parse.Inet6FlagTentative) != 0 {
+				continue
+			}
+			if parse.DerivedFromHardwareAddress(e.Addr) {
+				ifaces[i].ipv6Hidden++ // counted, never sent (task SF1)
+				continue
+			}
+			if len(ifaces[i].ipv6) >= MaxAddresses {
 				continue
 			}
 			ifaces[i].ipv6 = append(ifaces[i].ipv6, e.Addr.String())

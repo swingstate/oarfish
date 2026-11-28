@@ -65,10 +65,17 @@ func FuzzParseInet6(f *testing.F) {
 
 func FuzzParseMountinfo(f *testing.F) {
 	f.Add([]byte("22 1 179:2 / / rw shared:1 - ext4 /dev/root rw\n23 22 179:1 / /mnt/a\\040b rw - vfat /dev/x rw\n"))
+	f.Add([]byte("30 1 259:2 /@ / rw - btrfs /dev/x rw,subvolid=256,subvol=/@\n31 30 0:23 /systemd/inaccessible/dir /home ro - tmpfs tmpfs rw\n"))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		for _, m := range ParseMountinfo(data, 16) {
 			if m.MountPoint == "" || m.MountPoint[0] != '/' || len(m.MountPoint) > maxMountPath || !plainWord(m.FSType, maxFSTypeLen) {
 				t.Fatalf("unexpected mount %+v", m)
+			}
+			if m.Root == "" || m.Root[0] != '/' || len(m.Root) > maxMountPath {
+				t.Fatalf("unexpected root %+v", m)
+			}
+			if m.Subvol != "" && (m.FSType != "btrfs" || m.Subvol[0] != '/' || len(m.Subvol) > maxMountPath) {
+				t.Fatalf("unexpected subvolume %+v", m)
 			}
 		}
 	})

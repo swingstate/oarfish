@@ -9,10 +9,14 @@ import (
 // Mount is one line of /proc/self/mountinfo.
 type Mount struct {
 	Major, Minor int
-	Root         string // the mounted directory inside the file system
+	Root         string // the mounted directory inside the file system; "/" unless a bind mount or a btrfs subvolume
 	MountPoint   string // decoded, absolute, printable
 	FSType       string
 	Source       string // mount source such as /dev/mmcblk0p2; only a de-duplication key, never a path to open
+	// Subvol is the subvolume a btrfs mount shows (its subvol= super option),
+	// decoded like the mount point; empty for other types or when absent.
+	// A btrfs mount whose Root equals Subvol is a subvolume, not a bind mount.
+	Subvol string
 }
 
 const (
@@ -64,9 +68,26 @@ func ParseMountinfo(data []byte, max int) []Mount {
 		if len(src) > maxMountPath || !plainText(src) {
 			src = ""
 		}
-		out = append(out, Mount{Major: major, Minor: minor, Root: root, MountPoint: point, FSType: fstype, Source: src})
+		var subvol string
+		if fstype == "btrfs" && len(f) > sep+3 {
+			subvol = btrfsSubvol(f[sep+3])
+		}
+		out = append(out, Mount{Major: major, Minor: minor, Root: root, MountPoint: point, FSType: fstype, Source: src, Subvol: subvol})
 	}
 	return out
+}
+
+// btrfsSubvol returns the decoded value of the subvol= super option, or "".
+func btrfsSubvol(opts string) string {
+	for _, o := range strings.Split(opts, ",") {
+		if v, ok := strings.CutPrefix(o, "subvol="); ok {
+			if p, ok := unescapeMountPath(v); ok {
+				return p
+			}
+			return ""
+		}
+	}
+	return ""
 }
 
 func majorMinor(s string) (major, minor int, ok bool) {

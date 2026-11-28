@@ -135,6 +135,10 @@ type NetworkInterface struct {
 	// was assigned by, the IPv6 prefix that of /proc/net/if_inet6.
 	IPv4CIDR []string `json:"ipv4_cidr"`
 	IPv6CIDR []string `json:"ipv6_cidr"`
+	// IPv6Hidden is the number of global IPv6 addresses of the interface
+	// that are left out because they contain the hardware address (EUI-64,
+	// decision 9); the addresses themselves are never sent. Added (task SF1).
+	IPv6Hidden int `json:"ipv6_hidden"`
 	// Signal is the Wi-Fi signal from /proc/net/wireless, read with every
 	// sample; null for an interface that is not Wi-Fi or that the file does
 	// not list (for example not associated). Task N1.

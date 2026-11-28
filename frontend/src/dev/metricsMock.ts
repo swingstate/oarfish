@@ -15,6 +15,7 @@ import {
   behindStubRouting,
   ethernetOnly,
   ethernetRouting,
+  hiddenAddresses,
   hiddenRouting,
   nearlyFullStorage,
   otherMounts,
@@ -50,6 +51,7 @@ const scenarios: Record<string, () => Scenario> = {
   'network-wifi-signal': () => ({ routing: piRouting, device: piZero2W }),
   'network-ethernet-only': () => ({ routing: ethernetRouting, device: piZero2W, snapshot: { network: ethernetOnly } }),
   'network-resolver-stub': () => ({ routing: behindStubRouting, device: piZero2W }),
+  'network-hidden-addresses': () => ({ routing: piRouting, device: piZero2W, snapshot: { network: hiddenAddresses } }),
   'network-none': () => ({ routing: noRouteRouting, device: piZero2W, snapshot: { network: [] } }),
   // ---- the page Speicher (task ST1) ----
   'storage-reference': () => ({ routing: piRouting, device: piZero2W }),

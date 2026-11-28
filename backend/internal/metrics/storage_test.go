@@ -143,6 +143,76 @@ func TestStorageOtherMounts(t *testing.T) {
 	}
 }
 
+// The mount table of the service's own namespace (task SF1, fixture
+// pi-sandbox): ProtectHome, ProtectKernelModules and PrivateTmp put bind
+// mounts of the tmpfs at /run over /home, /root, /usr/lib/modules and files
+// under /proc, and the private /tmp over the host's /tmp; StateDirectory,
+// CacheDirectory and PrivateTmp bind directories of the root file system.
+// Only the device's own mounts are listed: the two partitions, and /tmp once.
+func TestStorageServiceSandbox(t *testing.T) {
+	fsys := refStorage(t)
+	data, err := fs.ReadFile(fixture(t, "pi-sandbox"), "proc/self/mountinfo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsys["proc/self/mountinfo"] = &fstest.MapFile{Data: data}
+	st := &statfsAll{}
+	s := NewCollector(fsys, st.fn).Collect(t0)
+	var got []string
+	for _, f := range s.Storage {
+		got = append(got, f.MountPoint+":"+f.Device)
+	}
+	if strings.Join(got, ",") != "/:mmcblk0p2,/boot/firmware:mmcblk0p1" {
+		t.Errorf("storage = %v", got)
+	}
+	got = nil
+	for _, m := range s.Mounts {
+		got = append(got, m.MountPoint+":"+m.Kind)
+	}
+	if strings.Join(got, ",") != "/tmp:memory" {
+		t.Errorf("other mounts = %v, want only /tmp", got)
+	}
+	tmp := 0
+	for _, c := range st.calls {
+		switch c {
+		case "/tmp":
+			tmp++
+		case "/home", "/root", "/usr/lib/modules", "/var/tmp", "/var/lib/oarfish", "/var/cache/oarfish":
+			t.Errorf("statfs on the sandbox mount %s", c)
+		}
+	}
+	if tmp != 1 {
+		t.Errorf("statfs on /tmp %d times", tmp)
+	}
+	if out := mustJSON(t, s); strings.Contains(out, "systemd") || strings.Contains(out, "inaccessible") {
+		t.Errorf("a root field reached the output: %s", out)
+	}
+}
+
+// A bind mount of a real file system is never listed, even when the device
+// has no other mount in the table; a btrfs subvolume (root = subvol=) is.
+func TestStorageBindMountIsNeverAFileSystem(t *testing.T) {
+	fsys := refStorage(t)
+	fsys["proc/self/mountinfo"] = file("50 1 179:2 /var/lib/oarfish /var/lib/oarfish rw - ext4 /dev/mmcblk0p2 rw\n" +
+		"51 1 179:2 /var/cache/oarfish /var/cache/oarfish rw - ext4 /dev/mmcblk0p2 rw\n" +
+		"52 1 179:1 /overlays /srv/firmware rw - vfat /dev/mmcblk0p1 rw\n" +
+		"53 1 259:2 /@ / rw - btrfs /dev/nvme0n1p2 rw,subvolid=256,subvol=/@\n" +
+		"54 1 259:3 /@/srv/data /srv/data rw - btrfs /dev/nvme0n1p3 rw,subvolid=256,subvol=/@\n" +
+		"55 1 259:4 /@data /data rw - btrfs /dev/nvme0n1p4 rw\n")
+	st := &statfsAll{}
+	s := NewCollector(fsys, st.fn).Collect(t0)
+	var got []string
+	for _, f := range s.Storage {
+		got = append(got, f.MountPoint+":"+f.FSType)
+	}
+	if strings.Join(got, ",") != "/:btrfs" {
+		t.Errorf("storage = %v, want only the btrfs subvolume at /", got)
+	}
+	if len(st.calls) != 1 || st.calls[0] != "/" {
+		t.Errorf("statfs calls = %v", st.calls)
+	}
+}
+
 // More other mounts than the bound: at most MaxOther, in mount-point order;
 // a mount point listed twice is one entry.
 func TestStorageOtherMountsBound(t *testing.T) {

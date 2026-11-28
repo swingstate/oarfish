@@ -59,6 +59,8 @@ export interface NetworkInterface {
   ipv6_cidr?: string[];
   /** The Wi-Fi signal (task N1): null when the interface is not Wi-Fi or the kernel lists no signal. */
   signal?: WifiSignal | null;
+  /** How many IPv6 addresses are hidden because they contain the hardware address (task SF1); never the addresses. Missing before SF1. */
+  ipv6_hidden?: number;
 }
 
 /** The signal of a Wi-Fi interface from /proc/net/wireless. The link quality is on the driver's own scale. */
@@ -224,6 +226,7 @@ function isInterface(v: unknown): v is NetworkInterface {
     isStrList(v.ipv6) &&
     (v.ipv4_cidr === undefined || isStrList(v.ipv4_cidr)) &&
     (v.ipv6_cidr === undefined || isStrList(v.ipv6_cidr)) &&
+    (v.ipv6_hidden === undefined || (Number.isInteger(v.ipv6_hidden) && (v.ipv6_hidden as number) >= 0)) &&
     (v.signal === undefined || v.signal === null || (isObject(v.signal) && isNumOrNull(v.signal.level_dbm) && isNumOrNull(v.signal.link_quality)))
   );
 }

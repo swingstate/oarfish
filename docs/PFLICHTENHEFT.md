@@ -4,7 +4,7 @@
 
 - Dokumentversion: 0.4.7
 - Status: Normative Baseline, Umsetzung läuft (Gates G0 bis G7 abgenommen; Reihenfolge der weiteren Arbeit nach D-C101 in `docs/ROADMAP.md`)
-- Stand: 27. November 2026
+- Stand: 28. November 2026
 - Zielrelease: Oarfish MVP 0.1
 - Produktfokus: Single-Board-Computer, Edge-Geräte und kleine Linux-Appliances
 - Initial verifizierte Plattform: Raspberry Pi Zero 2 W mit Raspberry Pi OS Lite 64-bit

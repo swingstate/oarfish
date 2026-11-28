@@ -1,0 +1,20 @@
+22 1 179:2 / / ro,noatime shared:1 - ext4 /dev/mmcblk0p2 rw
+23 22 0:21 / /proc rw,nosuid,nodev,noexec,relatime shared:12 - proc proc rw
+24 22 0:22 / /sys ro,nosuid,nodev,noexec,relatime shared:2 - sysfs sysfs rw
+26 22 0:23 / /run rw,nosuid,nodev shared:5 - tmpfs tmpfs rw,size=41540k,mode=755
+27 26 0:25 / /run/lock rw,nosuid,nodev,noexec,relatime shared:6 - tmpfs tmpfs rw,size=5120k
+28 22 179:1 / /boot/firmware ro,relatime shared:36 - vfat /dev/mmcblk0p1 rw,fmask=0022,dmask=0022
+29 22 0:24 / /tmp rw,nosuid,nodev shared:7 - tmpfs tmpfs rw,size=207704k
+40 22 0:40 / /dev rw,nosuid,noexec,relatime - tmpfs tmpfs rw,size=4k,mode=755
+41 40 0:41 / /dev/shm rw,nosuid,nodev shared:9 - tmpfs tmpfs rw
+42 22 0:23 /systemd/inaccessible/dir /home ro,nosuid,nodev,noexec shared:5 - tmpfs tmpfs rw,size=41540k,mode=755
+43 22 0:23 /systemd/inaccessible/dir /root ro,nosuid,nodev,noexec shared:5 - tmpfs tmpfs rw,size=41540k,mode=755
+44 26 0:23 /systemd/inaccessible/dir /run/user ro,nosuid,nodev,noexec shared:5 - tmpfs tmpfs rw,size=41540k,mode=755
+45 26 0:23 /systemd/inaccessible/dir /run/credentials ro,nosuid,nodev,noexec shared:5 - tmpfs tmpfs rw,size=41540k,mode=755
+46 22 0:23 /systemd/inaccessible/dir /usr/lib/modules ro,nosuid,nodev,noexec shared:5 - tmpfs tmpfs rw,size=41540k,mode=755
+47 23 0:23 /systemd/inaccessible/reg /proc/kcore ro,nosuid,nodev,noexec shared:5 - tmpfs tmpfs rw,size=41540k,mode=755
+48 29 0:24 /systemd-private-fixture-oarfish.service-fake/tmp /tmp rw,nosuid,nodev shared:7 - tmpfs tmpfs rw,size=207704k
+49 22 179:2 /var/tmp/systemd-private-fixture-oarfish.service-fake/tmp /var/tmp rw,noatime shared:1 - ext4 /dev/mmcblk0p2 rw
+50 22 179:2 /var/lib/oarfish /var/lib/oarfish rw,noatime shared:1 - ext4 /dev/mmcblk0p2 rw
+51 22 179:2 /var/cache/oarfish /var/cache/oarfish rw,noatime shared:1 - ext4 /dev/mmcblk0p2 rw
+52 26 0:23 /oarfish /run/oarfish rw,nosuid,nodev shared:5 - tmpfs tmpfs rw,size=41540k,mode=755

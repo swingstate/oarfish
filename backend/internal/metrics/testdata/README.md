@@ -16,6 +16,7 @@ What the fixtures may contain, and nothing else (enforced by `TestFixturesContai
 |---|---|
 | `pi-zero-2w` | Raspberry Pi Zero 2 W style: 4 cores, 415 MiB, swap file, ext4 root plus vfat firmware partition, `cpu-thermal` zone (also visible as hwmon), `wlan0` with an IPv4 and a global IPv6 address, cpufreq with `ondemand` |
 | `generic-arm64` | unknown ARM64 board: 8 cores, 8 GB, no swap, btrfs subvolumes and bind mounts of one NVMe, an exFAT stick under `/run/media/<user>/`, a mount that cannot be read, hwmon sensors only (NVMe with two labelled inputs, `cpu`), `eth0` with 1000 Mb/s and two kinds of derived IPv6 addresses, a down `wlan0`, a container bridge |
+| `pi-sandbox` | only `proc/self/mountinfo`: the mount table the service sees in its own namespace on Raspberry Pi OS (task SF1), with the bind mounts that `ProtectHome`, `ProtectKernelModules`, `PrivateTmp`, `StateDirectory` and `CacheDirectory` add over the host's mounts; made-up ids and sizes. The tests lay it over `pi-zero-2w` |
 | `minimal` | procfs only: no cpufreq, no sensors, no mount table, no network directory, no `MemAvailable` |
 | `hostile` | NUL bytes, escape sequences, invalid UTF-8, absurd and negative numbers, a space in an interface name |
 

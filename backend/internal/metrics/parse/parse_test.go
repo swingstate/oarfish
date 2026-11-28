@@ -146,6 +146,33 @@ func TestParseMountinfo(t *testing.T) {
 	}
 }
 
+// The root field is kept for every mount; the subvolume only for btrfs, from
+// the subvol= super option, decoded like the mount point (task SF1).
+func TestParseMountinfoRootAndSubvolume(t *testing.T) {
+	const data = `30 1 259:2 /@ / rw - btrfs /dev/nvme0n1p2 rw,subvolid=256,subvol=/@
+31 30 259:2 /@/srv/data /srv/data rw - btrfs /dev/nvme0n1p2 rw,subvolid=256,subvol=/@
+32 30 259:2 /@my\040home /home rw - btrfs /dev/nvme0n1p2 rw,subvol=/@my\040home,space_cache=v2
+33 30 259:2 /@x /x rw - btrfs /dev/nvme0n1p2 rw,subvol=relative
+34 30 259:2 /@y /y rw - btrfs /dev/nvme0n1p2
+35 30 0:23 /systemd/inaccessible/dir /home ro - tmpfs tmpfs rw,subvol=/not-btrfs
+`
+	var got []string
+	for _, m := range ParseMountinfo([]byte(data), 100) {
+		got = append(got, m.MountPoint+" root="+m.Root+" subvol="+m.Subvol)
+	}
+	want := []string{
+		"/ root=/@ subvol=/@",
+		"/srv/data root=/@/srv/data subvol=/@",
+		"/home root=/@my home subvol=/@my home",
+		"/x root=/@x subvol=",
+		"/y root=/@y subvol=",
+		"/home root=/systemd/inaccessible/dir subvol=",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("mounts = %q\nwant      %q", got, want)
+	}
+}
+
 func TestParseMountinfoBoundsHostileInput(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 20000; i++ {

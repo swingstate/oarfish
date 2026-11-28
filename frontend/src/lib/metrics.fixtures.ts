@@ -132,6 +132,12 @@ export const ethernetOnly: NetworkInterface[] = [
 /** Task N1: the default route of the wired fixture. */
 export const ethernetRouting: Routing = { ...piRouting, ipv4: { ...piRouting.ipv4, interface: 'eth0' } };
 
+/** Task SF1: Wi-Fi with two IPv6 addresses hidden (they contain a hardware address), and a wired interface with one hidden and no other address. */
+export const hiddenAddresses: NetworkInterface[] = [
+  { ...piSnapshot.network[0]!, ipv6_hidden: 2 },
+  { ...ethernetOnly[0]!, ipv4: [], ipv6: [], ipv4_cidr: [], ipv6_cidr: [], ipv6_hidden: 1 },
+];
+
 /** Task N1: a Wi-Fi interface whose driver reports no signal line, and one that is down. */
 export const wifiNoSignal: NetworkInterface[] = [
   { ...piSnapshot.network[0]!, signal: null },

@@ -139,9 +139,9 @@ func TestMetricsEndpointPiZero2W(t *testing.T) {
 		string(mo) != `[{"available_bytes":null,"fs_type":"tmpfs","kind":"memory","mount_point":"/tmp","total_bytes":null,"used_bytes":null,"used_percent":null}]` {
 		t.Errorf("storage = %s\nmounts = %s", st, mo)
 	}
-	// Task N1: prefixes and the Wi-Fi signal beside the plain lists.
+	// Tasks N1 and SF1: prefixes, the Wi-Fi signal and the hidden-address count beside the plain lists.
 	nw, _ := json.Marshal(wire["network"])
-	for _, part := range []string{`"ipv4":["192.0.2.15"]`, `"ipv4_cidr":["192.0.2.15/24"]`, `"ipv6_cidr":["2001:db8::15/64"]`, `"signal":{"level_dbm":-52,"link_quality":58}`} {
+	for _, part := range []string{`"ipv4":["192.0.2.15"]`, `"ipv4_cidr":["192.0.2.15/24"]`, `"ipv6_cidr":["2001:db8::15/64"]`, `"signal":{"level_dbm":-52,"link_quality":58}`, `"ipv6_hidden":0`} {
 		if !strings.Contains(string(nw), part) {
 			t.Errorf("network = %s, missing %s", nw, part)
 		}
